@@ -25,7 +25,7 @@
 
 @media (min-width: 60rem) {
   .main {
-    max-width: var(--app-max-width-wide);
+    max-width: 46rem;
     padding: var(--sp-6) var(--sp-6) var(--sp-8);
     gap: var(--sp-5);
   }

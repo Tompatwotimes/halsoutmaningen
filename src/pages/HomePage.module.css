@@ -214,15 +214,3 @@
   }
 }
 
-@media (min-width: 60rem) {
-  .page {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-    gap: var(--sp-4);
-  }
-  .top,
-  .hero {
-    grid-column: 1 / -1;
-  }
-}

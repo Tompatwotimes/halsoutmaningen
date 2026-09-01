@@ -2,8 +2,8 @@ import { useState, type SyntheticEvent } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuth } from './useAuth';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { BrandMark } from '@/components/layout/BrandMark';
 import styles from './LoginPage.module.css';
 
 const credentialsSchema = z.object({
@@ -76,13 +76,17 @@ export function LoginPage() {
 
   return (
     <div className={styles.wrap}>
-      <Card className={styles.card}>
+      <div className={styles.brand}>
+        <BrandMark className={styles.brandMark} />
+        <span className={styles.brandName}>Hälsoutmaningen</span>
+      </div>
+      <div className={styles.card}>
         <div className={styles.header}>
-          <h1>Hälsoutmaningen</h1>
-          <p>Logga in för att fortsätta.</p>
+          <h1>Logga in</h1>
+          <p>Privat träningsutmaning. Endast inbjudna deltagare.</p>
         </div>
         <form
-          className={styles.card}
+          className={styles.form}
           onSubmit={(e) => void handleSubmit(e)}
           noValidate
         >
@@ -119,8 +123,8 @@ export function LoginPage() {
               {notice}
             </p>
           )}
-          <Button type="submit" fullWidth disabled={submitting}>
-            {submitting ? 'Loggar in…' : 'Logga in'}
+          <Button type="submit" size="lg" fullWidth loading={submitting}>
+            Logga in
           </Button>
           <button
             type="button"
@@ -131,7 +135,7 @@ export function LoginPage() {
             Glömt lösenord?
           </button>
         </form>
-      </Card>
+      </div>
     </div>
   );
 }

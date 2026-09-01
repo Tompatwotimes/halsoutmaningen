@@ -40,7 +40,7 @@ export function Button({
         loading && styles.loading,
         className,
       )}
-      disabled={disabled ?? loading}
+      disabled={disabled === true || loading}
       aria-busy={loading || undefined}
       {...rest}
     >

@@ -1,11 +1,12 @@
 .scroll {
   margin: 0 calc(var(--sp-4) * -1);
-  padding: 0 var(--sp-4) var(--sp-2);
+  padding: 0 0 var(--sp-2);
 }
 
 .inner {
   display: inline-block;
   min-width: 100%;
+  padding-right: var(--sp-4);
 }
 
 /* Column geometry — one source of truth. */
@@ -16,6 +17,7 @@
   z-index: 2;
   flex: 0 0 8.5rem;
   width: 8.5rem;
+  padding-left: var(--sp-4);
   background: var(--c-bg);
 }
 

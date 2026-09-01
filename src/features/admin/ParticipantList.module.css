@@ -79,22 +79,26 @@
 }
 
 .active {
-  background: color-mix(in srgb, var(--c-status-completed) 22%, transparent);
-  color: var(--c-status-completed);
+  background: var(--c-completed-surface);
+  border: 1px solid var(--c-completed-border);
+  color: var(--c-completed-text);
 }
 
 .not_started {
-  background: color-mix(in srgb, var(--c-status-pending) 22%, transparent);
-  color: var(--c-status-pending);
+  background: var(--c-pending-surface);
+  border: 1px solid var(--c-pending-border);
+  color: var(--c-pending-text);
 }
 
 .paused {
   background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border);
   color: var(--c-text-muted);
 }
 
 .ended,
 .no_overlap {
   background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-faint);
   color: var(--c-text-faint);
 }

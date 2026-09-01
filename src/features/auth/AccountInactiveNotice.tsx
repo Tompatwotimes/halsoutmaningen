@@ -1,6 +1,6 @@
 import { useAuth } from './useAuth';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { BrandMark } from '@/components/layout/BrandMark';
 import styles from './LoginPage.module.css';
 
 /**
@@ -12,18 +12,22 @@ export function AccountInactiveNotice() {
 
   return (
     <div className={styles.wrap}>
-      <Card className={styles.card}>
+      <div className={styles.brand}>
+        <BrandMark className={styles.brandMark} />
+        <span className={styles.brandName}>Hälsoutmaningen</span>
+      </div>
+      <div className={styles.card}>
         <div className={styles.header}>
           <h1>Kontot är pausat</h1>
           <p>
-            Ditt konto är inaktiverat just nu. Kontakta en administratör om du
-            tror att det är ett misstag.
+            Ditt konto är inaktiverat just nu. All din historik finns kvar.
+            Kontakta en administratör om du tror att det är ett misstag.
           </p>
         </div>
         <Button fullWidth variant="secondary" onClick={() => void signOut()}>
           Logga ut
         </Button>
-      </Card>
+      </div>
     </div>
   );
 }

@@ -2,9 +2,9 @@ import { useState, type SyntheticEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuth } from './useAuth';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { BrandMark } from '@/components/layout/BrandMark';
 import styles from './LoginPage.module.css';
 
 const passwordSchema = z
@@ -37,7 +37,11 @@ export function ActivateAccountPage() {
   if (!session) {
     return (
       <div className={styles.wrap}>
-        <Card className={styles.card}>
+        <div className={styles.brand}>
+          <BrandMark className={styles.brandMark} />
+          <span className={styles.brandName}>Hälsoutmaningen</span>
+        </div>
+        <div className={styles.card}>
           <div className={styles.header}>
             <h1>Länken fungerar inte</h1>
             <p>
@@ -45,8 +49,10 @@ export function ActivateAccountPage() {
               ut. Be en administratör skicka en ny.
             </p>
           </div>
-          <Link to="/logga-in">Till inloggningen</Link>
-        </Card>
+          <Link to="/logga-in" className={styles.footLink}>
+            Till inloggningen
+          </Link>
+        </div>
       </div>
     );
   }
@@ -79,13 +85,17 @@ export function ActivateAccountPage() {
 
   return (
     <div className={styles.wrap}>
-      <Card className={styles.card}>
+      <div className={styles.brand}>
+        <BrandMark className={styles.brandMark} />
+        <span className={styles.brandName}>Hälsoutmaningen</span>
+      </div>
+      <div className={styles.card}>
         <div className={styles.header}>
           <h1>Välj ett lösenord</h1>
-          <p>Sätt ett lösenord för att komma igång med Hälsoutmaningen.</p>
+          <p>Sätt ett lösenord för att komma igång.</p>
         </div>
         <form
-          className={styles.card}
+          className={styles.form}
           onSubmit={(e) => void handleSubmit(e)}
           noValidate
         >
@@ -116,11 +126,11 @@ export function ActivateAccountPage() {
               {error}
             </p>
           )}
-          <Button type="submit" fullWidth disabled={submitting}>
-            {submitting ? 'Sparar…' : 'Spara och fortsätt'}
+          <Button type="submit" size="lg" fullWidth loading={submitting}>
+            Spara och fortsätt
           </Button>
         </form>
-      </Card>
+      </div>
     </div>
   );
 }

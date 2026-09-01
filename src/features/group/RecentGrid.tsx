@@ -31,14 +31,17 @@ export function RecentGrid({ today, dates, participants, onOpenEntry }: Props) {
 
   return (
     <div className={`${styles.scroll} scroll-x`} ref={scrollRef}>
-      <div className={styles.inner}>
-        <div className={styles.headRow}>
-          <div className={styles.cornerCell}>Deltagare</div>
+      <div className={styles.inner} role="table" aria-label="Träningsstatus de senaste dagarna">
+        <div className={styles.headRow} role="row">
+          <div className={styles.cornerCell} role="columnheader">
+            Deltagare
+          </div>
           {dates.map((date) => {
             const isToday = date === today;
             return (
               <div
                 key={date}
+                role="columnheader"
                 className={[styles.dayHead, isToday && styles.todayCol]
                   .filter(Boolean)
                   .join(' ')}
@@ -52,10 +55,11 @@ export function RecentGrid({ today, dates, participants, onOpenEntry }: Props) {
           })}
         </div>
 
-        <ul className={styles.rows}>
+        <ul className={styles.rows} role="rowgroup">
           {participants.map((p) => (
-            <li key={p.userId} className={styles.row}>
+            <li key={p.userId} className={styles.row} role="row">
               <div
+                role="rowheader"
                 className={[styles.nameCell, p.isSelf && styles.selfName]
                   .filter(Boolean)
                   .join(' ')}
@@ -74,6 +78,7 @@ export function RecentGrid({ today, dates, participants, onOpenEntry }: Props) {
                 return (
                   <div
                     key={date}
+                    role="cell"
                     className={[styles.cell, isToday && styles.todayCol]
                       .filter(Boolean)
                       .join(' ')}

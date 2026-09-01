@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { RequireAdmin } from '@/features/auth/RequireAdmin';
-import { Spinner } from '@/components/ui/Spinner';
+import { AppLoading } from '@/components/feedback/AppLoading';
 
 // Route-level code splitting. Heavier feature screens (matrix, image upload)
 // added later benefit most; the pattern is set here.
@@ -45,15 +45,17 @@ const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
 
-// DEV-only design-review harness. `import.meta.env.DEV` is statically false in
-// production builds, so this route and its imports are tree-shaken away.
-const PreviewFrame = lazy(() =>
-  import('@/dev/PreviewFrame').then((m) => ({ default: m.PreviewFrame })),
-);
+// DEV-only design-review harness. The dynamic import sits inside the
+// `import.meta.env.DEV` branch so the chunk is dropped from production builds.
+const PreviewFrame = import.meta.env.DEV
+  ? lazy(() =>
+      import('@/dev/PreviewFrame').then((m) => ({ default: m.PreviewFrame })),
+    )
+  : () => null;
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<Spinner />}>
+    <Suspense fallback={<AppLoading />}>
       <Routes>
         {import.meta.env.DEV && (
           <Route path="/forhandsvisning" element={<PreviewFrame />}>

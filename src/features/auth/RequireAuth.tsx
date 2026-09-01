@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './useAuth';
 import { useProfile } from '@/features/profile/useProfile';
-import { Spinner } from '@/components/ui/Spinner';
+import { AppLoading } from '@/components/feedback/AppLoading';
 import { AccountInactiveNotice } from './AccountInactiveNotice';
 
 export function RequireAuth({ children }: { children: ReactNode }) {
@@ -11,7 +11,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (initializing) {
-    return <Spinner label="Kontrollerar inloggning…" />;
+    return <AppLoading label="Kontrollerar inloggning…" />;
   }
 
   if (!session) {
@@ -19,7 +19,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   if (isLoading) {
-    return <Spinner label="Laddar din profil…" />;
+    return <AppLoading label="Laddar din profil…" />;
   }
 
   // Deactivated accounts keep their history but lose app access

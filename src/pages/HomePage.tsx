@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { challengeProgress } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
-import { formatMinutes, formatPercent } from '@/domain/format';
+import { formatDayMonth, formatMinutes, formatPercent } from '@/domain/format';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -21,7 +21,6 @@ import {
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
-import { formatDayMonth } from '@/domain/format';
 import styles from './HomePage.module.css';
 
 function greeting(): string {

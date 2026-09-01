@@ -1,21 +1,21 @@
 import { Link } from 'react-router-dom';
-import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { Button } from '@/components/ui/Button';
+import { ImageOffIcon } from '@/components/icons';
 
 export function NotFoundPage() {
   return (
-    <>
-      <PageHeader title="Sidan hittades inte" />
+    <div style={{ paddingTop: 'var(--sp-8)' }}>
       <EmptyState
-        title="404"
-        body="Sidan du letar efter finns inte."
+        icon={<ImageOffIcon />}
+        title="Sidan hittades inte"
+        body="Länken kan vara gammal eller felstavad."
         action={
           <Link to="/">
             <Button variant="secondary">Till startsidan</Button>
           </Link>
         }
       />
-    </>
+    </div>
   );
 }
