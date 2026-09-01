@@ -236,11 +236,7 @@
   gap: var(--sp-2);
   padding: var(--sp-3);
   margin: var(--sp-2) calc(var(--sp-4) * -1) 0;
-  background: linear-gradient(
-    to top,
-    var(--c-bg) 60%,
-    transparent
-  );
+  background: linear-gradient(to top, var(--c-bg) 60%, transparent);
 }
 
 .devToggle {

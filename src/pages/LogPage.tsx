@@ -62,7 +62,11 @@ export function LogPage() {
   return <LogForm data={data} />;
 }
 
-function LogForm({ data }: { data: NonNullable<ReturnType<typeof useChallengeData>['data']> }) {
+function LogForm({
+  data,
+}: {
+  data: NonNullable<ReturnType<typeof useChallengeData>['data']>;
+}) {
   const { challenge, today, self } = data;
   const existing = data.getEntry(self.userId, today);
   const alreadyLogged = self.todayState === DayState.Completed && existing;
@@ -92,7 +96,10 @@ function LogForm({ data }: { data: NonNullable<ReturnType<typeof useChallengeDat
   const canSubmit = durationValid && proofValid;
 
   const streakAfter = useMemo(
-    () => (self.todayState === DayState.Completed ? self.currentStreak : self.currentStreak + 1),
+    () =>
+      self.todayState === DayState.Completed
+        ? self.currentStreak
+        : self.currentStreak + 1,
     [self],
   );
 
@@ -136,7 +143,9 @@ function LogForm({ data }: { data: NonNullable<ReturnType<typeof useChallengeDat
           <p className={styles.doneActivity}>
             {existing.activity} · {formatMinutes(existing.durationMinutes)}
           </p>
-          {existing.note && <p className={styles.doneNote}>”{existing.note}”</p>}
+          {existing.note && (
+            <p className={styles.doneNote}>”{existing.note}”</p>
+          )}
           <div className={styles.doneActions}>
             <Button variant="secondary" onClick={() => setEditing(true)}>
               Ändra pass
@@ -205,7 +214,11 @@ function LogForm({ data }: { data: NonNullable<ReturnType<typeof useChallengeDat
         />
       )}
 
-      <form className={styles.form} onSubmit={(e) => void handleSubmit(e)} noValidate>
+      <form
+        className={styles.form}
+        onSubmit={(e) => void handleSubmit(e)}
+        noValidate
+      >
         {/* Duration */}
         <Card title="Tid" padding="md">
           <div className={styles.durationRow}>
@@ -297,9 +310,7 @@ function LogForm({ data }: { data: NonNullable<ReturnType<typeof useChallengeDat
 
         {/* Proof */}
         <Card
-          title={
-            challenge.proofRequired ? 'Bildbevis' : 'Bildbevis (valfritt)'
-          }
+          title={challenge.proofRequired ? 'Bildbevis' : 'Bildbevis (valfritt)'}
           padding="md"
         >
           <input

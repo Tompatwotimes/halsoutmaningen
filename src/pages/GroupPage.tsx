@@ -72,7 +72,8 @@ export function GroupPage() {
     (p) => p.statesByDate.get(yesterday) === DayState.Completed,
   ).length;
 
-  const ratio = rosterToday.length === 0 ? 0 : doneToday.length / rosterToday.length;
+  const ratio =
+    rosterToday.length === 0 ? 0 : doneToday.length / rosterToday.length;
 
   // Self first, then people still pending today, then the rest alphabetically.
   const orderedRows = [...rosterToday].sort((a, b) => {
@@ -102,7 +103,9 @@ export function GroupPage() {
         <div className={styles.summaryMeta}>
           <span>{formatPercent(ratio * 100)} klara</span>
           <span className={styles.dot}>·</span>
-          <span>Igår: {doneYesterday} av {rosterToday.length}</span>
+          <span>
+            Igår: {doneYesterday} av {rosterToday.length}
+          </span>
         </div>
       </Card>
 

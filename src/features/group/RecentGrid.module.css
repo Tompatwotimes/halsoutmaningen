@@ -109,11 +109,7 @@
 }
 
 .selfName {
-  background: linear-gradient(
-    90deg,
-    var(--c-accent-quiet),
-    transparent 90%
-  );
+  background: linear-gradient(90deg, var(--c-accent-quiet), transparent 90%);
 }
 
 /* Today column emphasis */

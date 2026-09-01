@@ -3,7 +3,12 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
-import { ChevronRightIcon, GroupIcon, OverviewIcon, ShieldIcon } from '@/components/icons';
+import {
+  ChevronRightIcon,
+  GroupIcon,
+  OverviewIcon,
+  ShieldIcon,
+} from '@/components/icons';
 import { challengeDurationDays } from '@/domain/challenge';
 import { formatDayMonth } from '@/domain/format';
 import { useChallenges } from '@/features/admin/challenges-api';
@@ -93,8 +98,8 @@ export function AdminPage() {
                 <div>
                   <span className={styles.challengeName}>{c.name}</span>
                   <span className={styles.challengeMeta}>
-                    {formatDayMonth(c.startDate)} – {formatDayMonth(c.endDate)} ·{' '}
-                    {challengeDurationDays(c)} dagar
+                    {formatDayMonth(c.startDate)} – {formatDayMonth(c.endDate)}{' '}
+                    · {challengeDurationDays(c)} dagar
                   </span>
                 </div>
                 <Badge tone={STATUS_TONE[c.status]} size="sm">

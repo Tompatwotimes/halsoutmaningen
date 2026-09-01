@@ -183,9 +183,7 @@ export function ProfilePage() {
                   onClick={() => setOpenDate(e.date)}
                 >
                   <div className={styles.historyMain}>
-                    <span className={styles.historyActivity}>
-                      {e.activity}
-                    </span>
+                    <span className={styles.historyActivity}>{e.activity}</span>
                     <span className={styles.historyDate}>
                       {capitalize(weekdayLong(e.date))} {formatDayMonth(e.date)}
                     </span>

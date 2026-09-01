@@ -33,7 +33,9 @@ export function ProgressBar({
 
   return (
     <div
-      className={[styles.bar, styles[size], className].filter(Boolean).join(' ')}
+      className={[styles.bar, styles[size], className]
+        .filter(Boolean)
+        .join(' ')}
       role="progressbar"
       aria-valuenow={Math.round(clamped * 100)}
       aria-valuemin={0}

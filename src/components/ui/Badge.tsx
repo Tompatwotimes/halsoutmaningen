@@ -2,12 +2,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import styles from './Badge.module.css';
 
 type Tone =
-  | 'neutral'
-  | 'accent'
-  | 'completed'
-  | 'missed'
-  | 'pending'
-  | 'future';
+  'neutral' | 'accent' | 'completed' | 'missed' | 'pending' | 'future';
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   tone?: Tone;

@@ -51,11 +51,7 @@ export function StatusCell({
   }
 
   return (
-    <span
-      className={className}
-      role="img"
-      aria-label={ariaLabel ?? meta.label}
-    >
+    <span className={className} role="img" aria-label={ariaLabel ?? meta.label}>
       {content}
     </span>
   );

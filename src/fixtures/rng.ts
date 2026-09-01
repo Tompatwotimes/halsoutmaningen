@@ -21,6 +21,10 @@ export function pick<T>(rng: () => number, items: readonly T[]): T {
   return item;
 }
 
-export function intBetween(rng: () => number, min: number, max: number): number {
+export function intBetween(
+  rng: () => number,
+  min: number,
+  max: number,
+): number {
   return Math.floor(rng() * (max - min + 1)) + min;
 }

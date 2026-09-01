@@ -1,6 +1,9 @@
 import type { ChallengeConfig } from '@/domain/challenge';
 import { type DayState } from '@/domain/dayState';
-import { evaluateParticipant, type LiabilityBreakdown } from '@/domain/liability';
+import {
+  evaluateParticipant,
+  type LiabilityBreakdown,
+} from '@/domain/liability';
 import { currentStreak, longestStreak } from '@/domain/streaks';
 import { isDateEligible, type MembershipConfig } from '@/domain/membership';
 import {
@@ -69,8 +72,8 @@ export function buildChallengeDataset(): ChallengeDataset {
       const statesByDate = new Map(
         evaluation.days.map((d) => [d.date, d.state] as const),
       );
-      const decided = evaluation.liability.completedDays +
-        evaluation.liability.missedDays;
+      const decided =
+        evaluation.liability.completedDays + evaluation.liability.missedDays;
       const latestEntry = [...entriesByDate.values()].sort((a, b) =>
         a.date < b.date ? 1 : -1,
       )[0];
@@ -98,9 +101,8 @@ export function buildChallengeDataset(): ChallengeDataset {
         currentStreak: currentStreak(evaluation.states),
         longestStreak: longestStreak(evaluation.states),
         liability: evaluation.liability,
-        completionRate: decided === 0
-          ? 0
-          : evaluation.liability.completedDays / decided,
+        completionRate:
+          decided === 0 ? 0 : evaluation.liability.completedDays / decided,
         decidedDays: decided,
         latestEntry: latestEntry ?? null,
       } satisfies ParticipantView;

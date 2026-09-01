@@ -23,17 +23,16 @@ export function BottomNav() {
             key={item.path}
             to={item.path}
             end={item.end ?? false}
-            className={({ isActive }) => cx(styles.link, isActive && styles.active)}
+            className={({ isActive }) =>
+              cx(styles.link, isActive && styles.active)
+            }
           >
             <item.icon className={styles.icon} />
             <span className={styles.label}>{item.label}</span>
           </NavLink>
         ))}
 
-        <NavLink
-          to={CENTER_ITEM.path}
-          className={() => cx(styles.centerWrap)}
-        >
+        <NavLink to={CENTER_ITEM.path} className={() => cx(styles.centerWrap)}>
           {({ isActive }) => (
             <>
               <span
@@ -51,7 +50,9 @@ export function BottomNav() {
             key={item.path}
             to={item.path}
             end={item.end ?? false}
-            className={({ isActive }) => cx(styles.link, isActive && styles.active)}
+            className={({ isActive }) =>
+              cx(styles.link, isActive && styles.active)
+            }
           >
             <item.icon className={styles.icon} />
             <span className={styles.label}>{item.label}</span>

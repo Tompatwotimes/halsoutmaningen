@@ -72,13 +72,11 @@ export function OverviewPage() {
         <div>
           <p className={styles.progressValue}>
             <span className="tnum">Dag {progress.elapsedDays}</span>
-            <span className={styles.progressOf}>
-              av {progress.totalDays}
-            </span>
+            <span className={styles.progressOf}>av {progress.totalDays}</span>
           </p>
           <p className={styles.progressSub}>
-            {data.participants.length} deltagare ·{' '}
-            {progress.remainingDays} dagar kvar
+            {data.participants.length} deltagare · {progress.remainingDays}{' '}
+            dagar kvar
           </p>
         </div>
         <Button
@@ -109,7 +107,9 @@ export function OverviewPage() {
           today={data.today}
           participants={rows}
           handleRef={gridRef}
-          onOpenEntry={(participant, date) => setSelected({ participant, date })}
+          onOpenEntry={(participant, date) =>
+            setSelected({ participant, date })
+          }
         />
         <div className={styles.legend}>
           <StatusLegend />

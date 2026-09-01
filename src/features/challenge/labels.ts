@@ -2,7 +2,12 @@
  * Swedish day / date labels for challenge UI. Pure string helpers layered on
  * the domain date utilities — challenge-day semantics stay in `src/domain`.
  */
-import { addDays, compareDates, diffDays, parsePlainDate } from '@/domain/dates';
+import {
+  addDays,
+  compareDates,
+  diffDays,
+  parsePlainDate,
+} from '@/domain/dates';
 
 const WEEKDAYS_SHORT = ['sön', 'mån', 'tis', 'ons', 'tor', 'fre', 'lör'];
 const WEEKDAYS_LONG = [

@@ -76,7 +76,12 @@
   --c-focus: #7fd3e0;
 
   /* ---- A single restrained brand gradient (used sparingly) ----------- */
-  --gradient-brand: linear-gradient(150deg, #1a3d45 0%, #122730 55%, #0f1a22 100%);
+  --gradient-brand: linear-gradient(
+    150deg,
+    #1a3d45 0%,
+    #122730 55%,
+    #0f1a22 100%
+  );
 
   /* ---- Typography --------------------------------------------------- */
   --font-sans:

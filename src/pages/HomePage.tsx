@@ -56,12 +56,8 @@ export function HomePage() {
   const completedToday = self.todayState === DayState.Completed;
 
   const roster = data.rosterToday;
-  const doneToday = roster.filter(
-    (p) => p.todayState === DayState.Completed,
-  );
-  const pendingToday = roster.filter(
-    (p) => p.todayState === DayState.Pending,
-  );
+  const doneToday = roster.filter((p) => p.todayState === DayState.Completed);
+  const pendingToday = roster.filter((p) => p.todayState === DayState.Pending);
   const groupRatio = roster.length === 0 ? 0 : doneToday.length / roster.length;
 
   const firstName = self.displayName.split(' ')[0] ?? self.displayName;
@@ -78,18 +74,15 @@ export function HomePage() {
       </header>
 
       {/* --- Today hero --- */}
-      <Card
-        variant="gradient"
-        padding="lg"
-        className={styles.hero}
-      >
+      <Card variant="gradient" padding="lg" className={styles.hero}>
         {completedToday && todayEntry ? (
           <>
             <Badge tone="completed" icon={<CheckIcon />}>
               Klart för idag
             </Badge>
             <p className={styles.heroLead}>
-              {todayEntry.activity} · {formatMinutes(todayEntry.durationMinutes)}
+              {todayEntry.activity} ·{' '}
+              {formatMinutes(todayEntry.durationMinutes)}
             </p>
             <p className={styles.heroSub}>
               Bra jobbat. Din streak är uppe i{' '}
@@ -176,9 +169,7 @@ export function HomePage() {
             <Avatar key={p.userId} name={p.displayName} size="xs" />
           ))}
           {doneToday.length > 9 && (
-            <span className={styles.avatarMore}>
-              +{doneToday.length - 9}
-            </span>
+            <span className={styles.avatarMore}>+{doneToday.length - 9}</span>
           )}
         </div>
         {pendingToday.length > 0 && (

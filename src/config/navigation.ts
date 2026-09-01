@@ -37,7 +37,13 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Hem', icon: HomeIcon, slot: 'bar', end: true },
   { path: '/gruppen', label: 'Gruppen', icon: GroupIcon, slot: 'bar' },
-  { path: '/logga', label: 'Logga', fullLabel: 'Logga träning', icon: LogIcon, slot: 'center' },
+  {
+    path: '/logga',
+    label: 'Logga',
+    fullLabel: 'Logga träning',
+    icon: LogIcon,
+    slot: 'center',
+  },
   { path: '/oversikt', label: 'Översikt', icon: OverviewIcon, slot: 'bar' },
   { path: '/ranking', label: 'Ranking', icon: RankingIcon, slot: 'bar' },
   { path: '/profil', label: 'Profil', icon: ProfileIcon, slot: 'menu' },

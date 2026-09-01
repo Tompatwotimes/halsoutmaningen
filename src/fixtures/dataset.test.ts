@@ -48,9 +48,9 @@ describe('buildChallengeDataset', () => {
     for (const p of data.participants) {
       for (const { date, state } of p.days) {
         if (date > FIXTURE_TODAY) {
-          expect(state === DayState.Future || state === DayState.NotParticipating).toBe(
-            true,
-          );
+          expect(
+            state === DayState.Future || state === DayState.NotParticipating,
+          ).toBe(true);
         }
       }
     }

@@ -37,13 +37,13 @@ not playful. Confident, not loud.
 
 ### Colour — foundation
 
-| Token | Role |
-| --- | --- |
-| `--c-bg` / `--c-bg-elevated` | app background; desktop rail |
-| `--c-surface` / `--c-surface-raised` / `--c-surface-sunken` | card grounds by elevation |
-| `--c-surface-hover` | hover ground |
-| `--c-border` / `--c-border-strong` / `--c-border-faint` | hairlines by prominence |
-| `--c-text` / `--c-text-muted` / `--c-text-faint` | text by hierarchy |
+| Token                                                       | Role                         |
+| ----------------------------------------------------------- | ---------------------------- |
+| `--c-bg` / `--c-bg-elevated`                                | app background; desktop rail |
+| `--c-surface` / `--c-surface-raised` / `--c-surface-sunken` | card grounds by elevation    |
+| `--c-surface-hover`                                         | hover ground                 |
+| `--c-border` / `--c-border-strong` / `--c-border-faint`     | hairlines by prominence      |
+| `--c-text` / `--c-text-muted` / `--c-text-faint`            | text by hierarchy            |
 
 ### Colour — brand
 
@@ -55,13 +55,13 @@ not playful. Confident, not loud.
 
 Each canonical day state has a `-text`, `-surface` and `-border` token:
 
-| State | Token base | Feel |
-| --- | --- | --- |
-| `COMPLETED` | `--c-completed-*` (green) | clearly positive |
-| `MISSED` | `--c-missed-*` (warm clay, not fire-engine red) | obvious, not aggressive |
-| `PENDING` | `--c-pending-*` (amber) | attracts attention; pulses when it's today |
-| `FUTURE` | `--c-future-*` | quiet, neutral |
-| `NOT_PARTICIPATING` | `--c-absent-*` | barely there |
+| State               | Token base                                      | Feel                                       |
+| ------------------- | ----------------------------------------------- | ------------------------------------------ |
+| `COMPLETED`         | `--c-completed-*` (green)                       | clearly positive                           |
+| `MISSED`            | `--c-missed-*` (warm clay, not fire-engine red) | obvious, not aggressive                    |
+| `PENDING`           | `--c-pending-*` (amber)                         | attracts attention; pulses when it's today |
+| `FUTURE`            | `--c-future-*`                                  | quiet, neutral                             |
+| `NOT_PARTICIPATING` | `--c-absent-*`                                  | barely there                               |
 
 **Colour is never the only signal.** Every state also has a distinct glyph
 (`✓`, `✕`, clock, hollow dot, dash) and a text label. See §4.
@@ -92,24 +92,24 @@ Weights: 400 / 500 / 600 / 700.
 
 ## 3. Components (`src/components`)
 
-| Component | Notes |
-| --- | --- |
-| `ui/Button` | `primary \| secondary \| ghost \| danger`, `sm \| md \| lg`, `loading`, `icon`, `fullWidth`. Min height = touch target. |
-| `ui/Card` | `default \| raised \| sunken \| gradient \| bare`, `padding` none→lg, optional uppercase `title` eyebrow + `action`. |
-| `ui/Badge` | tones `neutral \| accent \| completed \| missed \| pending \| future`, `dot`, `icon`, `sm \| md`. |
-| `ui/Avatar` | initials with a stable per-name hue; `xs…xl`; `ring` marks "du". |
-| `ui/ProgressRing` | SVG ring, tone-coloured, centre slot, `aria-label` with %. |
-| `ui/ProgressBar` | linear, tones, optional ghost track, `role="progressbar"`. |
-| `ui/StatTile` | eyebrow label + tabular value + unit + hint; tone tints the value only. |
-| `ui/SegmentedControl` | `role="radiogroup"`, generic over a string union. |
-| `ui/Sheet` | bottom sheet (mobile) / centred dialog (desktop). Focus trap, Escape, scroll lock, `aria-modal`, restores focus. |
-| `ui/Skeleton` / `SkeletonText` | shimmer; static under reduced motion. |
-| `status/StatusCell` | the status square — glyph + tone; `today` emphasis; becomes a button when it opens an entry. |
-| `status/StatusLegend` | labelled key for the five states. |
-| `status/statusMeta` | single map: state → `{ label, short, Icon, tone }`. |
-| `proof/ProofImage` | fixture-phase placeholder: a deterministic GPS-route trace from a seed. Swap for the signed-URL `<img>` in Fas 6. |
-| `feedback/EmptyState`, `ErrorState`, `AppLoading`, `Spinner` | first-class states; Swedish copy, optional icon, retry action. |
-| `layout/AppShell`, `TopBar`, `BottomNav`, `SideNav`, `BrandMark` | see §5. |
+| Component                                                        | Notes                                                                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `ui/Button`                                                      | `primary \| secondary \| ghost \| danger`, `sm \| md \| lg`, `loading`, `icon`, `fullWidth`. Min height = touch target. |
+| `ui/Card`                                                        | `default \| raised \| sunken \| gradient \| bare`, `padding` none→lg, optional uppercase `title` eyebrow + `action`.    |
+| `ui/Badge`                                                       | tones `neutral \| accent \| completed \| missed \| pending \| future`, `dot`, `icon`, `sm \| md`.                       |
+| `ui/Avatar`                                                      | initials with a stable per-name hue; `xs…xl`; `ring` marks "du".                                                        |
+| `ui/ProgressRing`                                                | SVG ring, tone-coloured, centre slot, `aria-label` with %.                                                              |
+| `ui/ProgressBar`                                                 | linear, tones, optional ghost track, `role="progressbar"`.                                                              |
+| `ui/StatTile`                                                    | eyebrow label + tabular value + unit + hint; tone tints the value only.                                                 |
+| `ui/SegmentedControl`                                            | `role="radiogroup"`, generic over a string union.                                                                       |
+| `ui/Sheet`                                                       | bottom sheet (mobile) / centred dialog (desktop). Focus trap, Escape, scroll lock, `aria-modal`, restores focus.        |
+| `ui/Skeleton` / `SkeletonText`                                   | shimmer; static under reduced motion.                                                                                   |
+| `status/StatusCell`                                              | the status square — glyph + tone; `today` emphasis; becomes a button when it opens an entry.                            |
+| `status/StatusLegend`                                            | labelled key for the five states.                                                                                       |
+| `status/statusMeta`                                              | single map: state → `{ label, short, Icon, tone }`.                                                                     |
+| `proof/ProofImage`                                               | fixture-phase placeholder: a deterministic GPS-route trace from a seed. Swap for the signed-URL `<img>` in Fas 6.       |
+| `feedback/EmptyState`, `ErrorState`, `AppLoading`, `Spinner`     | first-class states; Swedish copy, optional icon, retry action.                                                          |
+| `layout/AppShell`, `TopBar`, `BottomNav`, `SideNav`, `BrandMark` | see §5.                                                                                                                 |
 
 Feature-level compositions live under `src/features/*`: `challenge/LiabilityCard`,
 `challenge/EntryDetailSheet`, `group/RecentGrid`, `overview/MatrixGrid`,
@@ -142,7 +142,7 @@ Rules:
 
 - **Mobile:** sticky `TopBar` (brand + avatar → Profil) and a fixed
   `BottomNav` with five destinations — **Hem · Gruppen · [Logga] · Översikt ·
-  Ranking** — where *Logga* is an elevated accent button (the primary action).
+  Ranking** — where _Logga_ is an elevated accent button (the primary action).
   Profil is reached from the avatar; Admin from within Profil (admins only).
 - **Desktop (≥60rem):** the bottom bar is replaced by a left `SideNav` rail
   with every destination labelled, plus account + sign-out at the foot. Content

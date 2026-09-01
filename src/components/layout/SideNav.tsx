@@ -32,7 +32,9 @@ export function SideNav() {
             key={item.path}
             to={item.path}
             end={item.end ?? false}
-            className={({ isActive }) => cx(styles.link, isActive && styles.active)}
+            className={({ isActive }) =>
+              cx(styles.link, isActive && styles.active)
+            }
           >
             <item.icon className={styles.icon} />
             <span>{item.fullLabel ?? item.label}</span>

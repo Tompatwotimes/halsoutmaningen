@@ -2,7 +2,10 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Session, User } from '@supabase/supabase-js';
-import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context';
+import {
+  AuthContext,
+  type AuthContextValue,
+} from '@/features/auth/auth-context';
 import { profileQueryKey } from '@/features/profile/useProfile';
 import type { Profile } from '@/features/profile/profile-api';
 import { SideNav } from '@/components/layout/SideNav';
@@ -88,9 +91,7 @@ export function PreviewFrame() {
             <Link
               key={s.path}
               to={`/forhandsvisning/${s.path}`}
-              className={
-                current === s.path ? styles.linkActive : styles.link
-              }
+              className={current === s.path ? styles.linkActive : styles.link}
             >
               {s.label}
             </Link>

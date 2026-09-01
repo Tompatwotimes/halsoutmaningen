@@ -11,11 +11,7 @@ const ORDER: DayState[] = [
   DayState.NotParticipating,
 ];
 
-export function StatusLegend({
-  states = ORDER,
-}: {
-  states?: DayState[];
-}) {
+export function StatusLegend({ states = ORDER }: { states?: DayState[] }) {
   return (
     <ul className={styles.legend}>
       {states.map((state) => (

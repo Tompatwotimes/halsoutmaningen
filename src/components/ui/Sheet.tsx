@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { CloseIcon } from '@/components/icons';
 import styles from './Sheet.module.css';
@@ -93,9 +87,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title && !hideHeader ? headingId : undefined}
-        aria-label={
-          !title || hideHeader ? (ariaLabel ?? 'Dialog') : undefined
-        }
+        aria-label={!title || hideHeader ? (ariaLabel ?? 'Dialog') : undefined}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >

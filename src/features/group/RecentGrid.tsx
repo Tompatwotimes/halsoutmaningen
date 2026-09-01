@@ -31,7 +31,11 @@ export function RecentGrid({ today, dates, participants, onOpenEntry }: Props) {
 
   return (
     <div className={`${styles.scroll} scroll-x`} ref={scrollRef}>
-      <div className={styles.inner} role="table" aria-label="Träningsstatus de senaste dagarna">
+      <div
+        className={styles.inner}
+        role="table"
+        aria-label="Träningsstatus de senaste dagarna"
+      >
         <div className={styles.headRow} role="row">
           <div className={styles.cornerCell} role="columnheader">
             Deltagare

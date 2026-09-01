@@ -62,11 +62,7 @@ export function EntryDetailSheet({
               <span className={`${styles.metricValue} tnum`}>
                 {formatMinutes(entry.durationMinutes)}
               </span>
-              <Badge
-                tone="completed"
-                size="sm"
-                icon={<CheckIcon />}
-              >
+              <Badge tone="completed" size="sm" icon={<CheckIcon />}>
                 Kravet uppfyllt
               </Badge>
             </div>

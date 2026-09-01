@@ -3,7 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { AuthContext, type AuthContextValue } from '@/features/auth/auth-context';
+import {
+  AuthContext,
+  type AuthContextValue,
+} from '@/features/auth/auth-context';
 import { profileQueryKey } from '@/features/profile/useProfile';
 import { SELF_USER_ID } from '@/fixtures/participants';
 import { HomePage } from './HomePage';

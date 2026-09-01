@@ -27,35 +27,32 @@ export function ProofImage({ seed, activity, className }: ProofImageProps) {
     >
       <svg viewBox="0 0 320 240" className={styles.svg} aria-hidden="true">
         <defs>
-          <linearGradient id={`sky-${String(seed)}`} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient
+            id={`sky-${String(seed)}`}
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="1"
+          >
             <stop offset="0" stopColor="#16202b" />
             <stop offset="1" stopColor="#0d151d" />
           </linearGradient>
         </defs>
         <rect width="320" height="240" fill={`url(#sky-${String(seed)})`} />
         {[48, 96, 144, 192].map((y) => (
-          <line
-            key={y}
-            x1="0"
-            y1={y}
-            x2="320"
-            y2={y}
-            className={styles.grid}
-          />
+          <line key={y} x1="0" y1={y} x2="320" y2={y} className={styles.grid} />
         ))}
         {[64, 128, 192, 256].map((x) => (
-          <line
-            key={x}
-            x1={x}
-            y1="0"
-            x2={x}
-            y2="240"
-            className={styles.grid}
-          />
+          <line key={x} x1={x} y1="0" x2={x} y2="240" className={styles.grid} />
         ))}
         <path d={path} className={styles.routeGlow} />
         <path d={path} className={styles.route} />
-        <circle cx={dots.start.x} cy={dots.start.y} r="5" className={styles.start} />
+        <circle
+          cx={dots.start.x}
+          cy={dots.start.y}
+          r="5"
+          className={styles.start}
+        />
         <circle cx={dots.end.x} cy={dots.end.y} r="5" className={styles.end} />
       </svg>
       <span className={styles.badge}>{activity ?? 'Bildbevis'}</span>

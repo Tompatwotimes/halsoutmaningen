@@ -25,7 +25,9 @@ export function LiabilityCard({ liability, missedDayCost, compact }: Props) {
   return (
     <Card title="Ekonomi">
       <div className={styles.headline}>
-        <span className={`${styles.debt} tnum`}>{formatSek(confirmedDebt)}</span>
+        <span className={`${styles.debt} tnum`}>
+          {formatSek(confirmedDebt)}
+        </span>
         <span className={styles.debtLabel}>
           skuld hittills{' '}
           <span className={styles.debtSub}>
@@ -41,7 +43,9 @@ export function LiabilityCard({ liability, missedDayCost, compact }: Props) {
         label="Andel avklarade dagar av hittills avgjorda"
       />
       <p className={styles.barCaption}>
-        <span className={styles.cleared}>{formatSek(clearedAmount)} säkrat</span>
+        <span className={styles.cleared}>
+          {formatSek(clearedAmount)} säkrat
+        </span>
         <span className={styles.dot}>·</span>
         avgjorda dagar hittills
       </p>
