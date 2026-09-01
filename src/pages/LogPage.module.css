@@ -251,6 +251,15 @@
   color: var(--c-text-faint);
 }
 
+@media (min-width: 60rem) {
+  .submitBar {
+    position: static;
+    margin: var(--sp-2) 0 0;
+    padding: 0;
+    background: none;
+  }
+}
+
 /* ---- Already-logged card ---- */
 .doneCard {
   display: flex;

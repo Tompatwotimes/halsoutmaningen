@@ -99,7 +99,19 @@ export function Sheet({
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
-        {!hideHeader && (
+        {hideHeader ? (
+          <>
+            <span className={styles.grabberLoose} aria-hidden="true" />
+            <button
+              type="button"
+              className={styles.closeFloat}
+              onClick={onClose}
+              aria-label="Stäng"
+            >
+              <CloseIcon />
+            </button>
+          </>
+        ) : (
           <header className={styles.header}>
             <span className={styles.grabber} aria-hidden="true" />
             <div className={styles.headerRow}>

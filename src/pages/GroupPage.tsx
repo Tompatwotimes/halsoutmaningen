@@ -120,8 +120,8 @@ export function GroupPage() {
         </div>
         {hiddenCount > 0 && (
           <p className={styles.hiddenNote}>
-            {hiddenCount} pausad{hiddenCount === 1 ? '' : 'e'} deltagare visas
-            inte här – se dem i Översikt.
+            {hiddenCount} deltagare visas inte i dagsvyn (pausade eller utanför
+            perioden) – alla finns i Översikt.
           </p>
         )}
       </Card>
