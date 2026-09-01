@@ -10,6 +10,11 @@ import { Spinner } from '@/components/ui/Spinner';
 const LoginPage = lazy(() =>
   import('@/features/auth/LoginPage').then((m) => ({ default: m.LoginPage })),
 );
+const ActivateAccountPage = lazy(() =>
+  import('@/features/auth/ActivateAccountPage').then((m) => ({
+    default: m.ActivateAccountPage,
+  })),
+);
 const HomePage = lazy(() =>
   import('@/pages/HomePage').then((m) => ({ default: m.HomePage })),
 );
@@ -31,6 +36,11 @@ const ProfilePage = lazy(() =>
 const AdminPage = lazy(() =>
   import('@/pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 );
+const ParticipantsPage = lazy(() =>
+  import('@/pages/admin/ParticipantsPage').then((m) => ({
+    default: m.ParticipantsPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -40,6 +50,7 @@ export function AppRoutes() {
     <Suspense fallback={<Spinner />}>
       <Routes>
         <Route path="/logga-in" element={<LoginPage />} />
+        <Route path="/aktivera" element={<ActivateAccountPage />} />
         <Route
           element={
             <RequireAuth>
@@ -58,6 +69,14 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <AdminPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/deltagare"
+            element={
+              <RequireAdmin>
+                <ParticipantsPage />
               </RequireAdmin>
             }
           />

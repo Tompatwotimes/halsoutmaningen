@@ -55,5 +55,25 @@ enabled = true
 # Proof images are private; see docs/ARCHITECTURE.md §18.
 file_size_limit = "10MiB"
 
+# ---------------------------------------------------------------------------
+# Edge Functions
+# ---------------------------------------------------------------------------
+# Privileged admin operations.
+#
+# verify_jwt = false on purpose: the function does its OWN, stronger check —
+# it validates the caller's JWT with auth.getUser() AND requires the DB
+# predicate is_admin() (role='admin' AND active). Leaving the platform's
+# generic pre-check off keeps CORS preflight (OPTIONS, no Authorization header)
+# working without weakening anything: every real request still passes the
+# in-function 401/403 gate.
+#
+# Secrets required on the hosted project (Dashboard → Edge Functions → Secrets):
+#   SITE_URL   — public app origin, e.g. https://app.example.com (for the
+#                invite/reset redirect to /aktivera)
+# SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are injected
+# automatically by the platform.
+[functions.invite-participant]
+verify_jwt = false
+
 [analytics]
 enabled = false

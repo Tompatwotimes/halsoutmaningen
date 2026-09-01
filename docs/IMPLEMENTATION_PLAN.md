@@ -1,11 +1,13 @@
 # Hälsoutmaningen — Implementation Plan
 
-Status: **Fas 0 complete. Fas 1–2 in review** — initial schema migrations are
-written (`supabase/migrations/`) and awaiting approval before they touch the
-hosted project. This document is the working plan for everything after the
-scaffold. It is derived from `CLAUDE.md`, `docs/PRODUCT_SPEC.md` and
-`docs/ARCHITECTURE.md` and does not override them. Schema detail lives in
-`docs/DATABASE.md`.
+Status: **Fas 0–2 complete. Fas 3 in progress.** The four initial migrations
+are applied to the hosted project (Postgres 17.6); local/remote history
+matches; the first challenge exists as `draft`; the first admin was bootstrapped
+manually. Fas 3 (auth end-to-end + admin invite) is built and its Edge Function
+/ migrations are written but **not yet deployed** — see `docs/INVITE_FLOW.md`.
+This document is the working plan for everything after the scaffold. It is
+derived from `CLAUDE.md`, `docs/PRODUCT_SPEC.md` and `docs/ARCHITECTURE.md` and
+does not override them. Schema detail lives in `docs/DATABASE.md`.
 
 ### Open questions — resolved 2026-09-01
 
@@ -223,12 +225,20 @@ Storage buckets + policies; optional first-challenge data insert.
 pgTAP tests in `supabase/tests/`. **STOP: do not apply to hosted until the user
 approves.** After apply: `npm run db:types` to generate `src/types/database.ts`.
 
-### Fas 3 — Authentication end to end
+### Fas 3 — Authentication end to end (built, deploy pending)
 
-Wire `useProfile()` to the real `profiles` row. Login / logout / session
-refresh / route guards verified against real RLS. First admin bootstrapped via
-SQL (documented in `docs/DATABASE.md §7`). Build the `invite_participant` Edge
-Function (`inviteUserByEmail` + membership insert, admin-authorized).
+Done: `useProfile()` reads the real `profiles` row (role + active every load);
+login / logout / session restore / `/aktivera` (invite + reset) / route guards
+(`RequireAuth`, `RequireAdmin` fail-closed) / deactivated-account notice.
+Generated `src/types/database.ts` from the hosted schema (`npm run db:types`
+now uses `--linked`). Admin → Deltagare area: challenge picker, participant
+list from real Supabase data, invite form. `invite-participant` Edge Function
+(`inviteUserByEmail` + membership upsert-as-caller, admin-authorized, idempotent)
+— architecture and failure semantics in `docs/INVITE_FLOW.md`.
+
+Not yet done (needs the product owner): deploy the Edge Function, set its
+secrets, disable hosted sign-up + add redirect URLs, send the first real invite.
+No new migration is required for this phase.
 
 ### Fas 4 — Training entries + private proof upload
 

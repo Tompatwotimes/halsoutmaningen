@@ -61,3 +61,23 @@
   color: var(--c-danger);
   font-size: var(--fs-sm);
 }
+
+.notice {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.linkButton {
+  align-self: center;
+  padding: var(--sp-2);
+  background: none;
+  border: none;
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.linkButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

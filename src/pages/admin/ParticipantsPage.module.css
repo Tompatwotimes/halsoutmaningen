@@ -1,0 +1,37 @@
+.back {
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-4);
+}
+
+.selectLabel {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-text-muted);
+  margin-bottom: var(--sp-2);
+}
+
+.select {
+  width: 100%;
+  height: var(--touch-target);
+  padding: 0 var(--sp-3);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font: inherit;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.accountsNote {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+  margin-bottom: var(--sp-3);
+}

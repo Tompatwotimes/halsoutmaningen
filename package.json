@@ -22,7 +22,8 @@
     "db:diff": "supabase db diff",
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
-    "db:types": "supabase gen types typescript --local > src/types/database.ts"
+    "db:types": "supabase gen types typescript --linked > src/types/database.ts",
+    "db:types:local": "supabase gen types typescript --local > src/types/database.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

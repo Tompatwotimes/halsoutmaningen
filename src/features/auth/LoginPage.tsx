@@ -11,16 +11,20 @@ const credentialsSchema = z.object({
   password: z.string().min(1, 'Ange ditt lösenord'),
 });
 
+const emailSchema = z.string().email('Ange en giltig e-postadress');
+
 interface LocationState {
   from?: { pathname: string };
 }
 
 export function LoginPage() {
-  const { session, initializing, signInWithPassword } = useAuth();
+  const { session, initializing, signInWithPassword, requestPasswordReset } =
+    useAuth();
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!initializing && session) {
@@ -31,6 +35,7 @@ export function LoginPage() {
   async function handleSubmit(event: SyntheticEvent) {
     event.preventDefault();
     setError(null);
+    setNotice(null);
 
     const parsed = credentialsSchema.safeParse({ email, password });
     if (!parsed.success) {
@@ -48,6 +53,25 @@ export function LoginPage() {
     if (signInError) {
       setError('Fel e-post eller lösenord.');
     }
+  }
+
+  async function handleForgotPassword() {
+    setError(null);
+    setNotice(null);
+
+    const parsed = emailSchema.safeParse(email);
+    if (!parsed.success) {
+      setError('Fyll i din e-postadress först, så skickar vi en länk.');
+      return;
+    }
+
+    setSubmitting(true);
+    await requestPasswordReset(parsed.data);
+    setSubmitting(false);
+    // Always report success — never reveal whether an address has an account.
+    setNotice(
+      'Om adressen finns hos oss skickas en länk för att välja nytt lösenord.',
+    );
   }
 
   return (
@@ -90,9 +114,22 @@ export function LoginPage() {
               {error}
             </p>
           )}
+          {notice && (
+            <p className={styles.notice} role="status">
+              {notice}
+            </p>
+          )}
           <Button type="submit" fullWidth disabled={submitting}>
             {submitting ? 'Loggar in…' : 'Logga in'}
           </Button>
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => void handleForgotPassword()}
+            disabled={submitting}
+          >
+            Glömt lösenord?
+          </button>
         </form>
       </Card>
     </div>

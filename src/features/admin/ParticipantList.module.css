@@ -1,0 +1,100 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--c-surface-raised);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+}
+
+.avatar {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--c-surface-sunken);
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roleBadge {
+  font-size: var(--fs-xs);
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-full);
+  background: var(--c-surface-sunken);
+  color: var(--c-text-muted);
+}
+
+.window {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.account {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.stateBadge {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.active {
+  background: color-mix(in srgb, var(--c-status-completed) 22%, transparent);
+  color: var(--c-status-completed);
+}
+
+.not_started {
+  background: color-mix(in srgb, var(--c-status-pending) 22%, transparent);
+  color: var(--c-status-pending);
+}
+
+.paused {
+  background: var(--c-surface-sunken);
+  color: var(--c-text-muted);
+}
+
+.ended,
+.no_overlap {
+  background: var(--c-surface-sunken);
+  color: var(--c-text-faint);
+}
