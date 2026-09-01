@@ -1,0 +1,8 @@
+-- Local development seed data.
+--
+-- Applied by `supabase db reset` against a LOCAL stack only. It is never run
+-- against the hosted project. The dev VM does not run the local Docker stack,
+-- so this file is currently unused; it is kept for CI / future local use.
+--
+-- Do not put real personal data here. The first challenge's real configuration
+-- ships as an (optional) migration — see supabase/migrations and docs/DATABASE.md.

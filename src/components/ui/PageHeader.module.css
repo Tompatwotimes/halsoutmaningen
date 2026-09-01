@@ -1,0 +1,16 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-1);
+}
+
+.header h1 {
+  font-size: var(--fs-2xl);
+  letter-spacing: -0.02em;
+}
+
+.header p {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}

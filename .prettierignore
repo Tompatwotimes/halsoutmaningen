@@ -1,0 +1,10 @@
+dist
+coverage
+CLAUDE.md
+docs/PRODUCT_SPEC.md
+docs/ARCHITECTURE.md
+node_modules
+supabase
+*.toml
+src/types/database.ts
+package-lock.json
