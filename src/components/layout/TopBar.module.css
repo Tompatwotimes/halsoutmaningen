@@ -1,15 +1,15 @@
 .bar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
-  padding-top: calc(var(--sp-3) + env(safe-area-inset-top, 0px));
-  background: color-mix(in srgb, var(--c-bg) 88%, transparent);
-  backdrop-filter: blur(8px);
+  padding-top: calc(var(--sp-3) + var(--safe-top));
+  background: color-mix(in srgb, var(--c-bg) 86%, transparent);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--c-border);
 }
 
@@ -17,9 +17,9 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  font-weight: 700;
-  font-size: var(--fs-md);
-  letter-spacing: -0.01em;
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-base);
+  letter-spacing: var(--tracking-tight);
 }
 
 .mark {
@@ -27,24 +27,13 @@
   height: 1.5rem;
 }
 
-.right {
+.avatarLink {
   display: flex;
-  align-items: center;
-  gap: var(--sp-1);
+  border-radius: var(--radius-full);
 }
 
-.iconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--touch-target);
-  height: var(--touch-target);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--c-text-muted);
-}
-
-.iconButton:hover {
-  color: var(--c-text);
-  background: var(--c-surface);
+@media (min-width: 60rem) {
+  .bar {
+    display: none;
+  }
 }

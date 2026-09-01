@@ -1,16 +1,39 @@
 .header {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-1);
+}
+
+.text {
+  display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  margin-bottom: var(--sp-1);
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--c-accent-text);
 }
 
 .header h1 {
   font-size: var(--fs-2xl);
-  letter-spacing: -0.02em;
+  letter-spacing: var(--tracking-tight);
 }
 
 .header p {
   color: var(--c-text-muted);
   font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+  max-width: 34rem;
+}
+
+.action {
+  flex: 0 0 auto;
+  padding-top: var(--sp-1);
 }

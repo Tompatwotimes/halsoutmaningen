@@ -1,0 +1,126 @@
+.scroll {
+  margin: 0 calc(var(--sp-4) * -1);
+  padding: 0 var(--sp-4) var(--sp-2);
+}
+
+.inner {
+  display: inline-block;
+  min-width: 100%;
+}
+
+/* Column geometry — one source of truth. */
+.cornerCell,
+.nameCell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 8.5rem;
+  width: 8.5rem;
+  background: var(--c-bg);
+}
+
+.dayHead,
+.cell {
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.cornerCell {
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.dayHead {
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: var(--sp-1);
+}
+
+.dayLabel {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--c-text-muted);
+}
+
+.dayDate {
+  font-size: 0.5625rem;
+  color: var(--c-text-faint);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-1) 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-right: var(--sp-2);
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.youTag {
+  margin-left: var(--sp-1);
+  font-size: 0.5625rem;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--c-accent-text);
+}
+
+.selfName {
+  background: linear-gradient(
+    90deg,
+    var(--c-accent-quiet),
+    transparent 90%
+  );
+}
+
+/* Today column emphasis */
+.todayCol {
+  background: color-mix(in srgb, var(--c-accent) 9%, transparent);
+}
+.headRow .todayCol {
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+}
+.dayHead.todayCol .dayLabel {
+  color: var(--c-accent-text);
+}

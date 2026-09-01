@@ -1,0 +1,117 @@
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.headline > span:first-child {
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1;
+}
+
+.of {
+  font-size: var(--fs-lg);
+  color: var(--c-text-faint);
+  font-weight: var(--fw-medium);
+}
+
+.headlineLabel {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  margin-bottom: var(--sp-2);
+}
+
+.summaryMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.dot {
+  color: var(--c-border-strong);
+}
+
+.legend {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.hiddenNote {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-full);
+  background: var(--c-pending-surface);
+  border: 1px solid var(--c-pending-border);
+  color: var(--c-pending-text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+}
+
+.missingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.missingItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+}
+
+.missingItem + .missingItem {
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.missingName {
+  flex: 1;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+}
+
+.fullLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-accent-text);
+}
+.fullLink:hover {
+  border-color: var(--c-accent);
+}
+
+.linkIcon {
+  width: 1rem;
+  height: 1rem;
+}

@@ -1,73 +1,154 @@
 /*
- * Design tokens. One professional visual identity: calm slate surfaces, a
- * single confident accent, clear status colours. Mobile-first (CLAUDE.md §13-15).
+ * Hälsoutmaningen design tokens.
+ *
+ * One coherent visual identity: a deep, calm near-black foundation, a single
+ * confident cool accent ("is", the brand colour), and a purposeful status
+ * system that never relies on colour alone. Dark-first and deliberately
+ * dark-only — a mature, premium, Scandinavian feel closer to a native app
+ * than a web dashboard (CLAUDE.md §13–15, design north star).
+ *
+ * Values are chosen, not arbitrary: every colour, size and duration below is
+ * referenced by name from component CSS. Do not hardcode raw hex/px in
+ * components — add or reuse a token here.
  */
 
 :root {
   color-scheme: dark;
 
-  /* Palette */
-  --c-bg: #0b1120;
-  --c-surface: #111a2e;
-  --c-surface-raised: #16223b;
-  --c-surface-sunken: #0c1526;
-  --c-border: #22304d;
-  --c-border-strong: #33456b;
+  /* ---- Foundation: near-black with a faint cool cast ---------------------- */
+  --c-bg: #0b0e13;
+  --c-bg-elevated: #0f131a;
+  --c-surface: #141922;
+  --c-surface-raised: #1b212c;
+  --c-surface-sunken: #0d1117;
+  --c-surface-hover: #1f2733;
 
-  --c-text: #eef2f9;
-  --c-text-muted: #9fb0cc;
-  --c-text-faint: #6c7d9c;
+  --c-border: #262e3b;
+  --c-border-strong: #38424f;
+  --c-border-faint: #1c232e;
 
-  --c-accent: #34d399;
-  --c-accent-strong: #10b981;
-  --c-accent-contrast: #04241a;
+  /* ---- Text ------------------------------------------------------------- */
+  --c-text: #f2f5f9;
+  --c-text-muted: #a6b1c1;
+  --c-text-faint: #6a7686;
+  --c-text-inverse: #0b0e13;
 
-  --c-status-completed: #34d399;
-  --c-status-missed: #f87171;
-  --c-status-pending: #fbbf24;
-  --c-status-future: #3b4a6b;
-  --c-status-absent: #1c2942;
+  /* ---- Brand accent: cool aqua ("is") — calm, health, Scandinavian ----- */
+  --c-accent: #4bb3c4;
+  --c-accent-hover: #5ec3d3;
+  --c-accent-pressed: #3c9aa9;
+  --c-accent-quiet: #17323a; /* filled chip / subtle background */
+  --c-accent-text: #7fd3e0; /* accent as text on dark surfaces (AA) */
+  --c-accent-contrast: #032027; /* text/icon on top of a solid accent fill */
 
-  --c-danger: #f87171;
-  --c-focus: #7dd3fc;
+  /* ---- Status system --------------------------------------------------- */
+  /* Completed — clearly positive, green, distinct from the aqua brand.     */
+  --c-completed: #3ecf8e;
+  --c-completed-text: #57dc9e;
+  --c-completed-surface: #10281e;
+  --c-completed-border: #1f5540;
 
-  /* Typography */
+  /* Missed — obvious but not aggressive: warm clay, not fire-engine red.   */
+  --c-missed: #e0705d;
+  --c-missed-text: #ec8676;
+  --c-missed-surface: #2c1613;
+  --c-missed-border: #63302a;
+
+  /* Pending today — attracts attention: warm amber.                       */
+  --c-pending: #e6b24d;
+  --c-pending-text: #f0c268;
+  --c-pending-surface: #2a2110;
+  --c-pending-border: #5c4a22;
+
+  /* Future — quiet, neutral.                                              */
+  --c-future-text: #71809a;
+  --c-future-surface: #171d27;
+  --c-future-border: #2a3340;
+
+  /* Not participating — barely there.                                    */
+  --c-absent-text: #55606f;
+  --c-absent-surface: #10151c;
+
+  /* ---- Feedback ------------------------------------------------------- */
+  --c-danger: #e0705d;
+  --c-danger-text: #ec8676;
+  --c-success: #3ecf8e;
+  --c-focus: #7fd3e0;
+
+  /* ---- A single restrained brand gradient (used sparingly) ----------- */
+  --gradient-brand: linear-gradient(150deg, #1a3d45 0%, #122730 55%, #0f1a22 100%);
+
+  /* ---- Typography --------------------------------------------------- */
   --font-sans:
     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
-  --fs-xs: 0.75rem;
-  --fs-sm: 0.875rem;
-  --fs-md: 1rem;
-  --fs-lg: 1.125rem;
-  --fs-xl: 1.375rem;
-  --fs-2xl: 1.75rem;
-  --fs-3xl: 2.25rem;
-  --lh-tight: 1.2;
-  --lh-normal: 1.5;
+  --font-num: 'Inter', ui-monospace, 'SF Mono', 'Roboto Mono', monospace;
 
-  /* Spacing */
+  --fs-2xs: 0.6875rem; /* 11 — micro labels, uppercase eyebrows */
+  --fs-xs: 0.75rem; /* 12 */
+  --fs-sm: 0.8125rem; /* 13 */
+  --fs-base: 0.9375rem; /* 15 — body */
+  --fs-md: 1.0625rem; /* 17 */
+  --fs-lg: 1.25rem; /* 20 */
+  --fs-xl: 1.5rem; /* 24 */
+  --fs-2xl: 1.875rem; /* 30 */
+  --fs-3xl: 2.5rem; /* 40 */
+  --fs-display: 3.25rem; /* 52 — hero metric */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.55;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-eyebrow: 0.08em;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ---- Spacing (4px base) ---------------------------------------------- */
+  --sp-0: 0;
   --sp-1: 0.25rem;
   --sp-2: 0.5rem;
   --sp-3: 0.75rem;
   --sp-4: 1rem;
   --sp-5: 1.5rem;
   --sp-6: 2rem;
+  --sp-7: 2.5rem;
   --sp-8: 3rem;
+  --sp-10: 4rem;
 
-  /* Radius / shadow */
+  /* ---- Radius -------------------------------------------------------- */
+  --radius-xs: 0.375rem;
   --radius-sm: 0.5rem;
-  --radius-md: 0.875rem;
-  --radius-lg: 1.25rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.375rem;
   --radius-full: 999px;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.2);
 
-  /* Layout */
-  --app-max-width: 40rem;
-  --bottom-nav-height: 4.25rem;
+  /* ---- Elevation ---------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 20px 48px -12px rgb(0 0 0 / 0.6);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--c-focus) 45%, transparent);
+
+  /* ---- Layout ----------------------------------------------------- */
+  --app-max-width: 30rem; /* mobile-first content column */
+  --app-max-width-wide: 68rem; /* desktop shell */
+  --bottom-nav-height: 4rem;
   --touch-target: 2.75rem;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  --transition-fast: 120ms ease;
-  --transition-base: 200ms ease;
+  /* ---- Motion --------------------------------------------------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 340ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -75,6 +156,8 @@
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

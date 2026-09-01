@@ -1,0 +1,124 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(3 5 8 / 0.62);
+  backdrop-filter: blur(2px);
+  animation: fade var(--dur-base) var(--ease-out);
+}
+
+.panel {
+  position: relative;
+  width: 100%;
+  max-width: var(--app-max-width);
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-bottom: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-lg);
+  animation: slide-up var(--dur-slow) var(--ease-out);
+}
+
+.header {
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--c-border-faint);
+}
+
+.grabber {
+  display: block;
+  width: 2.25rem;
+  height: 4px;
+  margin: var(--sp-1) auto var(--sp-3);
+  border-radius: var(--radius-full);
+  background: var(--c-border-strong);
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-right: calc(var(--sp-2) * -1);
+  border-radius: var(--radius-full);
+  color: var(--c-text-muted);
+}
+.close:hover {
+  color: var(--c-text);
+  background: var(--c-surface-hover);
+}
+.close svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.body {
+  padding: var(--sp-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.footer {
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--safe-bottom));
+  border-top: 1px solid var(--c-border-faint);
+  background: var(--c-surface);
+}
+
+@media (min-width: 40rem) {
+  .overlay {
+    align-items: center;
+    padding: var(--sp-5);
+  }
+  .panel {
+    max-width: 32rem;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-xl);
+    animation: pop var(--dur-base) var(--ease-out);
+  }
+  .footer {
+    padding-bottom: var(--sp-4);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+}

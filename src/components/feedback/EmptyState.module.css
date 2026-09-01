@@ -8,14 +8,32 @@
   color: var(--c-text-muted);
 }
 
+.icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: var(--sp-2);
+  border-radius: var(--radius-full);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-faint);
+  color: var(--c-text-faint);
+}
+.icon svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
 .title {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   color: var(--c-text);
 }
 
 .body {
   font-size: var(--fs-sm);
   max-width: 26rem;
+  line-height: var(--lh-snug);
 }
 
 .actions {

@@ -4,7 +4,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--sp-3);
-  padding: var(--sp-6);
+  padding: var(--sp-8) var(--sp-4);
   color: var(--c-text-muted);
   font-size: var(--fs-sm);
 }

@@ -1,0 +1,71 @@
+.headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.debt {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--c-missed-text);
+}
+
+.debtLabel {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.debtSub {
+  color: var(--c-text-faint);
+}
+
+.barCaption {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.cleared {
+  color: var(--c-completed-text);
+  font-weight: var(--fw-semibold);
+}
+
+.dot {
+  color: var(--c-border-strong);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0 0;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.grid dt {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.grid dd {
+  margin: 2px 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  line-height: var(--lh-snug);
+}

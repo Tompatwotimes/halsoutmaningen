@@ -1,0 +1,41 @@
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-accent-quiet);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-accent) 30%, transparent);
+  overflow-x: auto;
+}
+
+.tag {
+  flex: 0 0 auto;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--c-accent-text);
+}
+
+.switcher {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.link,
+.linkActive {
+  flex: 0 0 auto;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+}
+
+.linkActive {
+  background: var(--c-accent);
+  color: var(--c-accent-contrast);
+}

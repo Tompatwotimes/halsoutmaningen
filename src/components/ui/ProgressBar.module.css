@@ -1,0 +1,29 @@
+.bar {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-full);
+  background: var(--c-border);
+  overflow: hidden;
+}
+
+.sm {
+  height: 6px;
+}
+.md {
+  height: 10px;
+}
+
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--radius-full);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.ghost {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--radius-full);
+  background: var(--c-border-strong);
+  transition: width var(--dur-slow) var(--ease-out);
+}

@@ -1,49 +1,25 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useProfile } from '@/features/profile/useProfile';
 import { useAuth } from '@/features/auth/useAuth';
-import { LogoutIcon } from '@/components/icons';
+import { Avatar } from '@/components/ui/Avatar';
+import { BrandMark } from './BrandMark';
 import styles from './TopBar.module.css';
 
+/** Mobile-only top bar: brand and a route to the profile via the avatar. */
 export function TopBar() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-
-  async function handleSignOut() {
-    await signOut();
-    await navigate('/logga-in', { replace: true });
-  }
+  const { profile } = useProfile();
+  const { user } = useAuth();
+  const name = profile?.displayName ?? user?.email ?? 'Profil';
 
   return (
     <header className={styles.bar}>
       <Link to="/" className={styles.brand}>
-        <svg
-          className={styles.mark}
-          viewBox="0 0 64 64"
-          aria-hidden="true"
-          fill="none"
-        >
-          <rect width="64" height="64" rx="14" fill="var(--c-surface-raised)" />
-          <path
-            d="M18 33h6l4-11 7 22 4-14 3 6h5"
-            stroke="var(--c-accent)"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        Hälsoutmaningen
+        <BrandMark className={styles.mark} />
+        <span>Hälsoutmaningen</span>
       </Link>
-      <div className={styles.right}>
-        {user && (
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={() => void handleSignOut()}
-            aria-label="Logga ut"
-          >
-            <LogoutIcon />
-          </button>
-        )}
-      </div>
+      <Link to="/profil" className={styles.avatarLink} aria-label="Din profil">
+        <Avatar name={name} size="sm" />
+      </Link>
     </header>
   );
 }
