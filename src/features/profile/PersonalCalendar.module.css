@@ -1,0 +1,96 @@
+.wrap {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-5);
+}
+
+@media (min-width: 30rem) {
+  .wrap {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.monthName {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  margin-bottom: var(--sp-2);
+}
+
+.weekdays,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.weekdays {
+  margin-bottom: 3px;
+}
+
+.weekdays span {
+  text-align: center;
+  font-size: 0.5625rem;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-faint);
+}
+
+.day {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  font-size: 0.625rem;
+  font-weight: var(--fw-medium);
+}
+
+.glyph {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 0.5rem;
+  height: 0.5rem;
+  stroke-width: 3.5;
+}
+
+.completed {
+  background: var(--c-completed-surface);
+  border-color: var(--c-completed-border);
+  color: var(--c-completed-text);
+  cursor: pointer;
+}
+.completed:hover {
+  border-color: var(--c-completed);
+}
+
+.missed {
+  background: var(--c-missed-surface);
+  border-color: var(--c-missed-border);
+  color: var(--c-missed-text);
+}
+
+.pending {
+  background: var(--c-pending-surface);
+  border-color: var(--c-pending-border);
+  color: var(--c-pending-text);
+}
+
+.future {
+  background: var(--c-future-surface);
+  color: var(--c-text-faint);
+}
+
+.absent {
+  background: transparent;
+  color: var(--c-absent-text);
+}
+
+.today {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
