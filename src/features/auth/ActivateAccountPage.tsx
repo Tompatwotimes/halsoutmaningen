@@ -1,161 +1,148 @@
-import { useMemo, useState, type SyntheticEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { z } from 'zod';
-import { useAuth } from './useAuth';
+import {
+  useEffect,
+  useState,
+  type ReactNode,
+  type SyntheticEvent,
+} from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useActivation } from './useActivation';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { BrandMark } from '@/components/layout/BrandMark';
 import styles from './LoginPage.module.css';
 
-const passwordSchema = z
-  .object({
-    password: z.string().min(8, 'Minst 8 tecken'),
-    confirm: z.string(),
-  })
-  .refine((v) => v.password === v.confirm, {
-    message: 'Lösenorden matchar inte',
-    path: ['confirm'],
-  });
+/** Delay before the success state hands the now-authenticated user to the app. */
+const SUCCESS_REDIRECT_MS = 1500;
 
-/**
- * Reads an auth error handed back by Supabase on the redirect URL. Supabase
- * puts these on the hash fragment (implicit flow) or the query string (PKCE):
- * `error`, `error_code`, `error_description`. Returns Swedish copy for the
- * common cases, or `null` when the URL carries no error.
- */
-function readAuthLinkError(): string | null {
-  if (typeof window === 'undefined') return null;
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const query = new URLSearchParams(window.location.search);
-  const code =
-    hash.get('error_code') ??
-    query.get('error_code') ??
-    hash.get('error') ??
-    query.get('error');
-  const description =
-    hash.get('error_description') ?? query.get('error_description');
-  if (!code && !description) return null;
-  if (code === 'otp_expired' || /expired/i.test(description ?? '')) {
-    return 'Länken har gått ut. Be en administratör skicka en ny inbjudan eller en ny återställningslänk.';
-  }
-  return 'Länken är ogiltig eller har redan använts. Be en administratör skicka en ny.';
-}
-
-/**
- * Landing page for the Supabase invite / password-reset email link. The link
- * establishes a session (handled by `detectSessionInUrl`); here the user
- * chooses a password and is sent into the app.
- */
-export function ActivateAccountPage() {
-  const { session, initializing, updatePassword } = useAuth();
-  const linkError = useMemo(readAuthLinkError, []);
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-
-  if (initializing) {
-    return <Spinner label="Öppnar din inbjudan…" />;
-  }
-
-  if (!session) {
-    return (
-      <div className={styles.wrap}>
-        <div className={styles.brand}>
-          <BrandMark className={styles.brandMark} />
-          <span className={styles.brandName}>Hälsoutmaningen</span>
-        </div>
-        <div className={styles.card}>
-          <div className={styles.header}>
-            <h1>Länken fungerar inte</h1>
-            <p>
-              {linkError ??
-                'Öppna den här sidan via länken i din inbjudan eller i mejlet för att återställa lösenordet. Länken kan också ha gått ut.'}
-            </p>
-          </div>
-          <Link to="/logga-in" className={styles.footLink}>
-            Till inloggningen
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (done) {
-    return <Navigate to="/" replace />;
-  }
-
-  async function handleSubmit(event: SyntheticEvent) {
-    event.preventDefault();
-    setError(null);
-
-    const parsed = passwordSchema.safeParse({ password, confirm });
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Ogiltigt lösenord');
-      return;
-    }
-
-    setSubmitting(true);
-    const { error: updateError } = await updatePassword(parsed.data.password);
-    setSubmitting(false);
-
-    if (updateError) {
-      setError('Kunde inte spara lösenordet. Försök igen.');
-      return;
-    }
-
-    setDone(true);
-  }
-
+function Frame({ children }: { children: ReactNode }) {
   return (
     <div className={styles.wrap}>
       <div className={styles.brand}>
         <BrandMark className={styles.brandMark} />
         <span className={styles.brandName}>Hälsoutmaningen</span>
       </div>
-      <div className={styles.card}>
-        <div className={styles.header}>
-          <h1>Välj ett lösenord</h1>
-          <p>Sätt ett lösenord för att komma igång.</p>
-        </div>
-        <form
-          className={styles.form}
-          onSubmit={(e) => void handleSubmit(e)}
-          noValidate
-        >
-          <div className={styles.field}>
-            <label htmlFor="password">Nytt lösenord</label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div className={styles.field}>
-            <label htmlFor="confirm">Upprepa lösenord</label>
-            <input
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-            />
-          </div>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <Button type="submit" size="lg" fullWidth loading={submitting}>
-            Spara och fortsätt
-          </Button>
-        </form>
-      </div>
+      <div className={styles.card}>{children}</div>
     </div>
+  );
+}
+
+/**
+ * Landing page for the Supabase invite / password-reset email link.
+ *
+ * The link arrives as an implicit-grant hash (admin invite) or a PKCE `?code=`
+ * (password reset); `useActivation` resolves either into an authenticated
+ * session, then the user explicitly chooses a password via
+ * `supabase.auth.updateUser({ password })` and is sent into the app. This route
+ * is public and never wrapped in `RequireAuth`, so nothing redirects away while
+ * the session is being established.
+ */
+export function ActivateAccountPage() {
+  const { status, message, submit } = useActivation();
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+
+  useEffect(() => {
+    if (status !== 'success') return;
+    const timer = setTimeout(() => {
+      void navigate('/', { replace: true });
+    }, SUCCESS_REDIRECT_MS);
+    return () => clearTimeout(timer);
+  }, [status, navigate]);
+
+  if (status === 'resolving') {
+    return (
+      <Frame>
+        <Spinner label="Öppnar din inbjudan…" />
+      </Frame>
+    );
+  }
+
+  if (status === 'link-error' || status === 'no-session') {
+    return (
+      <Frame>
+        <div className={styles.header}>
+          <h1>Länken fungerar inte</h1>
+          <p>
+            {message ??
+              'Öppna den här sidan via länken i din inbjudan eller i mejlet för att återställa lösenordet. Länken kan också ha gått ut.'}
+          </p>
+        </div>
+        <Link to="/logga-in" className={styles.footLink}>
+          Till inloggningen
+        </Link>
+      </Frame>
+    );
+  }
+
+  if (status === 'success') {
+    return (
+      <Frame>
+        <div className={styles.header}>
+          <h1>Kontot är aktiverat</h1>
+          <p>Ditt lösenord är sparat.</p>
+        </div>
+        <p className={styles.notice} role="status">
+          Klart! Du skickas vidare till appen.
+        </p>
+        <Button
+          size="lg"
+          fullWidth
+          onClick={() => void navigate('/', { replace: true })}
+        >
+          Fortsätt till appen
+        </Button>
+      </Frame>
+    );
+  }
+
+  const submitting = status === 'submitting';
+
+  function handleSubmit(event: SyntheticEvent) {
+    event.preventDefault();
+    void submit(password, confirm);
+  }
+
+  return (
+    <Frame>
+      <div className={styles.header}>
+        <h1>Välj ett lösenord</h1>
+        <p>Sätt ett lösenord för att aktivera ditt konto.</p>
+      </div>
+      <form className={styles.form} onSubmit={handleSubmit} noValidate>
+        <div className={styles.field}>
+          <label htmlFor="password">Välj lösenord</label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor="confirm">Bekräfta lösenord</label>
+          <input
+            id="confirm"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+            required
+          />
+        </div>
+        {message && (
+          <p className={styles.error} role="alert">
+            {message}
+          </p>
+        )}
+        <Button type="submit" size="lg" fullWidth loading={submitting}>
+          Aktivera konto
+        </Button>
+      </form>
+    </Frame>
   );
 }
