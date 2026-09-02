@@ -40,7 +40,7 @@ export function ChallengesPage() {
       <PageHeader
         eyebrow="Administration"
         title="Utmaningar"
-        subtitle="Skapa, konfigurera, aktivera och avsluta utmaningar utan kodändring."
+        subtitle="Skapa, konfigurera, aktivera och avsluta utmaningar."
         action={
           <Link to="/admin/utmaningar/ny">
             <Button size="sm" icon={<PlusIcon />}>

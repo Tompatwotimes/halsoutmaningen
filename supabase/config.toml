@@ -27,7 +27,10 @@ enabled = false
 enabled = true
 port = 54323
 
-[inbucket]
+# Local email-testing server (formerly [inbucket]). Governs the LOCAL stack
+# only — the hosted project sends real invite/reset mail via its own SMTP
+# provider and is unaffected by this block.
+[local_smtp]
 enabled = true
 port = 54324
 

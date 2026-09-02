@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type SyntheticEvent,
-} from 'react';
+import { useMemo, useState, type SyntheticEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ChallengeStatus } from '@/domain/challenge';
 import { compareDates } from '@/domain/dates';
@@ -18,24 +12,14 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { SignedProofImage } from '@/components/proof/SignedProofImage';
-import {
-  CameraIcon,
-  CheckIcon,
-  CloseIcon,
-  ClockIcon,
-  ImageOffIcon,
-} from '@/components/icons';
+import { ProofImagePicker } from '@/components/proof/ProofImagePicker';
+import { CheckIcon, ClockIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { MultiSessionLog } from '@/features/challenge/MultiSessionLog';
 import { useSubmitTraining } from '@/features/challenge/useSubmitTraining';
 import { useEntryDetail } from '@/features/challenge/useEntryDetail';
 import { useProfile } from '@/features/profile/useProfile';
-import {
-  probeImage,
-  HEIC_UNSUPPORTED_MESSAGE,
-  GENERIC_UNSUPPORTED_MESSAGE,
-} from '@/features/challenge/heic';
 import { SubmitTrainingError } from '@/features/challenge/submit-training';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import styles from './LogPage.module.css';
@@ -120,11 +104,7 @@ function LogForm({
   const [activity, setActivity] = useState(existing?.activity ?? '');
   const [note, setNote] = useState(existing?.note ?? '');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imageName, setImageName] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const submitMutation = useSubmitTraining();
   const existingProofQuery = useEntryDetail(
@@ -132,13 +112,6 @@ function LogForm({
     self.userId,
     today,
     editing && Boolean(existing?.hasProof) && imageFile === null,
-  );
-
-  useEffect(
-    () => () => {
-      if (imageUrl) URL.revokeObjectURL(imageUrl);
-    },
-    [imageUrl],
   );
 
   const durationValid = duration >= challenge.requiredMinutes;
@@ -155,37 +128,6 @@ function LogForm({
         : self.currentStreak + 1,
     [self],
   );
-
-  async function handleImage(event: SyntheticEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    setImageError(null);
-
-    const probe = await probeImage(file);
-    if (!probe.decodable) {
-      setImageError(
-        probe.likelyHeic
-          ? HEIC_UNSUPPORTED_MESSAGE
-          : GENERIC_UNSUPPORTED_MESSAGE,
-      );
-      if (fileRef.current) fileRef.current.value = '';
-      return;
-    }
-
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    setImageFile(file);
-    setImageName(file.name);
-    setImageUrl(URL.createObjectURL(file));
-  }
-
-  function clearImage() {
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    setImageFile(null);
-    setImageName(null);
-    setImageUrl(null);
-    setImageError(null);
-    if (fileRef.current) fileRef.current.value = '';
-  }
 
   async function handleSubmit(event: SyntheticEvent) {
     event.preventDefault();
@@ -429,30 +371,8 @@ function LogForm({
           title={challenge.proofRequired ? 'Bildbevis' : 'Bildbevis (valfritt)'}
           padding="md"
         >
-          <input
-            ref={fileRef}
-            id="proof-input"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className={styles.fileInput}
-            onChange={(e) => void handleImage(e)}
-          />
-          {imageUrl ? (
-            <div className={styles.preview}>
-              <img src={imageUrl} alt="Förhandsvisning av bildbevis" />
-              <button
-                type="button"
-                className={styles.previewRemove}
-                onClick={clearImage}
-                aria-label="Ta bort bild"
-              >
-                <CloseIcon />
-              </button>
-              <span className={styles.previewName}>{imageName}</span>
-            </div>
-          ) : keepsExistingProof ? (
-            <>
+          {keepsExistingProof && (
+            <div className={styles.existingProof}>
               {existingProofQuery.data?.sessions[0]?.proofSignedUrl ? (
                 <SignedProofImage
                   src={existingProofQuery.data.sessions[0].proofSignedUrl}
@@ -461,26 +381,20 @@ function LogForm({
               ) : (
                 <Skeleton height="12rem" radius="var(--radius-md)" />
               )}
-              <label htmlFor="proof-input" className={styles.hint}>
-                Behåller nuvarande bild.{' '}
-                <span className={styles.changePhoto}>Byt bild</span>
-              </label>
-            </>
-          ) : (
-            <label htmlFor="proof-input" className={styles.dropzone}>
-              <CameraIcon className={styles.dropIcon} />
-              <span className={styles.dropTitle}>Ta bild eller välj bild</span>
-              <span className={styles.dropHint}>
-                Kameran öppnas direkt på mobilen
-              </span>
-            </label>
+              <p className={styles.hint}>
+                Behåller nuvarande bild om du inte väljer en ny.
+              </p>
+            </div>
           )}
-          {imageError && (
-            <p className={styles.fieldError}>
-              <ImageOffIcon className={styles.okIcon} /> {imageError}
-            </p>
-          )}
-          {triedSubmit && !proofValid && !imageError && (
+          <ProofImagePicker
+            file={imageFile}
+            onChange={setImageFile}
+            idPrefix="proof"
+            promptTitle={
+              keepsExistingProof ? 'Byt bild' : 'Lägg till bildbevis'
+            }
+          />
+          {triedSubmit && !proofValid && (
             <p className={styles.fieldError}>
               Bildbevis krävs för den här utmaningen.
             </p>

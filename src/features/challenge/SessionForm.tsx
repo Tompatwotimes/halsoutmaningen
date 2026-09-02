@@ -1,12 +1,7 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 import { formatMinutes } from '@/domain/format';
 import { Button } from '@/components/ui/Button';
-import { CameraIcon, CloseIcon, ImageOffIcon } from '@/components/icons';
-import {
-  probeImage,
-  HEIC_UNSUPPORTED_MESSAGE,
-  GENERIC_UNSUPPORTED_MESSAGE,
-} from './heic';
+import { ProofImagePicker } from '@/components/proof/ProofImagePicker';
 import styles from './SessionForm.module.css';
 
 const QUICK_MINUTES = [30, 40, 45, 60];
@@ -41,47 +36,11 @@ export function SessionForm({
   const [activity, setActivity] = useState('');
   const [note, setNote] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(
-    () => () => {
-      if (imageUrl) URL.revokeObjectURL(imageUrl);
-    },
-    [imageUrl],
-  );
 
   const durationValid = duration >= minMinutes;
   const proofValid = !proofRequired || imageFile !== null;
   const canSubmit = durationValid && proofValid;
-
-  async function handleImage(event: SyntheticEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
-    if (!file) return;
-    setImageError(null);
-    const probe = await probeImage(file);
-    if (!probe.decodable) {
-      setImageError(
-        probe.likelyHeic
-          ? HEIC_UNSUPPORTED_MESSAGE
-          : GENERIC_UNSUPPORTED_MESSAGE,
-      );
-      if (fileRef.current) fileRef.current.value = '';
-      return;
-    }
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    setImageFile(file);
-    setImageUrl(URL.createObjectURL(file));
-  }
-
-  function clearImage() {
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    setImageFile(null);
-    setImageUrl(null);
-    if (fileRef.current) fileRef.current.value = '';
-  }
 
   function submit(e: SyntheticEvent) {
     e.preventDefault();
@@ -156,41 +115,15 @@ export function SessionForm({
         maxLength={2000}
       />
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className={styles.fileInput}
-        id="session-proof"
-        onChange={(e) => void handleImage(e)}
+      <ProofImagePicker
+        file={imageFile}
+        onChange={setImageFile}
+        idPrefix="session-proof"
+        promptTitle={
+          proofRequired ? 'Bildbevis för passet' : 'Bildbevis (valfritt)'
+        }
       />
-      {imageUrl ? (
-        <div className={styles.preview}>
-          <img src={imageUrl} alt="Förhandsvisning" />
-          <button
-            type="button"
-            className={styles.previewRemove}
-            onClick={clearImage}
-            aria-label="Ta bort bild"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-      ) : (
-        <label htmlFor="session-proof" className={styles.drop}>
-          <CameraIcon className={styles.dropIcon} />
-          <span>
-            {proofRequired ? 'Bildbevis för passet' : 'Bildbevis (valfritt)'}
-          </span>
-        </label>
-      )}
-      {imageError && (
-        <p className={styles.err}>
-          <ImageOffIcon className={styles.errIcon} /> {imageError}
-        </p>
-      )}
-      {tried && !proofValid && !imageError && (
+      {tried && !proofValid && (
         <p className={styles.err}>Bildbevis krävs för det här passet.</p>
       )}
 

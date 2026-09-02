@@ -143,88 +143,11 @@
 }
 
 /* ---- Proof ---- */
-.fileInput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.dropzone {
+.existingProof {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-6) var(--sp-4);
-  border: 1.5px dashed var(--c-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--c-surface-sunken);
-  text-align: center;
-  cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-out);
-}
-.dropzone:hover {
-  border-color: var(--c-accent);
-}
-
-.dropIcon {
-  width: 2rem;
-  height: 2rem;
-  color: var(--c-accent-text);
-  margin-bottom: var(--sp-1);
-}
-
-.dropTitle {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-}
-
-.dropHint {
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
-}
-
-.preview {
-  position: relative;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: 1px solid var(--c-border);
-}
-.preview img {
-  width: 100%;
-  max-height: 18rem;
-  object-fit: cover;
-}
-.previewRemove {
-  position: absolute;
-  top: var(--sp-2);
-  right: var(--sp-2);
-  display: grid;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--radius-full);
-  background: rgb(3 5 8 / 0.7);
-  color: var(--c-text);
-}
-.previewRemove svg {
-  width: 1rem;
-  height: 1rem;
-}
-.previewName {
-  position: absolute;
-  left: var(--sp-2);
-  bottom: var(--sp-2);
-  max-width: 70%;
-  padding: 2px var(--sp-2);
-  border-radius: var(--radius-sm);
-  background: rgb(3 5 8 / 0.7);
-  font-size: var(--fs-2xs);
-  color: var(--c-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 
 /* ---- Submit ---- */
@@ -237,14 +160,6 @@
   padding: var(--sp-3);
   margin: var(--sp-2) calc(var(--sp-4) * -1) 0;
   background: linear-gradient(to top, var(--c-bg) 60%, transparent);
-}
-
-.devToggle {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-xs);
-  color: var(--c-text-faint);
 }
 
 @media (min-width: 60rem) {
@@ -282,12 +197,6 @@
   font-size: var(--fs-xs);
   color: var(--c-text-faint);
   margin-top: var(--sp-2);
-}
-
-.changePhoto {
-  color: var(--c-accent-text);
-  cursor: pointer;
-  font-weight: var(--fw-semibold);
 }
 
 /* ---- Success ---- */
