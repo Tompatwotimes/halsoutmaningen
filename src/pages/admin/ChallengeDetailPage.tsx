@@ -22,6 +22,8 @@ import {
 } from '@/features/admin/ChallengeRuleFields';
 import { ChallengeResults } from '@/features/admin/ChallengeResults';
 import { PenaltyDefinitionList } from '@/features/admin/PenaltyDefinitionList';
+import { AdminPenaltyAssignments } from '@/features/admin/AdminPenaltyAssignments';
+import { useAuth } from '@/features/auth/useAuth';
 import { useChallenge } from '@/features/admin/challenge-admin-api';
 import {
   archiveChallenge,
@@ -43,6 +45,7 @@ import styles from './ChallengeDetailPage.module.css';
 export function ChallengeDetailPage() {
   const { challengeId = '' } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const {
     data: challenge,
     isLoading,
@@ -278,6 +281,18 @@ export function ChallengeDetailPage() {
           </p>
         )}
       </Card>
+
+      {/* Active penalty assignments — admin cancel */}
+      {(isActive || isFinished) && (
+        <Card title="Utdelade straff framåt" padding="md">
+          <AdminPenaltyAssignments
+            challengeId={challengeId}
+            today={today}
+            nameOf={nameOf}
+            adminUserId={user?.id ?? ''}
+          />
+        </Card>
+      )}
 
       {/* Results + export */}
       {(isActive || isFinished) && (

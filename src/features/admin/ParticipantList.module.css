@@ -102,3 +102,17 @@
   border: 1px solid var(--c-border-faint);
   color: var(--c-text-faint);
 }
+
+/* --- Phase 9: edit affordance --- */
+.right {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
+}
+.editBtn {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-accent-text);
+}
