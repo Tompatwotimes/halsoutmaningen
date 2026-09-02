@@ -119,7 +119,7 @@ select lives_ok(
   $$select public.complete_challenge((select id from public.challenges where name = 'Höst 2027'))$$,
   'admin can complete an active challenge');
 select is(
-  (select status from public.earned_penalties ep
+  (select ep.status from public.earned_penalties ep
    join public.challenges c on c.id = ep.challenge_id where c.name = 'Höst 2027'),
   'expired', 'completing the challenge expired the unused earned penalty');
 

@@ -29,10 +29,10 @@ values ('00000000-0000-0000-0000-000000000a50', 'Assign-test',
   current_date - 30, current_date + 60, 'Europe/Stockholm',
   30, true, 50, 'active', '00000000-0000-0000-0000-00000000a5ad');
 
-insert into public.challenge_memberships (challenge_id, user_id, participation_start_date, active, created_by)
+insert into public.challenge_memberships (challenge_id, user_id, participation_start_date, participation_end_date, active, created_by)
 values
-  ('00000000-0000-0000-0000-000000000a50', '00000000-0000-0000-0000-00000000a501', current_date - 30, true, '00000000-0000-0000-0000-00000000a5ad'),
-  ('00000000-0000-0000-0000-000000000a50', '00000000-0000-0000-0000-00000000a502', current_date - 30, true, '00000000-0000-0000-0000-00000000a5ad'),
+  ('00000000-0000-0000-0000-000000000a50', '00000000-0000-0000-0000-00000000a501', current_date - 30, null, true, '00000000-0000-0000-0000-00000000a5ad'),
+  ('00000000-0000-0000-0000-000000000a50', '00000000-0000-0000-0000-00000000a502', current_date - 30, null, true, '00000000-0000-0000-0000-00000000a5ad'),
   -- Ove left yesterday: not an eligible target for any future day.
   ('00000000-0000-0000-0000-000000000a50', '00000000-0000-0000-0000-00000000a5ff', current_date - 30, current_date - 1, true, '00000000-0000-0000-0000-00000000a5ad');
 

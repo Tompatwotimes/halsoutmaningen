@@ -118,6 +118,10 @@ select is(
 
 -- ---- PENALTY REQUIREMENT --------------------------------------------------
 set local role postgres;
+-- Back to the trusted backend: also drop the participant JWT so auth.uid() is
+-- null again and the guard treats the following fixture writes as backend work
+-- (set local role alone does NOT clear request.jwt.claims).
+select set_config('request.jwt.claims', '', true);
 
 -- Put a 45-minutaren penalty on a past day (direct insert as the trusted backend).
 insert into public.earned_penalties (challenge_id, user_id, penalty_definition_id, streak_run_start,
@@ -173,6 +177,10 @@ where ep.challenge_id = '00000000-0000-0000-0000-00000000c901'
 -- One 70-minute session: NOT enough for Dubbelpass.
 select pg_temp.mk((current_date - 25)::date, 1::smallint, 70, true);
 select is(pg_temp.st((current_date - 25)::date), 'missed', 'Dubbelpass: one long session -> missed');
+select is(
+  (select required_sessions from public.challenge_day_states('00000000-0000-0000-0000-00000000c901')
+   where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 25)::date),
+  2, 'Dubbelpass: challenge_day_states reports the two-session requirement');
 
 -- Add a second base-length proven session -> completed.
 select pg_temp.mk((current_date - 25)::date, 2::smallint, 30, true);

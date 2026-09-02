@@ -45,6 +45,12 @@ select is(
   (now() at time zone 'Pacific/Kiritimati')::date,
   'challenge_current_date uses the challenge timezone');
 
+-- ... and it is each challenge's OWN timezone, not a shared/session one.
+select is(
+  public.challenge_current_date('00000000-0000-0000-0000-00000000c8eb'),
+  (now() at time zone 'Etc/GMT+12')::date,
+  'challenge_current_date resolves each challenge''s own timezone independently');
+
 -- 2. Two challenges, same instant, 26 h apart -> local dates differ by >= 1.
 select cmp_ok(
   public.challenge_current_date('00000000-0000-0000-0000-00000000c8ea')

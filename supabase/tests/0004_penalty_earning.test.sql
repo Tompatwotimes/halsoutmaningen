@@ -143,6 +143,11 @@ select lives_ok(
   'Ella assigns her run-1 20-milestone to Bo on a future day');
 
 set local role postgres;
+-- Back to the trusted backend: clear the participant JWT so auth.uid() is null
+-- again. Otherwise the guard on training_entries still sees "Ella the
+-- participant" for the invalidation below (set local role does NOT clear
+-- request.jwt.claims).
+select set_config('request.jwt.claims', '', true);
 -- Fabricate a SECOND, already-elapsed assignment for a run-2 milestone so we can
 -- prove elapsed assignments survive a later correction.
 update public.earned_penalties set status = 'spent'

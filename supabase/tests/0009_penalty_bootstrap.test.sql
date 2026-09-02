@@ -105,6 +105,10 @@ select is(
   0, 'the bootstrap creates NO penalty assignments');
 select is(pg_temp.req((current_date - 20)::date), 30,
   'no historical day requirement changed (still base 30)');
+select is(
+  pg_temp.req(public.challenge_current_date('00000000-0000-0000-0000-0000000000b9')),
+  30,
+  'the current day requirement is unchanged by the bootstrap (no assignment made)');
 
 select * from finish();
 rollback;
