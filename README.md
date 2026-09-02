@@ -32,7 +32,11 @@ npm run dev
 ```
 
 The app requires `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; it fails
-fast at startup if they are missing.
+fast at startup if they are missing. `VITE_PUBLIC_SITE_URL` is optional (used
+for auth email redirect links) and should be left blank in local development.
+
+Hosted deployment (Cloudflare Pages + Supabase Auth / Edge Function setup) is
+documented in [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 
 ## Scripts
 

@@ -8,11 +8,17 @@ import {
 import type { Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { siteUrl } from '@/lib/env';
 import { AuthContext, type AuthContextValue } from './auth-context';
 
-/** Where the invite / password-reset email should land the user. */
+/**
+ * Where the invite / password-reset email should land the user. Config-driven
+ * via `VITE_PUBLIC_SITE_URL`; falls back to the current origin for local dev
+ * (see `siteUrl()`). This origin + `/aktivera` must be on the Supabase Auth
+ * "Redirect URLs" allow-list — see docs/DEPLOYMENT.md.
+ */
 function activateRedirectUrl(): string {
-  return `${window.location.origin}/aktivera`;
+  return `${siteUrl()}/aktivera`;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

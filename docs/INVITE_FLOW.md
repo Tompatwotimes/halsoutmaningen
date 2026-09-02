@@ -100,12 +100,12 @@ an `auth.users` row, nothing more.
 
 ### Existing user vs. new user
 
-| Situation | Behaviour | Response `status` |
-| --- | --- | --- |
-| Email has no account | `inviteUserByEmail` creates the user + sends the invite; membership linked | `invited` |
-| Email already has an account, not yet a member | No email sent; existing user id resolved; membership linked | `linked` |
-| Already a member, form values identical | No writes | `already_member` |
-| Already a member, form changes the window / reactivates | Membership updated (audited) | `membership_updated` |
+| Situation                                               | Behaviour                                                                  | Response `status`    |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------- |
+| Email has no account                                    | `inviteUserByEmail` creates the user + sends the invite; membership linked | `invited`            |
+| Email already has an account, not yet a member          | No email sent; existing user id resolved; membership linked                | `linked`             |
+| Already a member, form values identical                 | No writes                                                                  | `already_member`     |
+| Already a member, form changes the window / reactivates | Membership updated (audited)                                               | `membership_updated` |
 
 `inviteUserByEmail` is tried first; an "already registered" error is the signal
 to switch to the existing-user path (a paginated `listUsers` lookup — fine for
@@ -150,17 +150,19 @@ until the function is deployed it simply shows "not available yet".
 ```
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
+VITE_PUBLIC_SITE_URL=   # optional; canonical prod origin for auth redirects.
+                        # Unset in dev → falls back to window.location.origin.
 ```
 
 **Edge Function** — set on the hosted project
 (`supabase secrets set` / Dashboard → Edge Functions → Secrets):
 
-| Name | Who sets it | Purpose |
-| --- | --- | --- |
-| `SITE_URL` | us | public app origin for the `${SITE_URL}/aktivera` email redirect |
-| `SUPABASE_URL` | platform (auto) | — |
-| `SUPABASE_ANON_KEY` | platform (auto) | caller-scoped client |
-| `SUPABASE_SERVICE_ROLE_KEY` | platform (auto) | auth-user creation only |
+| Name                        | Who sets it     | Purpose                                                         |
+| --------------------------- | --------------- | --------------------------------------------------------------- |
+| `SITE_URL`                  | us              | public app origin for the `${SITE_URL}/aktivera` email redirect |
+| `SUPABASE_URL`              | platform (auto) | —                                                               |
+| `SUPABASE_ANON_KEY`         | platform (auto) | caller-scoped client                                            |
+| `SUPABASE_SERVICE_ROLE_KEY` | platform (auto) | auth-user creation only                                         |
 
 > `verify_jwt = false` in `supabase/config.toml` is deliberate (CORS preflight).
 > The function performs a full `getUser()` + `is_admin()` check itself, so this
@@ -172,3 +174,7 @@ The service-role key is **never** in the frontend bundle or any committed file.
 "Allow new users to sign up" **disabled** (`enable_signup = false`, already in
 `supabase/config.toml` for the local stack). Add `${SITE_URL}` and
 `${SITE_URL}/aktivera` to the allowed redirect URLs.
+
+Full hosted setup (Cloudflare Pages build config, exact env vars, Auth Site
+URL / Redirect URLs, `supabase secrets set` / `functions deploy` commands, SMTP
+requirements, first-deploy checklist): see [`DEPLOYMENT.md`](./DEPLOYMENT.md).

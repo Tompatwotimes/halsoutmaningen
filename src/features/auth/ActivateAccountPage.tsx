@@ -1,4 +1,4 @@
-import { useState, type SyntheticEvent } from 'react';
+import { useMemo, useState, type SyntheticEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuth } from './useAuth';
@@ -18,12 +18,37 @@ const passwordSchema = z
   });
 
 /**
+ * Reads an auth error handed back by Supabase on the redirect URL. Supabase
+ * puts these on the hash fragment (implicit flow) or the query string (PKCE):
+ * `error`, `error_code`, `error_description`. Returns Swedish copy for the
+ * common cases, or `null` when the URL carries no error.
+ */
+function readAuthLinkError(): string | null {
+  if (typeof window === 'undefined') return null;
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const query = new URLSearchParams(window.location.search);
+  const code =
+    hash.get('error_code') ??
+    query.get('error_code') ??
+    hash.get('error') ??
+    query.get('error');
+  const description =
+    hash.get('error_description') ?? query.get('error_description');
+  if (!code && !description) return null;
+  if (code === 'otp_expired' || /expired/i.test(description ?? '')) {
+    return 'Länken har gått ut. Be en administratör skicka en ny inbjudan eller en ny återställningslänk.';
+  }
+  return 'Länken är ogiltig eller har redan använts. Be en administratör skicka en ny.';
+}
+
+/**
  * Landing page for the Supabase invite / password-reset email link. The link
  * establishes a session (handled by `detectSessionInUrl`); here the user
  * chooses a password and is sent into the app.
  */
 export function ActivateAccountPage() {
   const { session, initializing, updatePassword } = useAuth();
+  const linkError = useMemo(readAuthLinkError, []);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +70,8 @@ export function ActivateAccountPage() {
           <div className={styles.header}>
             <h1>Länken fungerar inte</h1>
             <p>
-              Inbjudnings- eller återställningslänken är ogiltig eller har gått
-              ut. Be en administratör skicka en ny.
+              {linkError ??
+                'Öppna den här sidan via länken i din inbjudan eller i mejlet för att återställa lösenordet. Länken kan också ha gått ut.'}
             </p>
           </div>
           <Link to="/logga-in" className={styles.footLink}>
