@@ -52,6 +52,15 @@ select '0000000e-0000-4000-8000-000000000002', '00000000-0000-0000-0000-00000000
   '00000000-0000-0000-0000-00000000a501', id, current_date - 24, 'minimum_minutes', 60, '60-minutaren', current_date - 5, 'available'
 from public.challenge_penalty_definitions where challenge_id = '00000000-0000-0000-0000-000000000a50';
 
+-- The penalty engine resolves "today" in the CHALLENGE timezone
+-- (Europe/Stockholm). Around midnight UTC that is a different calendar date
+-- from the server's current_date, so anchor every target-date expectation to
+-- the challenge-local today rather than current_date.
+create or replace function pg_temp.ctoday()
+returns date language sql as $$
+  select public.challenge_current_date('00000000-0000-0000-0000-000000000a50')
+$$;
+
 -- Act as Sara.
 set local role authenticated;
 select set_config('request.jwt.claims',
@@ -70,13 +79,13 @@ select throws_ok(
 -- Preview: lands on tomorrow.
 select is(
   (public.preview_penalty_target('0000000e-0000-4000-8000-000000000001', '00000000-0000-0000-0000-00000000a502') ->> 'target_date')::date,
-  (current_date + 1)::date,
+  (pg_temp.ctoday() + 1),
   'preview lands on the first eligible day after today');
 
 -- Assign #1 -> tomorrow, inventory consumed.
 select is(
   (public.assign_penalty('0000000e-0000-4000-8000-000000000001', '00000000-0000-0000-0000-00000000a502') ->> 'target_date')::date,
-  (current_date + 1)::date,
+  (pg_temp.ctoday() + 1),
   'first assignment lands on tomorrow');
 select is(
   (select status from public.earned_penalties where id = '0000000e-0000-4000-8000-000000000001'),
@@ -90,7 +99,7 @@ select throws_ok(
 -- Assign #2 (the other inventory row) -> must NOT stack on tomorrow; auto-advances.
 select is(
   (public.assign_penalty('0000000e-0000-4000-8000-000000000002', '00000000-0000-0000-0000-00000000a502') ->> 'target_date')::date,
-  (current_date + 2)::date,
+  (pg_temp.ctoday() + 2),
   'second assignment auto-advances past the penalised day (no stacking)');
 
 select is(
@@ -105,20 +114,20 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000a502","role":"authenticated"}', true);
 select is(
   (select from_user_id from public.penalty_assignments
-   where to_user_id = '00000000-0000-0000-0000-00000000a502' and target_date = (current_date + 1)::date),
+   where to_user_id = '00000000-0000-0000-0000-00000000a502' and target_date = (pg_temp.ctoday() + 1)),
   '00000000-0000-0000-0000-00000000a501'::uuid,
   'the target can see the sender');
 
 -- The target's tomorrow now requires 60 minutes.
 select is(
   (select required_minutes from public.challenge_day_states('00000000-0000-0000-0000-000000000a50')
-   where user_id = '00000000-0000-0000-0000-00000000a502' and challenge_date = (current_date + 1)::date),
+   where user_id = '00000000-0000-0000-0000-00000000a502' and challenge_date = (pg_temp.ctoday() + 1)),
   60, 'the penalised day requires the enhanced minutes');
 
 -- A participant cannot cancel an assignment.
 select throws_ok(
   $$select public.cancel_penalty_assignment(
-      (select id from public.penalty_assignments where target_date = (current_date + 1)::date), 'nej')$$,
+      (select id from public.penalty_assignments where target_date = (pg_temp.ctoday() + 1)), 'nej')$$,
   null, null, 'a participant cannot cancel an assignment');
 
 -- Admin cancels with a reason.
@@ -127,16 +136,16 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000a5ad","role":"authenticated"}', true);
 select throws_ok(
   $$select public.cancel_penalty_assignment(
-      (select id from public.penalty_assignments where target_date = (current_date + 1)::date and status='active'), '')$$,
+      (select id from public.penalty_assignments where target_date = (pg_temp.ctoday() + 1) and status='active'), '')$$,
   null, null, 'cancellation requires a reason');
 select lives_ok(
   $$select public.cancel_penalty_assignment(
-      (select id from public.penalty_assignments where target_date = (current_date + 1)::date and status='active'),
+      (select id from public.penalty_assignments where target_date = (pg_temp.ctoday() + 1) and status='active'),
       'fel person')$$,
   'admin can cancel with a reason');
 select is(
   (select required_minutes from public.challenge_day_states('00000000-0000-0000-0000-000000000a50')
-   where user_id = '00000000-0000-0000-0000-00000000a502' and challenge_date = (current_date + 1)::date),
+   where user_id = '00000000-0000-0000-0000-00000000a502' and challenge_date = (pg_temp.ctoday() + 1)),
   30, 'a cancelled penalty no longer affects the day');
 select ok(
   exists (select 1 from public.audit_log
@@ -157,7 +166,7 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000a501","role":"authenticated"}', true);
 select is(
   (public.assign_penalty('0000000e-0000-4000-8000-000000000001', '00000000-0000-0000-0000-00000000a502') ->> 'target_date')::date,
-  (current_date + 1)::date,
+  (pg_temp.ctoday() + 1),
   'the returned ammunition can be assigned again (the cancelled day is free)');
 
 select * from finish();
