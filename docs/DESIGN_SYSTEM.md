@@ -107,7 +107,7 @@ Weights: 400 / 500 / 600 / 700.
 | `status/StatusCell`                                              | the status square — glyph + tone; `today` emphasis; becomes a button when it opens an entry.                            |
 | `status/StatusLegend`                                            | labelled key for the five states.                                                                                       |
 | `status/statusMeta`                                              | single map: state → `{ label, short, Icon, tone }`.                                                                     |
-| `proof/ProofImage`                                               | fixture-phase placeholder: a deterministic GPS-route trace from a seed. Swap for the signed-URL `<img>` in Fas 6.       |
+| `proof/SignedProofImage`                                         | renders a private proof photo from a short-lived signed URL, with its own loading/failed-to-load states.                |
 | `feedback/EmptyState`, `ErrorState`, `AppLoading`, `Spinner`     | first-class states; Swedish copy, optional icon, retry action.                                                          |
 | `layout/AppShell`, `TopBar`, `BottomNav`, `SideNav`, `BrandMark` | see §5.                                                                                                                 |
 

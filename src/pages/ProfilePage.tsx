@@ -12,7 +12,7 @@ import { StatTile } from '@/components/ui/StatTile';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { EmptyState } from '@/components/feedback/EmptyState';
-import { ClockIcon, ShieldIcon } from '@/components/icons';
+import { ClockIcon, GroupIcon, ShieldIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { useProfile } from '@/features/profile/useProfile';
 import { useAuth } from '@/features/auth/useAuth';
@@ -20,11 +20,12 @@ import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
 import { PersonalCalendar } from '@/features/profile/PersonalCalendar';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
+import type { SelfEntry } from '@/features/challenge/types';
 import styles from './ProfilePage.module.css';
 
 export function ProfilePage() {
   const { data, isLoading, isError, refetch } = useChallengeData();
-  const { isAdmin } = useProfile();
+  const { profile, isAdmin } = useProfile();
   const { signOut } = useAuth();
   const [openDate, setOpenDate] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -34,63 +35,139 @@ export function ProfilePage() {
     [data],
   );
 
-  if (isLoading) {
-    return (
-      <>
-        <PageHeader title="Profil" />
-        <Skeleton height="6rem" radius="var(--radius-lg)" />
-        <Skeleton height="12rem" radius="var(--radius-lg)" />
-        <Skeleton height="14rem" radius="var(--radius-lg)" />
-      </>
-    );
-  }
+  const displayName = data?.self.displayName ?? profile?.displayName ?? '';
 
-  if (isError || !data || !progress) {
-    return (
-      <>
-        <PageHeader title="Profil" />
-        <ErrorState onRetry={() => void refetch()} />
-      </>
-    );
-  }
-
-  const { self, challenge, today } = data;
-  const { membership, liability } = self;
-
-  const windowText =
-    membership.participationStartDate === challenge.startDate &&
-    membership.participationEndDate === null
+  const windowText = data
+    ? data.self.membership.participationStartDate ===
+        data.challenge.startDate &&
+      data.self.membership.participationEndDate === null
       ? 'Deltar hela perioden'
-      : membership.participationEndDate === null
-        ? `Med sedan ${formatDayMonth(membership.participationStartDate)}`
-        : `Deltar ${formatDayMonth(membership.participationStartDate)} – ${formatDayMonth(membership.participationEndDate)}`;
+      : data.self.membership.participationEndDate === null
+        ? `Med sedan ${formatDayMonth(data.self.membership.participationStartDate)}`
+        : `Deltar ${formatDayMonth(data.self.membership.participationStartDate)} – ${formatDayMonth(data.self.membership.participationEndDate)}`
+    : null;
 
-  const history = [...data.entries.values()]
-    .filter((e) => e.userId === self.userId)
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, 6);
-
-  const decidedElapsed = liability.completedDays + liability.missedDays;
+  const history = data ? data.selfEntries.slice(0, 6) : [];
 
   return (
     <>
       <PageHeader title="Profil" />
 
-      <Card variant="raised" padding="lg" className={styles.identity}>
-        <Avatar name={self.displayName} size="xl" ring />
-        <div className={styles.identityBody}>
-          <p className={styles.name}>{self.displayName}</p>
-          <p className={styles.window}>{windowText}</p>
-          <div className={styles.tags}>
-            {isAdmin && (
-              <Badge tone="accent" size="sm" icon={<ShieldIcon />}>
-                Administratör
-              </Badge>
-            )}
+      {isLoading ? (
+        <Skeleton height="6rem" radius="var(--radius-lg)" />
+      ) : (
+        <Card variant="raised" padding="lg" className={styles.identity}>
+          <Avatar name={displayName || '?'} size="xl" ring />
+          <div className={styles.identityBody}>
+            <p className={styles.name}>{displayName}</p>
+            {windowText && <p className={styles.window}>{windowText}</p>}
+            <div className={styles.tags}>
+              {isAdmin && (
+                <Badge tone="accent" size="sm" icon={<ShieldIcon />}>
+                  Administratör
+                </Badge>
+              )}
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
+      {isLoading && (
+        <>
+          <Skeleton height="12rem" radius="var(--radius-lg)" />
+          <Skeleton height="14rem" radius="var(--radius-lg)" />
+        </>
+      )}
+
+      {!isLoading && isError && (
+        <ErrorState
+          title="Kunde inte ladda utmaningsdata"
+          onRetry={() => void refetch()}
+        />
+      )}
+
+      {!isLoading && !isError && !data && (
+        <Card>
+          <EmptyState
+            icon={<GroupIcon />}
+            title="Du är inte med i någon utmaning ännu"
+            body={
+              isAdmin
+                ? 'Lägg till dig själv som deltagare under Administration → Deltagare.'
+                : 'Be en administratör lägga till dig i en utmaning.'
+            }
+            action={
+              isAdmin ? (
+                <Link to="/admin/deltagare">
+                  <Button variant="secondary">Till Deltagare</Button>
+                </Link>
+              ) : undefined
+            }
+          />
+        </Card>
+      )}
+
+      {!isLoading && !isError && data && progress && (
+        <ChallengeSection
+          data={data}
+          progress={progress}
+          history={history}
+          onOpenDay={setOpenDate}
+        />
+      )}
+
+      {isAdmin && (
+        <Link to="/admin" className={styles.adminLink}>
+          <ShieldIcon className={styles.adminIcon} />
+          Till administration
+        </Link>
+      )}
+
+      <div className={styles.signOutRow}>
+        <Button
+          variant="ghost"
+          loading={signingOut}
+          onClick={() => {
+            setSigningOut(true);
+            void signOut();
+          }}
+        >
+          Logga ut
+        </Button>
+      </div>
+
+      {data && openDate && (
+        <EntryDetailSheet
+          open
+          onClose={() => setOpenDate(null)}
+          challenge={data.challenge}
+          participantName={data.self.displayName}
+          isSelf
+          userId={data.self.userId}
+          date={openDate}
+        />
+      )}
+    </>
+  );
+}
+
+function ChallengeSection({
+  data,
+  progress,
+  history,
+  onOpenDay,
+}: {
+  data: NonNullable<ReturnType<typeof useChallengeData>['data']>;
+  progress: ReturnType<typeof challengeProgress>;
+  history: SelfEntry[];
+  onOpenDay: (date: string) => void;
+}) {
+  const { self, challenge, today } = data;
+  const { liability } = self;
+  const decidedElapsed = liability.completedDays + liability.missedDays;
+
+  return (
+    <>
       <div className={styles.heroRow}>
         <Card padding="lg" className={styles.ringCard}>
           <ProgressRing
@@ -163,7 +240,7 @@ export function ProfilePage() {
           challenge={challenge}
           today={today}
           participant={self}
-          onOpenDay={setOpenDate}
+          onOpenDay={onOpenDay}
         />
       </Card>
 
@@ -180,10 +257,12 @@ export function ProfilePage() {
                 <button
                   type="button"
                   className={styles.historyRow}
-                  onClick={() => setOpenDate(e.date)}
+                  onClick={() => onOpenDay(e.date)}
                 >
                   <div className={styles.historyMain}>
-                    <span className={styles.historyActivity}>{e.activity}</span>
+                    <span className={styles.historyActivity}>
+                      {e.activity ?? 'Träning'}
+                    </span>
                     <span className={styles.historyDate}>
                       {capitalize(weekdayLong(e.date))} {formatDayMonth(e.date)}
                     </span>
@@ -197,38 +276,6 @@ export function ProfilePage() {
           </ul>
         )}
       </Card>
-
-      {isAdmin && (
-        <Link to="/admin" className={styles.adminLink}>
-          <ShieldIcon className={styles.adminIcon} />
-          Till administration
-        </Link>
-      )}
-
-      <div className={styles.signOutRow}>
-        <Button
-          variant="ghost"
-          loading={signingOut}
-          onClick={() => {
-            setSigningOut(true);
-            void signOut();
-          }}
-        >
-          Logga ut
-        </Button>
-      </div>
-
-      {openDate && (
-        <EntryDetailSheet
-          open
-          onClose={() => setOpenDate(null)}
-          challenge={challenge}
-          participantName={self.displayName}
-          isSelf
-          date={openDate}
-          entry={data.getEntry(self.userId, openDate)}
-        />
-      )}
     </>
   );
 }

@@ -1,34 +1,205 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import type { ChallengeConfig } from '@/domain/challenge';
+import { currentPlainDateInTimeZone } from '@/domain/time';
+import { DayState } from '@/domain/dayState';
+import { currentStreak, longestStreak } from '@/domain/streaks';
+import { summarizeLiability } from '@/domain/liability';
+import { membershipDisplayState } from '@/features/admin/membershipState';
+import { useAuth } from '@/features/auth/useAuth';
 import {
-  buildChallengeDataset,
-  type ChallengeDataset,
-} from '@/fixtures/dataset';
+  fetchDayStates,
+  fetchMyPrimaryChallenge,
+  type DayStateRow,
+} from './challenge-api';
+import { fetchChallengeRoster, type RosterMember } from './roster-api';
+import { fetchSelfEntries } from './entries-api';
+import type { ChallengeDataset, ParticipantView } from './types';
 
 /**
- * Adapter boundary for challenge data.
+ * Adapter boundary for challenge data (docs/DESIGN_SYSTEM.md §7).
  *
- * Today this resolves a typed development fixture (see `src/fixtures`). When
- * the Supabase RPCs land (recent dashboard, full matrix, participant stats —
- * docs/IMPLEMENTATION_PLAN.md Fas 5–8), only this module changes: swap the
- * `queryFn` for real queries that produce the same `ChallengeDataset` shape.
- * Screens never touch fixtures directly.
+ * Composes four small, independently cacheable queries — the current
+ * challenge/membership, the roster, the canonical day states
+ * (`challenge_day_states` RPC, one round trip for every participant × day),
+ * and the signed-in user's own entries — into the `ChallengeDataset` shape
+ * every screen already renders. Screens never talk to Supabase directly.
+ *
+ * `data === null` (once loaded, with no error) is a real, expected state: the
+ * signed-in user simply has no challenge membership yet (CLAUDE.md §4) — not
+ * a failure. Callers should render an empty/"not a participant" state, not an
+ * error state, for that case.
  */
 
-let cached: ChallengeDataset | null = null;
+export const challengeKeys = {
+  mine: (userId: string) => ['challenge', 'mine', userId] as const,
+  roster: (challengeId: string) =>
+    ['challenge', 'roster', challengeId] as const,
+  dayStates: (challengeId: string) =>
+    ['challenge', 'day-states', challengeId] as const,
+  selfEntries: (challengeId: string, userId: string) =>
+    ['challenge', 'self-entries', challengeId, userId] as const,
+};
 
-function loadDataset(): Promise<ChallengeDataset> {
-  cached ??= buildChallengeDataset();
-  const dataset = cached;
-  // A short delay so the designed loading/skeleton states are exercised.
-  return new Promise((resolve) => setTimeout(() => resolve(dataset), 260));
+function buildParticipant(
+  member: RosterMember,
+  today: string,
+  missedDayCost: number,
+  dayStateRows: DayStateRow[] | undefined,
+  isSelf: boolean,
+  challenge: ChallengeConfig,
+): ParticipantView {
+  const membership = {
+    userId: member.userId,
+    participationStartDate: member.participationStartDate,
+    participationEndDate: member.participationEndDate,
+    active: member.membershipActive,
+  };
+
+  const rows = [...(dayStateRows ?? [])].sort((a, b) =>
+    a.challengeDate < b.challengeDate
+      ? -1
+      : a.challengeDate > b.challengeDate
+        ? 1
+        : 0,
+  );
+
+  const statesByDate = new Map(rows.map((r) => [r.challengeDate, r.state]));
+  const days = rows
+    .filter((r) => r.state !== DayState.NotParticipating)
+    .map((r) => ({ date: r.challengeDate, state: r.state }));
+  const states = days.map((d) => d.state);
+
+  const rawTodayState = statesByDate.get(today) ?? null;
+  const todayState =
+    rawTodayState === DayState.NotParticipating ? null : rawTodayState;
+
+  const liability = summarizeLiability(states, missedDayCost);
+  const decidedDays = liability.completedDays + liability.missedDays;
+
+  return {
+    userId: member.userId,
+    displayName: member.displayName,
+    role: member.role,
+    isSelf,
+    profileActive: member.profileActive,
+    membership,
+    membershipDisplay: membershipDisplayState(challenge, membership, today),
+    days,
+    statesByDate,
+    todayState,
+    activeToday: membership.active && todayState !== null,
+    currentStreak: currentStreak(states),
+    longestStreak: longestStreak(states),
+    liability,
+    completionRate:
+      decidedDays === 0 ? 0 : liability.completedDays / decidedDays,
+    decidedDays,
+  };
 }
 
-export const challengeDataKey = ['challenge-data', 'active'] as const;
+async function loadChallengeDataset(
+  userId: string,
+  queryClient: ReturnType<typeof useQueryClient>,
+): Promise<ChallengeDataset | null> {
+  const primary = await queryClient.query({
+    queryKey: challengeKeys.mine(userId),
+    queryFn: () => fetchMyPrimaryChallenge(userId),
+    staleTime: 30_000,
+  });
+  if (!primary) return null;
+
+  const { challenge } = primary;
+  const today = currentPlainDateInTimeZone(challenge.timeZone);
+
+  const [roster, dayStateRows, selfEntries] = await Promise.all([
+    queryClient.query({
+      queryKey: challengeKeys.roster(challenge.id),
+      queryFn: () => fetchChallengeRoster(challenge.id),
+      staleTime: 30_000,
+    }),
+    queryClient.query({
+      queryKey: challengeKeys.dayStates(challenge.id),
+      queryFn: () => fetchDayStates(challenge.id),
+      staleTime: 30_000,
+    }),
+    queryClient.query({
+      queryKey: challengeKeys.selfEntries(challenge.id, userId),
+      queryFn: () => fetchSelfEntries(challenge.id, userId),
+      staleTime: 30_000,
+    }),
+  ]);
+
+  const dayStatesByUser = new Map<string, DayStateRow[]>();
+  for (const row of dayStateRows) {
+    const list = dayStatesByUser.get(row.userId) ?? [];
+    list.push(row);
+    dayStatesByUser.set(row.userId, list);
+  }
+
+  const participants = roster
+    .map((member) =>
+      buildParticipant(
+        member,
+        today,
+        challenge.missedDayCost,
+        dayStatesByUser.get(member.userId),
+        member.userId === userId,
+        challenge,
+      ),
+    )
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'sv'));
+
+  const self = participants.find((p) => p.isSelf);
+  if (!self) {
+    // Membership exists but the roster fetch didn't include it — should not
+    // happen under normal RLS, but fail loudly rather than render wrong data.
+    throw new Error('Din egen medlemsrad saknas i deltagarlistan.');
+  }
+
+  const selfEntryByDate = new Map(selfEntries.map((e) => [e.date, e]));
+
+  return {
+    challenge,
+    today,
+    self,
+    participants,
+    rosterToday: participants.filter((p) => p.activeToday),
+    selfEntries,
+    getSelfEntry: (date) => selfEntryByDate.get(date) ?? null,
+  };
+}
 
 export function useChallengeData() {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const queryClient = useQueryClient();
+
+  const queryKey: QueryKey = ['challenge-data', userId];
+
   return useQuery({
-    queryKey: challengeDataKey,
-    queryFn: loadDataset,
-    staleTime: Infinity,
+    queryKey,
+    queryFn: () => {
+      if (!userId) {
+        throw new Error('Ingen inloggad användare.');
+      }
+      return loadChallengeDataset(userId, queryClient);
+    },
+    enabled: userId !== null,
+    staleTime: 30_000,
   });
+}
+
+/** Invalidate every sub-query for one challenge/user after a write. */
+export function invalidateChallengeData(
+  queryClient: ReturnType<typeof useQueryClient>,
+  challengeId: string,
+  userId: string,
+) {
+  void queryClient.invalidateQueries({
+    queryKey: challengeKeys.dayStates(challengeId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: challengeKeys.selfEntries(challengeId, userId),
+  });
+  void queryClient.invalidateQueries({ queryKey: ['challenge-data', userId] });
 }

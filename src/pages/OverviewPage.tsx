@@ -9,12 +9,13 @@ import { ErrorState } from '@/components/feedback/ErrorState';
 import { StatusLegend } from '@/components/status/StatusLegend';
 import { FlagIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
+import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
 import {
   MatrixGrid,
   type MatrixGridHandle,
 } from '@/features/overview/MatrixGrid';
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 import styles from './OverviewPage.module.css';
 
 type SortKey = 'name' | 'result';
@@ -50,13 +51,16 @@ export function OverviewPage() {
     );
   }
 
-  if (isError || !data) {
+  if (isError) {
     return (
       <>
         <PageHeader title="Översikt" />
         <ErrorState onRetry={() => void refetch()} />
       </>
     );
+  }
+  if (!data) {
+    return <NoMembershipState title="Översikt" />;
   }
 
   const progress = challengeProgress(data.challenge, data.today);
@@ -123,8 +127,8 @@ export function OverviewPage() {
           challenge={data.challenge}
           participantName={selected.participant.displayName}
           isSelf={selected.participant.isSelf}
+          userId={selected.participant.userId}
           date={selected.date}
-          entry={data.getEntry(selected.participant.userId, selected.date)}
         />
       )}
     </>

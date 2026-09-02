@@ -1,57 +1,26 @@
-import type { ChallengeConfig } from '@/domain/challenge';
-import { type DayState } from '@/domain/dayState';
-import {
-  evaluateParticipant,
-  type LiabilityBreakdown,
-} from '@/domain/liability';
+import { evaluateParticipant } from '@/domain/liability';
 import { currentStreak, longestStreak } from '@/domain/streaks';
-import { isDateEligible, type MembershipConfig } from '@/domain/membership';
-import {
-  membershipDisplayState,
-  type MembershipStateResult,
-} from '@/features/admin/membershipState';
-import type { Role } from '@/features/profile/profile-api';
+import { isDateEligible } from '@/domain/membership';
+import { membershipDisplayState } from '@/features/admin/membershipState';
+import type {
+  ChallengeDataset,
+  ParticipantView,
+} from '@/features/challenge/types';
 import { activeChallenge, FIXTURE_TODAY } from './challenge';
 import { participantFixtures, SELF_USER_ID } from './participants';
-import { buildEntryMap, type EntryFixture, type EntryMap } from './entries';
+import { buildEntryMap } from './entries';
 
-export interface ParticipantView {
-  userId: string;
-  displayName: string;
-  role: Role;
-  isSelf: boolean;
-  profileActive: boolean;
-  membership: MembershipConfig;
-  membershipDisplay: MembershipStateResult;
-  /** Every eligible day with its canonical state, ascending. */
-  days: { date: string; state: DayState }[];
-  statesByDate: Map<string, DayState>;
-  /** Canonical state for today, or null when not eligible today. */
-  todayState: DayState | null;
-  /** True when eligible today AND membership currently active. */
-  activeToday: boolean;
-  currentStreak: number;
-  longestStreak: number;
-  liability: LiabilityBreakdown;
-  /** completed / (completed + missed) — decided days only, 0–1. */
-  completionRate: number;
-  decidedDays: number;
-  /** Most recent completed entry, for activity feeds. */
-  latestEntry: EntryFixture | null;
-}
+export type {
+  ParticipantView,
+  ChallengeDataset,
+} from '@/features/challenge/types';
 
-export interface ChallengeDataset {
-  challenge: ChallengeConfig;
-  today: string;
-  self: ParticipantView;
-  /** All participants, ordered by display name. */
-  participants: ParticipantView[];
-  /** Participants eligible + active today, ordered by display name. */
-  rosterToday: ParticipantView[];
-  entries: EntryMap;
-  getEntry: (userId: string, date: string) => EntryFixture | null;
-}
-
+/**
+ * DEV-ONLY. Builds the same `ChallengeDataset` shape the real Supabase-backed
+ * `useChallengeData()` produces, so the `/forhandsvisning` design-review
+ * harness can render every screen without a backend. Real screens never
+ * import this module (docs/DESIGN_SYSTEM.md §7) — only `PreviewFrame` does.
+ */
 export function buildChallengeDataset(): ChallengeDataset {
   const entries = buildEntryMap();
   const today = FIXTURE_TODAY;
@@ -74,9 +43,6 @@ export function buildChallengeDataset(): ChallengeDataset {
       );
       const decided =
         evaluation.liability.completedDays + evaluation.liability.missedDays;
-      const latestEntry = [...entriesByDate.values()].sort((a, b) =>
-        a.date < b.date ? 1 : -1,
-      )[0];
 
       return {
         userId: p.userId,
@@ -104,7 +70,6 @@ export function buildChallengeDataset(): ChallengeDataset {
         completionRate:
           decided === 0 ? 0 : evaluation.liability.completedDays / decided,
         decidedDays: decided,
-        latestEntry: latestEntry ?? null,
       } satisfies ParticipantView;
     })
     .sort((a, b) => a.displayName.localeCompare(b.displayName, 'sv'));
@@ -116,13 +81,28 @@ export function buildChallengeDataset(): ChallengeDataset {
       throw new Error('Fixture dataset has no participants');
     })();
 
+  const selfEntries = [...entries.values()]
+    .filter((e) => e.userId === self.userId)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .map((e) => ({
+      entryId: e.entryId,
+      date: e.date,
+      durationMinutes: e.durationMinutes,
+      activity: e.activity,
+      note: e.note,
+      hasProof: e.hasProof,
+      submittedAt: e.submittedAt,
+      status: 'active' as const,
+    }));
+  const selfEntryByDate = new Map(selfEntries.map((e) => [e.date, e]));
+
   return {
     challenge: activeChallenge,
     today,
     self,
     participants,
     rosterToday: participants.filter((p) => p.activeToday),
-    entries,
-    getEntry: (userId, date) => entries.get(`${userId}:${date}`) ?? null,
+    selfEntries,
+    getSelfEntry: (date) => selfEntryByDate.get(date) ?? null,
   };
 }

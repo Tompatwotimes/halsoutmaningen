@@ -1,4 +1,4 @@
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 
 /**
  * PROVISIONAL ranking.

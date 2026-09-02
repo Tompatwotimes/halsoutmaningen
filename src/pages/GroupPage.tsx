@@ -14,10 +14,11 @@ import { ErrorState } from '@/components/feedback/ErrorState';
 import { CheckIcon, ChevronRightIcon } from '@/components/icons';
 import { StatusLegend } from '@/components/status/StatusLegend';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
+import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
 import { RecentGrid } from '@/features/group/RecentGrid';
 import { recentDates } from '@/features/challenge/labels';
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 import styles from './GroupPage.module.css';
 
 const RECENT_DAY_COUNT = 7;
@@ -47,7 +48,7 @@ export function GroupPage() {
     );
   }
 
-  if (isError || !data) {
+  if (isError) {
     return (
       <>
         <PageHeader title="Gruppen" />
@@ -57,6 +58,9 @@ export function GroupPage() {
         />
       </>
     );
+  }
+  if (!data) {
+    return <NoMembershipState title="Gruppen" />;
   }
 
   const { today, challenge, rosterToday } = data;
@@ -172,8 +176,8 @@ export function GroupPage() {
           challenge={challenge}
           participantName={selected.participant.displayName}
           isSelf={selected.participant.isSelf}
+          userId={selected.participant.userId}
           date={selected.date}
-          entry={data.getEntry(selected.participant.userId, selected.date)}
         />
       )}
     </>

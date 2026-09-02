@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 import { rankParticipants } from './ranking';
 
 function view(over: Partial<ParticipantView>): ParticipantView {
@@ -29,7 +29,6 @@ function view(over: Partial<ParticipantView>): ParticipantView {
     longestStreak: 0,
     completionRate: 0,
     decidedDays: 20,
-    latestEntry: null,
     liability: {
       eligibleDays: 20,
       completedDays: 0,

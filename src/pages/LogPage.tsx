@@ -6,26 +6,40 @@ import {
   type SyntheticEvent,
 } from 'react';
 import { Link } from 'react-router-dom';
-import { DayState } from '@/domain/dayState';
-import { formatMinutes } from '@/domain/format';
+import { ChallengeStatus } from '@/domain/challenge';
+import { compareDates } from '@/domain/dates';
+import { DayState, isQualifyingEntry } from '@/domain/dayState';
+import { formatLongDate, formatMinutes } from '@/domain/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
+import { EmptyState } from '@/components/feedback/EmptyState';
+import { SignedProofImage } from '@/components/proof/SignedProofImage';
 import {
   CameraIcon,
   CheckIcon,
   CloseIcon,
   ClockIcon,
+  ImageOffIcon,
 } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
+import { NoMembershipState } from '@/features/challenge/NoMembershipState';
+import { useSubmitTraining } from '@/features/challenge/useSubmitTraining';
+import { useEntryDetail } from '@/features/challenge/useEntryDetail';
+import { useProfile } from '@/features/profile/useProfile';
+import {
+  probeImage,
+  HEIC_UNSUPPORTED_MESSAGE,
+  GENERIC_UNSUPPORTED_MESSAGE,
+} from '@/features/challenge/heic';
+import { SubmitTrainingError } from '@/features/challenge/submit-training';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
-import { formatDayMonth } from '@/domain/format';
 import styles from './LogPage.module.css';
 
-type Phase = 'form' | 'submitting' | 'success' | 'error';
+type Phase = 'form' | 'success' | 'error';
 
 const QUICK_MINUTES = [30, 40, 45, 60];
 const ACTIVITY_SUGGESTIONS = [
@@ -50,13 +64,16 @@ export function LogPage() {
       </>
     );
   }
-  if (isError || !data) {
+  if (isError) {
     return (
       <>
         <PageHeader title="Logga träning" />
         <ErrorState onRetry={() => void refetch()} />
       </>
     );
+  }
+  if (!data) {
+    return <NoMembershipState title="Logga träning" />;
   }
 
   return <LogForm data={data} />;
@@ -68,8 +85,25 @@ function LogForm({
   data: NonNullable<ReturnType<typeof useChallengeData>['data']>;
 }) {
   const { challenge, today, self } = data;
-  const existing = data.getEntry(self.userId, today);
+  const { isAdmin } = useProfile();
+  const existing = data.getSelfEntry(today);
   const alreadyLogged = self.todayState === DayState.Completed && existing;
+
+  const notStarted = compareDates(today, challenge.startDate) < 0;
+  const ended = compareDates(today, challenge.endDate) > 0;
+  const outsideMembership = !notStarted && !ended && self.todayState === null;
+  const challengeInactive =
+    challenge.status !== ChallengeStatus.Active && !isAdmin;
+
+  const blockedMessage = notStarted
+    ? `Utmaningen börjar ${formatLongDate(challenge.startDate)}. Du kan logga träning från och med det datumet.`
+    : ended
+      ? `Utmaningen avslutades ${formatLongDate(challenge.endDate)}.`
+      : outsideMembership
+        ? 'Du är utanför din deltagandeperiod i utmaningen just nu.'
+        : challengeInactive
+          ? 'Utmaningen är inte aktiv ännu. Be en administratör aktivera den innan du kan logga träning.'
+          : null;
 
   const [editing, setEditing] = useState(false);
   const [phase, setPhase] = useState<Phase>('form');
@@ -78,11 +112,20 @@ function LogForm({
   );
   const [activity, setActivity] = useState(existing?.activity ?? '');
   const [note, setNote] = useState(existing?.note ?? '');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
-  const [simulateFailure, setSimulateFailure] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const submitMutation = useSubmitTraining();
+  const existingProofQuery = useEntryDetail(
+    challenge.id,
+    self.userId,
+    today,
+    editing && Boolean(existing?.hasProof) && imageFile === null,
+  );
 
   useEffect(
     () => () => {
@@ -92,7 +135,10 @@ function LogForm({
   );
 
   const durationValid = duration >= challenge.requiredMinutes;
-  const proofValid = !challenge.proofRequired || imageName !== null;
+  const keepsExistingProof =
+    editing && Boolean(existing?.hasProof) && imageFile === null;
+  const proofValid =
+    !challenge.proofRequired || imageFile !== null || keepsExistingProof;
   const canSubmit = durationValid && proofValid;
 
   const streakAfter = useMemo(
@@ -103,18 +149,34 @@ function LogForm({
     [self],
   );
 
-  function handleImage(event: SyntheticEvent<HTMLInputElement>) {
+  async function handleImage(event: SyntheticEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     if (!file) return;
+    setImageError(null);
+
+    const probe = await probeImage(file);
+    if (!probe.decodable) {
+      setImageError(
+        probe.likelyHeic
+          ? HEIC_UNSUPPORTED_MESSAGE
+          : GENERIC_UNSUPPORTED_MESSAGE,
+      );
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+
     if (imageUrl) URL.revokeObjectURL(imageUrl);
+    setImageFile(file);
     setImageName(file.name);
     setImageUrl(URL.createObjectURL(file));
   }
 
   function clearImage() {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
+    setImageFile(null);
     setImageName(null);
     setImageUrl(null);
+    setImageError(null);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -123,13 +185,35 @@ function LogForm({
     setTriedSubmit(true);
     if (!canSubmit) return;
 
-    setPhase('submitting');
-    await new Promise((r) => setTimeout(r, 1100));
-    if (simulateFailure) {
+    try {
+      await submitMutation.mutateAsync({
+        challengeId: challenge.id,
+        userId: self.userId,
+        date: today,
+        durationMinutes: duration,
+        activity: activity.trim() || null,
+        note: note.trim() || null,
+        proofFile: imageFile,
+      });
+      setPhase('success');
+    } catch {
       setPhase('error');
-      return;
     }
-    setPhase('success');
+  }
+
+  if (blockedMessage && !alreadyLogged) {
+    return (
+      <>
+        <PageHeader title="Logga träning" />
+        <Card padding="lg">
+          <EmptyState
+            icon={<ClockIcon />}
+            title="Går inte att logga just nu"
+            body={blockedMessage}
+          />
+        </Card>
+      </>
+    );
   }
 
   if (alreadyLogged && !editing && phase === 'form') {
@@ -141,7 +225,8 @@ function LogForm({
             Loggat idag
           </Badge>
           <p className={styles.doneActivity}>
-            {existing.activity} · {formatMinutes(existing.durationMinutes)}
+            {existing.activity ?? 'Träning'} ·{' '}
+            {formatMinutes(existing.durationMinutes)}
           </p>
           {existing.note && (
             <p className={styles.doneNote}>”{existing.note}”</p>
@@ -163,6 +248,10 @@ function LogForm({
   }
 
   if (phase === 'success') {
+    const nowQualifies = isQualifyingEntry(challenge, {
+      durationMinutes: duration,
+      hasProof: imageFile !== null || keepsExistingProof,
+    });
     return (
       <div className={styles.successWrap}>
         <span className={styles.successMark} aria-hidden="true">
@@ -172,6 +261,14 @@ function LogForm({
         <p className={styles.successSub}>
           {activity || 'Träning'} · {formatMinutes(duration)}
         </p>
+        {!nowQualifies && (
+          <p className={styles.hint}>
+            Observera: dagens krav är inte uppfyllt än (
+            {formatMinutes(challenge.requiredMinutes)}
+            {challenge.proofRequired ? ' + bildbevis' : ''}) — dagen räknas inte
+            som genomförd förrän det stämmer.
+          </p>
+        )}
         <Card padding="md" className={styles.successStreak}>
           <span className={styles.streakLabel}>Din streak</span>
           <span className={`${styles.streakValue} tnum`}>
@@ -192,6 +289,14 @@ function LogForm({
     );
   }
 
+  const submitError =
+    submitMutation.error instanceof SubmitTrainingError
+      ? submitMutation.error.message
+      : 'Passet kunde inte sparas. Kontrollera din uppkoppling och försök igen.';
+  const entrySaved =
+    submitMutation.error instanceof SubmitTrainingError &&
+    submitMutation.error.entrySaved;
+
   return (
     <>
       <PageHeader
@@ -202,14 +307,18 @@ function LogForm({
       <div className={styles.dateChip}>
         <ClockIcon className={styles.dateIcon} />
         <span>
-          Idag · {capitalize(weekdayLong(today))} {formatDayMonth(today)}
+          Idag · {capitalize(weekdayLong(today))} {formatLongDate(today)}
         </span>
       </div>
 
       {phase === 'error' && (
         <ErrorState
-          title="Passet kunde inte sparas"
-          message="Kontrollera din uppkoppling och försök igen. Inget har registrerats."
+          title={
+            entrySaved
+              ? 'Passet sparades, bilden inte'
+              : 'Passet kunde inte sparas'
+          }
+          message={submitError}
           onRetry={() => setPhase('form')}
         />
       )}
@@ -320,7 +429,7 @@ function LogForm({
             accept="image/*"
             capture="environment"
             className={styles.fileInput}
-            onChange={handleImage}
+            onChange={(e) => void handleImage(e)}
           />
           {imageUrl ? (
             <div className={styles.preview}>
@@ -335,6 +444,21 @@ function LogForm({
               </button>
               <span className={styles.previewName}>{imageName}</span>
             </div>
+          ) : keepsExistingProof ? (
+            <>
+              {existingProofQuery.data?.proofSignedUrl ? (
+                <SignedProofImage
+                  src={existingProofQuery.data.proofSignedUrl}
+                  alt="Nuvarande bildbevis"
+                />
+              ) : (
+                <Skeleton height="12rem" radius="var(--radius-md)" />
+              )}
+              <label htmlFor="proof-input" className={styles.hint}>
+                Behåller nuvarande bild.{' '}
+                <span className={styles.changePhoto}>Byt bild</span>
+              </label>
+            </>
           ) : (
             <label htmlFor="proof-input" className={styles.dropzone}>
               <CameraIcon className={styles.dropIcon} />
@@ -344,33 +468,27 @@ function LogForm({
               </span>
             </label>
           )}
-          {triedSubmit && !proofValid && (
+          {imageError && (
+            <p className={styles.fieldError}>
+              <ImageOffIcon className={styles.okIcon} /> {imageError}
+            </p>
+          )}
+          {triedSubmit && !proofValid && !imageError && (
             <p className={styles.fieldError}>
               Bildbevis krävs för den här utmaningen.
             </p>
           )}
         </Card>
 
-        {import.meta.env.DEV && (
-          <label className={styles.devToggle}>
-            <input
-              type="checkbox"
-              checked={simulateFailure}
-              onChange={(e) => setSimulateFailure(e.target.checked)}
-            />
-            Simulera nätverksfel (förhandsvisning)
-          </label>
-        )}
-
         <div className={styles.submitBar}>
           <Button
             type="submit"
             size="lg"
             fullWidth
-            loading={phase === 'submitting'}
+            loading={submitMutation.isPending}
             disabled={triedSubmit && !canSubmit}
           >
-            {phase === 'submitting'
+            {submitMutation.isPending
               ? 'Sparar passet…'
               : editing
                 ? 'Spara ändringar'

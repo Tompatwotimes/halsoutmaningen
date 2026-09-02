@@ -1,13 +1,14 @@
 import type { ChallengeConfig } from '@/domain/challenge';
 import { formatDayMonth } from '@/domain/format';
+import type { RosterMember } from '@/features/challenge/roster-api';
 import { membershipDisplayState } from './membershipState';
-import type { ParticipantRow, AccountStatus } from './participants-api';
+import type { AccountStatus } from './participants-api';
 import styles from './ParticipantList.module.css';
 
 interface Props {
   challenge: ChallengeConfig;
   today: string;
-  participants: ParticipantRow[];
+  participants: RosterMember[];
   accountStatuses?: Record<string, AccountStatus> | undefined;
 }
 

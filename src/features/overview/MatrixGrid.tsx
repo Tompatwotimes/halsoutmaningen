@@ -8,7 +8,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { StatusCell } from '@/components/status/StatusCell';
 import { statusMeta } from '@/components/status/statusMeta';
 import { weekdayShort, capitalize } from '@/features/challenge/labels';
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 import styles from './MatrixGrid.module.css';
 
 const MONTHS_SV = [

@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
+import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { rankParticipants, type RankedRow } from '@/features/ranking/ranking';
 import styles from './RankingPage.module.css';
 
@@ -29,13 +30,16 @@ export function RankingPage() {
     );
   }
 
-  if (isError || !data || !result) {
+  if (isError) {
     return (
       <>
         <PageHeader title="Ranking" />
         <ErrorState onRetry={() => void refetch()} />
       </>
     );
+  }
+  if (!data || !result) {
+    return <NoMembershipState title="Ranking" />;
   }
 
   const podium = result.ranked.slice(0, 3);

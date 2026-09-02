@@ -4,7 +4,7 @@ import { formatDayMonth } from '@/domain/format';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusCell } from '@/components/status/StatusCell';
 import { statusMeta } from '@/components/status/statusMeta';
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 import { relativeDayLabel, capitalize } from '@/features/challenge/labels';
 import styles from './RecentGrid.module.css';
 

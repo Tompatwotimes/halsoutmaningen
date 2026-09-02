@@ -3,10 +3,12 @@ import { formatLongDate, formatMinutes } from '@/domain/format';
 import { Sheet } from '@/components/ui/Sheet';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
+import { SkeletonText } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
-import { ProofImage } from '@/components/proof/ProofImage';
+import { ErrorState } from '@/components/feedback/ErrorState';
+import { SignedProofImage } from '@/components/proof/SignedProofImage';
 import { CheckIcon, ClockIcon, ImageOffIcon } from '@/components/icons';
-import type { EntryFixture } from '@/fixtures/entries';
+import { useEntryDetail } from './useEntryDetail';
 import { weekdayLong, capitalize } from './labels';
 import styles from './EntryDetailSheet.module.css';
 
@@ -16,24 +18,38 @@ interface Props {
   challenge: ChallengeConfig;
   participantName: string;
   isSelf: boolean;
+  userId: string;
   date: string;
-  entry: EntryFixture | null;
 }
 
 function timeOf(iso: string): string {
-  const match = /T(\d{2}:\d{2})/.exec(iso);
-  return match?.[1] ?? '';
+  return new Date(iso).toLocaleTimeString('sv-SE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
+/**
+ * Entry + proof detail for one (participant, date) cell — always fetched on
+ * demand when opened, for self and others alike (Part 8 of the real-data
+ * phase). Nothing here is preloaded for a whole grid.
+ */
 export function EntryDetailSheet({
   open,
   onClose,
   challenge,
   participantName,
   isSelf,
+  userId,
   date,
-  entry,
 }: Props) {
+  const { data, isLoading, isError, refetch } = useEntryDetail(
+    challenge.id,
+    userId,
+    date,
+    open,
+  );
+
   return (
     <Sheet
       open={open}
@@ -54,31 +70,57 @@ export function EntryDetailSheet({
         </div>
       </div>
 
-      {entry ? (
+      {isLoading && <SkeletonText lines={4} />}
+
+      {isError && (
+        <ErrorState
+          title="Kunde inte hämta passet"
+          onRetry={() => void refetch()}
+        />
+      )}
+
+      {!isLoading && !isError && !data && (
+        <EmptyState
+          icon={<ImageOffIcon />}
+          title="Ingen registrering"
+          body={`${isSelf ? 'Du har' : `${participantName} har`} inget pass registrerat den här dagen.`}
+        />
+      )}
+
+      {!isLoading && !isError && data && (
         <>
           <div className={styles.metrics}>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>Tid</span>
               <span className={`${styles.metricValue} tnum`}>
-                {formatMinutes(entry.durationMinutes)}
+                {formatMinutes(data.durationMinutes)}
               </span>
-              <Badge tone="completed" size="sm" icon={<CheckIcon />}>
-                Kravet uppfyllt
-              </Badge>
+              {data.durationMinutes >= challenge.requiredMinutes && (
+                <Badge tone="completed" size="sm" icon={<CheckIcon />}>
+                  Kravet uppfyllt
+                </Badge>
+              )}
             </div>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>Aktivitet</span>
-              <span className={styles.metricValue}>{entry.activity}</span>
+              <span className={styles.metricValue}>{data.activity ?? '—'}</span>
               <span className={styles.metricSub}>
                 Minst {formatMinutes(challenge.requiredMinutes)} krävs
               </span>
             </div>
           </div>
 
-          {entry.note && <p className={styles.note}>”{entry.note}”</p>}
+          {data.note && <p className={styles.note}>”{data.note}”</p>}
 
-          {entry.hasProof ? (
-            <ProofImage seed={entry.proofSeed} activity={entry.activity} />
+          {data.proofSignedUrl ? (
+            <SignedProofImage
+              src={data.proofSignedUrl}
+              alt={
+                data.activity
+                  ? `Bildbevis för ${data.activity.toLowerCase()}`
+                  : 'Bildbevis'
+              }
+            />
           ) : (
             <EmptyState
               icon={<ImageOffIcon />}
@@ -89,15 +131,9 @@ export function EntryDetailSheet({
 
           <p className={styles.submitted}>
             <ClockIcon className={styles.clock} />
-            Registrerad kl. {timeOf(entry.submittedAt)}
+            Registrerad kl. {timeOf(data.submittedAt)}
           </p>
         </>
-      ) : (
-        <EmptyState
-          icon={<ImageOffIcon />}
-          title="Ingen registrering"
-          body={`${isSelf ? 'Du har' : `${participantName} har`} inget pass registrerat den här dagen.`}
-        />
       )}
     </Sheet>
   );

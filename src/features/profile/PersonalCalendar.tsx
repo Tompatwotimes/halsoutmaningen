@@ -4,7 +4,7 @@ import { DayState } from '@/domain/dayState';
 import { parsePlainDate } from '@/domain/dates';
 import { statusMeta } from '@/components/status/statusMeta';
 import { CheckIcon, MissedIcon } from '@/components/icons';
-import type { ParticipantView } from '@/fixtures/dataset';
+import type { ParticipantView } from '@/features/challenge/types';
 import styles from './PersonalCalendar.module.css';
 
 const MONTHS_SV = [

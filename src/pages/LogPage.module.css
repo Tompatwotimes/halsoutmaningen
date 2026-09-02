@@ -284,6 +284,12 @@
   margin-top: var(--sp-2);
 }
 
+.changePhoto {
+  color: var(--c-accent-text);
+  cursor: pointer;
+  font-weight: var(--fw-semibold);
+}
+
 /* ---- Success ---- */
 .successWrap {
   display: flex;

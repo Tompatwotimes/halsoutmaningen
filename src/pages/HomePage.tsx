@@ -20,6 +20,7 @@ import {
 } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
+import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import styles from './HomePage.module.css';
 
@@ -41,7 +42,7 @@ export function HomePage() {
   );
 
   if (isLoading) return <HomeSkeleton />;
-  if (isError || !data || !progress) {
+  if (isError) {
     return (
       <ErrorState
         title="Kunde inte ladda din översikt"
@@ -50,9 +51,12 @@ export function HomePage() {
       />
     );
   }
+  if (!data || !progress) {
+    return <NoMembershipState title="Hem" />;
+  }
 
   const { self, challenge, today } = data;
-  const todayEntry = data.getEntry(self.userId, today);
+  const todayEntry = data.getSelfEntry(today);
   const completedToday = self.todayState === DayState.Completed;
 
   const roster = data.rosterToday;
