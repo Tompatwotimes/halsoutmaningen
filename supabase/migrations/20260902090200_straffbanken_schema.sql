@@ -184,19 +184,25 @@ create table public.penalty_assignments (
   created_at        timestamptz not null default now(),
 
   constraint pa_no_self_target check (from_user_id <> to_user_id),
-  constraint pa_cancel_coherent check ((status = 'cancelled') = (cancelled_at is not null)),
-  -- one assignment ever per earned penalty (no re-use, even after cancel)
-  constraint pa_one_per_earned unique (earned_penalty_id)
+  constraint pa_cancel_coherent check ((status = 'cancelled') = (cancelled_at is not null))
 );
 
 comment on table public.penalty_assignments is
   'A penalty applied by from_user_id against to_user_id on target_date. Created '
   'only by assign_penalty() (atomic). Never stacks: at most one active row per '
-  '(challenge, to_user_id, target_date). Cancellable by an admin with a reason.';
+  '(challenge, to_user_id, target_date). An admin cancellation (with a reason) '
+  'returns the ammunition to the sender, so an earned penalty may have an '
+  'earlier cancelled assignment plus one active one.';
 
 -- NO STACKING: at most one active penalty per target per day.
 create unique index pa_one_active_per_target_day
   on public.penalty_assignments (challenge_id, to_user_id, target_date)
+  where status = 'active';
+
+-- At most one ACTIVE assignment per earned penalty (a cancelled one returns the
+-- ammo — see cancel_penalty_assignment — so it may be re-assigned once).
+create unique index pa_one_active_per_earned
+  on public.penalty_assignments (earned_penalty_id)
   where status = 'active';
 
 create index pa_target_idx on public.penalty_assignments (to_user_id, challenge_id);

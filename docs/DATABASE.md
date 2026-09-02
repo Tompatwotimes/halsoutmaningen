@@ -3,19 +3,20 @@
 Reference for the initial schema. The migrations under `supabase/migrations/`
 are the source of truth; this document explains them.
 
-| Migration                                          | Contents                                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `20260901120000_core_schema.sql`                   | Tables, constraints, indexes, `updated_at` triggers                                                           |
-| `20260901120100_functions_and_rls.sql`             | Helpers, guard triggers, day-state fn, audit, RLS                                                             |
-| `20260901120200_storage.sql`                       | Private `proofs` / `avatars` buckets + object policies                                                        |
-| `20260901120300_seed_first_challenge.sql`          | **Optional** data: the first challenge as a `draft`                                                           |
-| `20260902090000_multi_session_training.sql`        | `training_entries.session_seq`, `add_training_session()`                                                      |
-| `20260902090100_challenge_lifecycle.sql`           | status state machine, `description`/`activated_at`/`completed_at`, richer audit actions, `create_challenge()` |
-| `20260902090200_straffbanken_schema.sql`           | `challenge_penalty_definitions` / `earned_penalties` / `penalty_assignments` + RLS                            |
-| `20260902090300_daily_requirement_day_states.sql`  | `challenge_daily_requirement()`, rewritten `challenge_day_states()`                                           |
-| `20260902090400_penalty_engine.sql`                | reconcile (earning), triggers, `assign_penalty()` / `cancel_penalty_assignment()`                             |
-| `20260902090500_challenge_ops_and_corrections.sql` | invalidate/revalidate, `duplicate_challenge()`, complete/archive/reopen, `challenge_results()`                |
-| `20260902090600_seed_default_penalties.sql`        | **Optional** data: default Straffbanken config for the first challenge                                        |
+| Migration                                                 | Contents                                                                                                         |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `20260901120000_core_schema.sql`                          | Tables, constraints, indexes, `updated_at` triggers                                                              |
+| `20260901120100_functions_and_rls.sql`                    | Helpers, guard triggers, day-state fn, audit, RLS                                                                |
+| `20260901120200_storage.sql`                              | Private `proofs` / `avatars` buckets + object policies                                                           |
+| `20260901120300_seed_first_challenge.sql`                 | **Optional** data: the first challenge as a `draft`                                                              |
+| `20260902090000_multi_session_training.sql`               | `training_entries.session_seq`, `add_training_session()`                                                         |
+| `20260902090100_challenge_lifecycle.sql`                  | status state machine, `description`/`activated_at`/`completed_at`, richer audit actions, `create_challenge()`    |
+| `20260902090200_straffbanken_schema.sql`                  | `challenge_penalty_definitions` / `earned_penalties` / `penalty_assignments` + RLS                               |
+| `20260902090300_daily_requirement_day_states.sql`         | `challenge_daily_requirement()`, rewritten `challenge_day_states()`                                              |
+| `20260902090400_penalty_engine.sql`                       | reconcile (earning), triggers, `assign_penalty()` / `cancel_penalty_assignment()`                                |
+| `20260902090500_challenge_ops_and_corrections.sql`        | invalidate/revalidate, `duplicate_challenge()`, complete/archive/reopen, `challenge_results()`                   |
+| `20260902090600_seed_default_penalties.sql`               | **Optional** data: default Straffbanken config for the first challenge (draft only)                              |
+| `20260902090700_bootstrap_active_challenge_penalties.sql` | **One-time**: seed the CURRENT (possibly already-active) challenge's penalties + retroactively reconcile streaks |
 
 Nothing in the `1209…` migrations drops or alters an existing object — they only
 `CREATE` / `INSERT … WHERE NOT EXISTS`. The Phase 9 (`0902…`) migrations are

@@ -6,7 +6,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(11);
+select plan(14);
 
 set local role postgres;
 
@@ -117,6 +117,70 @@ select is(
    where d.unlock_streak = 20 and ep.user_id = '00000000-0000-0000-0000-00000000e401'
      and ep.status = 'available'),
   2, 'a separate streak run earns the 20-milestone a second time');
+
+-- ----------------------------------------------------------------------------
+-- Historical invalidation cascades to a FUTURE assignment; an ELAPSED
+-- assignment is preserved.
+-- ----------------------------------------------------------------------------
+insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
+values ('00000000-0000-0000-0000-00000000e4b0', '00000000-0000-0000-0000-000000000000',
+  'authenticated', 'authenticated', 'e4b0@example.test', '{"display_name":"Bo"}', now(), now());
+insert into public.challenge_memberships (challenge_id, user_id, participation_start_date, active, created_by)
+values ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-00000000e4b0',
+  current_date - 120, true, '00000000-0000-0000-0000-00000000e4ad');
+
+-- Ella spends her run-1 20-milestone on Bo, on a future day.
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-00000000e401","role":"authenticated"}', true);
+select lives_ok(
+  $$select public.assign_penalty(
+      (select ep.id from public.earned_penalties ep
+       join public.challenge_penalty_definitions d on d.id = ep.penalty_definition_id
+       where d.unlock_streak = 20 and ep.streak_run_start = (current_date - 100)::date
+         and ep.user_id = '00000000-0000-0000-0000-00000000e401' and ep.status = 'available'),
+      '00000000-0000-0000-0000-00000000e4b0')$$,
+  'Ella assigns her run-1 20-milestone to Bo on a future day');
+
+set local role postgres;
+-- Fabricate a SECOND, already-elapsed assignment for a run-2 milestone so we can
+-- prove elapsed assignments survive a later correction.
+update public.earned_penalties set status = 'spent'
+where user_id = '00000000-0000-0000-0000-00000000e401'
+  and streak_run_start = (current_date - 40)::date and status = 'available';
+insert into public.penalty_assignments (challenge_id, earned_penalty_id, from_user_id, to_user_id,
+  target_date, penalty_type, value, display_name, status)
+select '00000000-0000-0000-0000-0000000000e4', ep.id,
+  '00000000-0000-0000-0000-00000000e401', '00000000-0000-0000-0000-00000000e4b0',
+  current_date - 10, 'minimum_minutes', 45, '45-minutaren', 'active'
+from public.earned_penalties ep
+where ep.user_id = '00000000-0000-0000-0000-00000000e401'
+  and ep.streak_run_start = (current_date - 40)::date and ep.status = 'spent';
+update public.earned_penalties ep set spent_assignment_id = pa.id
+from public.penalty_assignments pa
+where pa.earned_penalty_id = ep.id
+  and ep.streak_run_start = (current_date - 40)::date;
+
+-- Now shrink BOTH runs: invalidate day 5 of run 1 and day 5 of run 2.
+update public.training_entries set status = 'invalidated', invalidated_at = now(),
+  invalidated_by = '00000000-0000-0000-0000-00000000e4ad', invalidated_reason = 'test'
+where challenge_id = '00000000-0000-0000-0000-0000000000e4'
+  and user_id = '00000000-0000-0000-0000-00000000e401'
+  and challenge_date in ((current_date - 100 + 5)::date, (current_date - 40 + 5)::date);
+
+select is(
+  (select status from public.penalty_assignments
+   where to_user_id = '00000000-0000-0000-0000-00000000e4b0' and target_date > current_date),
+  'cancelled', 'the FUTURE assignment of the now-invalid milestone was auto-cancelled');
+select is(
+  (select status from public.penalty_assignments
+   where to_user_id = '00000000-0000-0000-0000-00000000e4b0' and target_date = (current_date - 10)::date),
+  'active', 'the already-ELAPSED assignment is preserved (history not rewritten)');
+select ok(
+  exists (select 1 from public.audit_log
+          where action = 'penalty_assignment_cancelled'
+            and (after_data ->> 'auto') = 'true'),
+  'the automatic cancellation is audited');
 
 select * from finish();
 rollback;

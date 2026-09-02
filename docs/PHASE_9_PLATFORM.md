@@ -1,7 +1,7 @@
 # Hälsoutmaningen — Phase 9: reusable platform + Straffbanken
 
 Design reference for the Phase 9 **database + domain foundation**. Migrations
-`20260902090000`–`20260902090600` and `src/domain/penalties.ts` +
+`20260902090000`–`20260902090700` and `src/domain/penalties.ts` +
 `src/domain/dayState.ts` + `src/domain/liability.ts` are the source of truth;
 this explains the model and the decisions.
 
@@ -90,6 +90,32 @@ hacks". We rejected them because:
 
 A running challenge whose rules are wrong is duplicated into a fresh draft; the
 broken one is completed/archived. History is never rewritten.
+
+### One-time bootstrap for the already-running 2026 challenge
+
+Migration `20260902090700` introduces the default Straffbanken definitions into
+the **existing, already-`active`** first challenge and then reconciles every
+member's historical streak runs.
+
+This does **not** weaken immutability:
+
+- It runs as a **no-JWT migration session** — the same documented break-glass
+  the guards already recognise (`(select auth.uid()) is null`). A JWT admin
+  still cannot touch an active challenge's penalty definitions.
+- A day's training requirement comes from `penalty_ASSIGNMENTS`, never from
+  definitions. Adding definitions changes **no** historical or current day
+  requirement — it only enables _earning_ (applied retroactively) and _future_
+  assignments.
+- It is idempotent (skips if the challenge already has any definition) and
+  creates **no** assignments. `assign_penalty` still refuses any target date
+  that is not strictly after the challenge-local today.
+
+Retroactive earning: `_reconcile_earned_penalties(challenge, member)` grants
+every milestone a member already reached in a historical streak run, with
+`earned_on_date` = the day it was actually reached. If the production challenge
+id differs from the fixed one in the migration, edit it there or run the
+equivalent `INSERT` + per-member `_reconcile_earned_penalties(...)` in the SQL
+editor (a no-JWT session, same bypass).
 
 ---
 
@@ -223,7 +249,15 @@ separate run may earn the same milestone again.
    never double-grants,
 4. mark any still-**available** row whose `(definition, run_start)` is no longer
    valid as `revoked` (a streak correction removed its basis),
-5. audit `penalty_earned` / `penalty_revoked` per row.
+5. **cascade** for a `spent` row whose basis vanished (a historical
+   invalidation shrank the streak):
+   - its assignment's `target_date` is still in the **future** (challenge-local)
+     → auto-cancel the assignment, revoke the earned row, audit both as
+     automatic (`after_data.auto = true`),
+   - its `target_date` has already **elapsed** → leave everything (history is
+     not rewritten),
+6. audit `penalty_earned` / `penalty_revoked` / auto `penalty_assignment_cancelled`
+   per row.
 
 It runs **automatically** from statement-level triggers on `training_entries`
 and `training_proofs` (transition tables → each affected participant reconciled
@@ -248,9 +282,10 @@ challenge is `active` (completion freezes the earned state).
      ledig dag kvar att straffa personen på").
 4. Insert the assignment (`pa_one_active_per_target_day` partial unique index is
    the concurrency backstop; a lost race retries and re-advances).
-5. Mark the inventory row `spent` (`spent_assignment_id` set;
-   `earned_penalty_id` is UNIQUE on assignments — one assignment ever per earned
-   penalty).
+5. Mark the inventory row `spent` (`spent_assignment_id` set). `pa_one_active_per_earned`
+   is a **partial** unique index (`where status = 'active'`) — at most one
+   _active_ assignment per earned penalty; a cancelled one having returned the
+   ammo, it can be re-assigned once.
 6. Audit `penalty_assigned`.
 
 `preview_penalty_target(earned_penalty_id, to_user_id)` is the read-only version
@@ -263,14 +298,21 @@ already penalised on. The walk is bounded by the challenge length; the
 "one active penalty per target per day" invariant always holds; the result
 tells the sender the exact landed date.
 
-### 5.4 Cancellation — admin, audited
+### 5.4 Cancellation — admin correction, returns the ammo
 
 `cancel_penalty_assignment(assignment_id, reason)` — admin only, reason
-mandatory. Sets the assignment `cancelled` and the earned row `revoked` (the
-ammunition is **not** returned to the sender — it was a correction, not a
-favour). Audited as `penalty_assignment_cancelled` with the reason. The target's
-day reverts to the normal requirement immediately (the requirement engine only
-reads `status = 'active'` assignments).
+mandatory. It is an **administrative correction**, not a confiscation:
+
+- assignment → `cancelled` (`cancelled_by`, `cancelled_reason`, `cancelled_at`),
+- earned penalty → back to `available` (or `expired` if the challenge is no
+  longer `active`), `spent_assignment_id` cleared — the sender gets their
+  ammunition back and may re-assign it,
+- one audit row, `penalty_assignment_cancelled`, with the reason as `note` and
+  `after_data.ammunition_returned_as`.
+
+The target's day reverts to the normal requirement immediately (the requirement
+engine only reads `status = 'active'` assignments). A dedicated
+revoke/confiscate admin action can be added later if it is ever needed.
 
 ### 5.5 Expiry
 
@@ -294,8 +336,14 @@ administrativ_rattning | annat`) are all preserved.
 An invalidated session stops contributing to completion, streaks, penalty
 earning and every "valid training" statistic — automatically, because
 `challenge_day_states` filters `status = 'active'` and the reconcile trigger
-fires on the status change. The `training_entries_audit` trigger records
-`invalidate` / `revalidate` with before/after snapshots.
+fires on the status change (including the §5.2 cascade that auto-cancels a
+future assignment whose earned basis this correction removed).
+
+**Exactly one audit event** per correction. The RPC sets the reason
+transaction-locally via `set_config('app.audit_reason', …, true)`; the
+`training_entries_audit` trigger (`audit_row_change`) emits the single
+`invalidate` / `revalidate` row with before/after snapshots **and** that reason
+as its `note`. The RPCs write no audit row of their own — there is no duplicate.
 
 Destructive `DELETE` is still possible for an admin but is not the workflow —
 invalidation is.
@@ -354,16 +402,18 @@ The UI phase turns this into the CSV and the admin dashboard.
 
 `challenge_created · challenge_activated · challenge_completed ·
 challenge_archived · challenge_reopened · challenge_rules_changed ·
-membership_created · membership_window_changed · membership_deactivated ·
-membership_reactivated · invalidate · revalidate · penalty_earned ·
-penalty_revoked · penalty_assigned · penalty_assignment_cancelled ·
-penalties_expired` (plus generic `insert/update/delete` for penalty
-definitions).
+penalties_bootstrapped · membership_created · membership_window_changed ·
+membership_deactivated · membership_reactivated · invalidate · revalidate ·
+penalty_earned · penalty_revoked · penalty_assigned ·
+penalty_assignment_cancelled · penalties_expired` (plus generic
+`insert/update/delete` for penalty definitions).
 
 Still append-only (`audit_log_prevent_change`), admin-read-only, written only by
 `SECURITY DEFINER` code. `before_data` / `after_data` carry row snapshots; the
-correction reason rides in the snapshot or the `note` column. No tokens or
-secrets are ever written.
+correction reason rides in the `note` column (attached to the single trigger
+row via `set_config('app.audit_reason', …, true)` — the RPCs never write their
+own audit row). Automatic corrections carry `after_data.auto = true` and a
+`null` actor. No tokens or secrets are ever written.
 
 ---
 
@@ -384,8 +434,15 @@ service-role key never reaches the browser.
 
 Internal-only helpers (`_reconcile_earned_penalties`,
 `_next_penalty_target_date`, `challenge_streak_runs`,
-`challenge_valid_earned_penalties`) are granted to **nobody** — only the
-DEFINER RPCs (owned by `postgres`) call them.
+`challenge_valid_earned_penalties`, `trg_reconcile_from_changed`) have
+`EXECUTE` **revoked from `public`/`anon` and granted to nobody** — only the
+DEFINER RPCs and triggers (owned by `postgres`) call them. Every date-sensitive
+operation — `challenge_day_states` pending/missed, `assign_penalty` /
+`preview_penalty_target` / `_next_penalty_target_date`, the challenge
+rule-lock / end-date checks, the §5.2 future-vs-elapsed cascade split, streak
+runs, `challenge_results` — resolves "today" via
+`(now() at time zone <challenge>.timezone)::date` (`challenge_current_date`),
+never the session `current_date` or a bare `now()::date`.
 
 ---
 
@@ -393,7 +450,10 @@ DEFINER RPCs (owned by `postgres`) call them.
 
 The migrations are **not applied to production in this phase.** They are
 forward-only and safe for the current data (they only `ADD` / `CREATE` / widen
-a check / backfill `session_seq = 1`).
+a check / backfill `session_seq = 1`). The last one, `20260902090700`, is a
+one-time bootstrap that seeds the current challenge's penalty definitions and
+retroactively reconciles historical streak runs (see §2); it is idempotent and
+targets the fixed first-challenge id.
 
 After review + approval, on a Supabase preview branch or CI first:
 

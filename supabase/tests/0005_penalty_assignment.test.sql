@@ -7,7 +7,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(15);
+select plan(18);
 
 set local role postgres;
 
@@ -142,6 +142,23 @@ select ok(
   exists (select 1 from public.audit_log
           where action = 'penalty_assignment_cancelled' and note = 'fel person'),
   'the cancellation is audited with its reason');
+
+-- The ammunition RETURNS to the sender (administrative correction, not confiscation).
+select is(
+  (select status from public.earned_penalties where id = '0000000e-0000-4000-8000-000000000001'),
+  'available', 'a cancelled assignment returns the earned penalty to available');
+select is(
+  (select spent_assignment_id from public.earned_penalties where id = '0000000e-0000-4000-8000-000000000001'),
+  null, 'the returned earned penalty is no longer linked to the cancelled assignment');
+
+-- Sara can re-assign the returned ammunition.
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-00000000a501","role":"authenticated"}', true);
+select is(
+  (public.assign_penalty('0000000e-0000-4000-8000-000000000001', '00000000-0000-0000-0000-00000000a502') ->> 'target_date')::date,
+  (current_date + 1)::date,
+  'the returned ammunition can be assigned again (the cancelled day is free)');
 
 select * from finish();
 rollback;

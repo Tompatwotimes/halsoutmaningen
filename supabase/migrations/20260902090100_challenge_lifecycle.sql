@@ -150,6 +150,12 @@ declare
   v_before  jsonb;
   v_after   jsonb;
   v_row     jsonb;
+  -- Optional human reason, set transaction-locally by a correction RPC via
+  -- set_config('app.audit_reason', …, true). Lets a DEFINER RPC attach a reason
+  -- to the SINGLE audit row the trigger produces, instead of writing its own
+  -- (which would double-log). Only ever set by invalidate/revalidate today.
+  v_note    text := nullif(btrim(coalesce(
+                      current_setting('app.audit_reason', true), '')), '');
 begin
   if not v_always
      and not public.is_admin()
@@ -205,7 +211,7 @@ begin
 
   insert into public.audit_log (
     actor_user_id, challenge_id, target_user_id,
-    entity_type, entity_id, action, before_data, after_data
+    entity_type, entity_id, action, before_data, after_data, note
   )
   values (
     (select auth.uid()),
@@ -218,7 +224,8 @@ begin
     nullif(v_row ->> 'id', '')::uuid,
     v_action,
     v_before,
-    v_after
+    v_after,
+    v_note
   );
 
   return coalesce(new, old);

@@ -53,6 +53,10 @@ begin
     raise exception 'En anledning krävs';
   end if;
 
+  -- The audit trigger (audit_row_change) writes the single 'invalidate' row and
+  -- picks the reason up from here — the RPC never writes its own audit row.
+  perform set_config('app.audit_reason', btrim(p_reason), true);
+
   update public.training_entries
     set status = 'invalidated',
         invalidated_reason = btrim(p_reason),
@@ -61,6 +65,8 @@ begin
         invalidated_at = now()
   where id = p_entry_id and status = 'active'
   returning * into v_row;
+
+  perform set_config('app.audit_reason', '', true);
 
   if v_row.id is null then
     raise exception 'Passet finns inte eller är redan ogiltigförklarat';
@@ -89,6 +95,10 @@ begin
     raise exception 'En anledning krävs';
   end if;
 
+  -- Exactly one audit event: the audit trigger emits 'revalidate' and reads the
+  -- reason from here. No second, explicit audit row.
+  perform set_config('app.audit_reason', btrim(p_reason), true);
+
   update public.training_entries
     set status = 'active',
         invalidated_reason = null,
@@ -98,14 +108,11 @@ begin
   where id = p_entry_id and status = 'invalidated'
   returning * into v_row;
 
+  perform set_config('app.audit_reason', '', true);
+
   if v_row.id is null then
     raise exception 'Passet finns inte eller är redan aktivt';
   end if;
-
-  insert into public.audit_log (
-    actor_user_id, challenge_id, target_user_id, entity_type, entity_id, action, note
-  )
-  values (uid, v_row.challenge_id, v_row.user_id, 'training_entry', v_row.id, 'revalidate', btrim(p_reason));
 
   return v_row;
 end;

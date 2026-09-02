@@ -37,6 +37,8 @@ set search_path = ''
 as $$
 declare
   v_status text;
+  v_today  date;
+  r        record;
 begin
   select status into v_status from public.challenges where id = p_challenge_id;
   -- Earned state is only computed while the challenge is live. Completion
@@ -45,6 +47,9 @@ begin
     return;
   end if;
 
+  v_today := public.challenge_current_date(p_challenge_id);
+
+  -- 1. Grant newly-valid milestones (idempotent).
   with valid as (
     select * from public.challenge_valid_earned_penalties(p_challenge_id, p_user_id)
   ),
@@ -74,6 +79,7 @@ begin
     )
   from ins;
 
+  -- 2. Revoke UNUSED earned rows whose streak basis no longer holds.
   with revoked as (
     update public.earned_penalties ep
     set status = 'revoked'
@@ -98,12 +104,66 @@ begin
       'streak_run_start', revoked.streak_run_start
     )
   from revoked;
+
+  -- 3. SPENT earned rows whose basis vanished (a historical invalidation shrank
+  --    the streak). Any assignment whose target day is still in the FUTURE
+  --    (challenge-local) is auto-cancelled and the earned row revoked. An
+  --    assignment whose target day has already ELAPSED is history — left alone.
+  for r in
+    select ep.id as earned_id, ep.display_name, ep.streak_run_start,
+           pa.id as assignment_id, pa.to_user_id, pa.target_date
+    from public.earned_penalties ep
+    join public.penalty_assignments pa on pa.id = ep.spent_assignment_id
+    where ep.challenge_id = p_challenge_id
+      and ep.user_id = p_user_id
+      and ep.status = 'spent'
+      and pa.status = 'active'
+      and pa.target_date > v_today
+      and not exists (
+        select 1
+        from public.challenge_valid_earned_penalties(p_challenge_id, p_user_id) v
+        where v.definition_id = ep.penalty_definition_id
+          and v.streak_run_start = ep.streak_run_start
+      )
+  loop
+    update public.penalty_assignments
+      set status = 'cancelled',
+          cancelled_by = null,
+          cancelled_reason = 'Automatiskt: streaken korrigerades bort i efterhand',
+          cancelled_at = now()
+    where id = r.assignment_id;
+
+    update public.earned_penalties set status = 'revoked' where id = r.earned_id;
+
+    insert into public.audit_log (
+      actor_user_id, challenge_id, target_user_id, entity_type, entity_id, action, before_data, after_data, note
+    )
+    values (
+      null, p_challenge_id, r.to_user_id, 'penalty_assignment', r.assignment_id,
+      'penalty_assignment_cancelled',
+      jsonb_build_object('target_date', r.target_date, 'display_name', r.display_name),
+      jsonb_build_object('status', 'cancelled', 'auto', true, 'reason', 'streak_correction'),
+      'Automatiskt: earned-penalty-grunden togs bort av en administrativ rättning'
+    );
+    insert into public.audit_log (
+      actor_user_id, challenge_id, target_user_id, entity_type, entity_id, action, before_data
+    )
+    values (
+      null, p_challenge_id, p_user_id, 'earned_penalty', r.earned_id, 'penalty_revoked',
+      jsonb_build_object('display_name', r.display_name,
+                         'streak_run_start', r.streak_run_start, 'auto', true)
+    );
+  end loop;
 end;
 $$;
 
 comment on function public._reconcile_earned_penalties is
   'Internal worker: recompute one participant''s earned Straffbank from their '
-  'streak runs. Idempotent. No auth check — callers gate access.';
+  'streak runs. Idempotent. No auth check — callers gate access. Also '
+  'auto-cancels a FUTURE assignment (challenge-local) whose earned basis a '
+  'historical invalidation removed; elapsed assignments are preserved.';
+
+revoke all on function public._reconcile_earned_penalties(uuid, uuid) from public, anon;
 
 create or replace function public.reconcile_earned_penalties(
   p_challenge_id uuid,
@@ -145,6 +205,8 @@ begin
   return null;
 end;
 $$;
+
+revoke all on function public.trg_reconcile_from_changed() from public, anon;
 
 create trigger training_entries_reconcile_ins
   after insert on public.training_entries
@@ -391,8 +453,10 @@ $$;
 revoke all on function public.assign_penalty(uuid, uuid) from public, anon;
 grant execute on function public.assign_penalty(uuid, uuid) to authenticated;
 
--- Admin cancellation, mandatory reason, audited. The inventory row does NOT
--- return to the sender (docs/PHASE_9_PLATFORM.md §7).
+-- Admin cancellation = an administrative correction, mandatory reason, audited.
+-- The ammunition RETURNS to the sender: the earned penalty goes back to
+-- 'available' (or 'expired' if the challenge is no longer active). A separate
+-- revoke/confiscate action can be added later if ever needed.
 create or replace function public.cancel_penalty_assignment(
   p_assignment_id uuid,
   p_reason        text
@@ -403,8 +467,10 @@ security definer
 set search_path = ''
 as $$
 declare
-  uid   uuid := (select auth.uid());
-  v_pa  public.penalty_assignments;
+  uid       uuid := (select auth.uid());
+  v_pa      public.penalty_assignments;
+  v_status  text;
+  v_returned text;
 begin
   if not ((uid is null) or public.is_admin()) then
     raise exception 'Endast administratörer får ångra ett straff';
@@ -425,8 +491,12 @@ begin
     raise exception 'Straffet är inte aktivt eller finns inte';
   end if;
 
+  select status into v_status from public.challenges where id = v_pa.challenge_id;
+  v_returned := case when v_status = 'active' then 'available' else 'expired' end;
+
   update public.earned_penalties
-    set status = 'revoked'
+    set status = v_returned,
+        spent_assignment_id = null
   where id = v_pa.earned_penalty_id and status = 'spent';
 
   insert into public.audit_log (
@@ -435,12 +505,19 @@ begin
   values (
     uid, v_pa.challenge_id, v_pa.to_user_id, 'penalty_assignment', v_pa.id, 'penalty_assignment_cancelled',
     jsonb_build_object('target_date', v_pa.target_date, 'display_name', v_pa.display_name,
-                       'from_user_id', v_pa.from_user_id),
+                       'from_user_id', v_pa.from_user_id,
+                       'earned_penalty_id', v_pa.earned_penalty_id,
+                       'ammunition_returned_as', v_returned),
     jsonb_build_object('status', 'cancelled'),
     btrim(p_reason)
   );
 
-  return jsonb_build_object('assignment_id', v_pa.id, 'status', 'cancelled');
+  return jsonb_build_object(
+    'assignment_id', v_pa.id,
+    'status', 'cancelled',
+    'earned_penalty_id', v_pa.earned_penalty_id,
+    'ammunition_returned_as', v_returned
+  );
 end;
 $$;
 

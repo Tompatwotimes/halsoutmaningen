@@ -7,7 +7,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(10);
+select plan(13);
 
 set local role postgres;
 
@@ -76,11 +76,16 @@ select is(
 select is(
   (select invalidated_by from public.training_entries where id = '00000000-0000-0000-0000-0000000000c8'),
   '00000000-0000-0000-0000-00000000c7ad'::uuid, 'the correcting admin is recorded');
-select ok(
-  exists (select 1 from public.audit_log
-          where entity_type = 'training_entry' and action = 'invalidate'
-            and (after_data ->> 'invalidated_reason_code') = 'otillrackligt_bildbevis'),
-  'the invalidation is audited with the reason code');
+select is(
+  (select count(*)::int from public.audit_log
+   where entity_type = 'training_entry' and entity_id = '00000000-0000-0000-0000-0000000000c8'
+     and action = 'invalidate'),
+  1, 'invalidation produces exactly one audit event');
+select is(
+  (select note from public.audit_log
+   where entity_type = 'training_entry' and entity_id = '00000000-0000-0000-0000-0000000000c8'
+     and action = 'invalidate'),
+  'otillräckligt bildbevis', 'the invalidate audit row carries the reason as its note');
 
 -- Revalidate.
 select lives_ok(
@@ -88,6 +93,16 @@ select lives_ok(
   'admin can revalidate with a reason');
 select is(pg_temp.st((current_date - 10)::date), 'completed',
   'revalidation restores the completed state');
+select is(
+  (select count(*)::int from public.audit_log
+   where entity_type = 'training_entry' and entity_id = '00000000-0000-0000-0000-0000000000c8'
+     and action = 'revalidate'),
+  1, 'revalidation produces exactly one audit event (no duplicate)');
+select is(
+  (select note from public.audit_log
+   where entity_type = 'training_entry' and entity_id = '00000000-0000-0000-0000-0000000000c8'
+     and action = 'revalidate'),
+  'bevis inkommet i efterhand', 'the revalidate audit row carries the reason');
 
 select * from finish();
 rollback;
