@@ -1,5 +1,0 @@
-# Cloudflare Pages SPA fallback. Static assets are matched first; only unknown
-# paths fall through to this rule, so client routes (/aktivera, /gruppen, …)
-# and a hard refresh on them return index.html and let React Router take over.
-# Required by the invite/reset flow — see docs/DEPLOYMENT.md §1.3.
-/*  /index.html  200
