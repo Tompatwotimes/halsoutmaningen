@@ -1,0 +1,48 @@
+.back {
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.back a {
+  color: var(--c-accent-text);
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-3) var(--sp-2);
+}
+.fact {
+  display: flex;
+  flex-direction: column;
+}
+.factLabel {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--c-text-faint);
+}
+.factValue {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-sm);
+}
+.saveRow {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+.lifecycle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: stretch;
+}
+.lcLink {
+  color: var(--c-accent-text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  padding: var(--sp-2) 0;
+}
+.err {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--c-danger-text);
+}

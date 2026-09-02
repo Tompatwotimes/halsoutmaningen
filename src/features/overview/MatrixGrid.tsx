@@ -162,6 +162,9 @@ export function MatrixGrid({
                       state={state}
                       size="sm"
                       today={isToday}
+                      penalised={
+                        p.requirementByDate.get(date)?.penaltyType != null
+                      }
                       onClick={
                         state === DayState.Completed
                           ? () => onOpenEntry(p, date)

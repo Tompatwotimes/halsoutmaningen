@@ -21,6 +21,8 @@ export type ChallengeStatus =
 export interface ChallengeConfig {
   id: string;
   name: string;
+  /** Optional admin-authored description. */
+  description: string | null;
   /** Inclusive first challenge day, plain date. */
   startDate: string;
   /** Inclusive last challenge day, plain date. */

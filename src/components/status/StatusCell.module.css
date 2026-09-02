@@ -1,4 +1,5 @@
 .cell {
+  position: relative;
   flex: 0 0 auto;
   display: grid;
   place-items: center;

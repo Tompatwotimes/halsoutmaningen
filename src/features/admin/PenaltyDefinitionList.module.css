@@ -1,0 +1,92 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.streak {
+  width: 3rem;
+  flex-shrink: 0;
+  font-weight: var(--fw-bold);
+  color: var(--c-accent-text);
+  font-size: var(--fs-sm);
+}
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 8rem;
+}
+.name {
+  font-weight: var(--fw-semibold);
+}
+.rule {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.rowActions {
+  display: flex;
+  gap: var(--sp-3);
+  width: 100%;
+  padding-left: 3rem;
+}
+.link {
+  color: var(--c-accent-text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+.linkDanger {
+  color: var(--c-danger-text);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+.empty,
+.locked {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.addForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+}
+.addForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.addForm input,
+.addForm select {
+  padding: var(--sp-2);
+  min-height: 2.5rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--c-text);
+  font: inherit;
+}
+.addActions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+.err {
+  font-size: var(--fs-xs);
+  color: var(--c-danger-text);
+}

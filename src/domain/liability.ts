@@ -7,12 +7,9 @@
  */
 
 import type { ChallengeConfig } from './challenge';
-import {
-  computeDayState,
-  DayState,
-  type TrainingEntrySummary,
-} from './dayState';
+import { computeDayState, DayState } from './dayState';
 import { eligibleDates, type MembershipConfig } from './membership';
+import type { ActivePenalty, SessionSummary } from './penalties';
 
 export interface DayStateTotals {
   eligibleDays: number;
@@ -84,8 +81,10 @@ export interface ParticipantEvaluationInput {
   challenge: ChallengeConfig;
   membership: MembershipConfig;
   currentDate: string;
-  /** Canonical entry per plain date (`YYYY-MM-DD` -> entry). */
-  entriesByDate: ReadonlyMap<string, TrainingEntrySummary>;
+  /** Every training session per plain date (`YYYY-MM-DD` -> sessions[]). */
+  sessionsByDate: ReadonlyMap<string, readonly SessionSummary[]>;
+  /** Active penalty per plain date, when the participant has one. */
+  penaltiesByDate?: ReadonlyMap<string, ActivePenalty>;
 }
 
 export interface ParticipantEvaluation {
@@ -103,7 +102,8 @@ export interface ParticipantEvaluation {
 export function evaluateParticipant(
   input: ParticipantEvaluationInput,
 ): ParticipantEvaluation {
-  const { challenge, membership, currentDate, entriesByDate } = input;
+  const { challenge, membership, currentDate, sessionsByDate } = input;
+  const penaltiesByDate = input.penaltiesByDate;
   const days = eligibleDates(challenge, membership).map((date) => ({
     date,
     state: computeDayState({
@@ -111,7 +111,8 @@ export function evaluateParticipant(
       membership,
       date,
       currentDate,
-      entry: entriesByDate.get(date) ?? null,
+      sessions: sessionsByDate.get(date) ?? [],
+      penalty: penaltiesByDate?.get(date) ?? null,
     }),
   }));
   const states = days.map((d) => d.state);

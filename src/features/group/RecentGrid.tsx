@@ -79,6 +79,8 @@ export function RecentGrid({ today, dates, participants, onOpenEntry }: Props) {
                   p.statesByDate.get(date) ?? DayState.NotParticipating;
                 const isToday = date === today;
                 const meta = statusMeta(state);
+                const penalised =
+                  p.requirementByDate.get(date)?.penaltyType != null;
                 return (
                   <div
                     key={date}
@@ -91,6 +93,7 @@ export function RecentGrid({ today, dates, participants, onOpenEntry }: Props) {
                       state={state}
                       today={isToday}
                       size="md"
+                      penalised={penalised}
                       onClick={
                         state === DayState.Completed
                           ? () => onOpenEntry(p, date)

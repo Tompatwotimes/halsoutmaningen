@@ -1,0 +1,96 @@
+.received {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border-color: var(--c-missed-border);
+}
+.receivedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.receivedList li {
+  display: flex;
+  flex-direction: column;
+}
+.rName {
+  font-weight: var(--fw-bold);
+  color: var(--c-missed-text);
+}
+.rMeta {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.inv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.invItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-sunken);
+}
+.invBody {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.invName {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+.invCount {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}
+
+.next {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: 1.5;
+}
+.next strong {
+  color: var(--c-text);
+}
+.nextIcon {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--c-accent-text);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.nextSub {
+  color: var(--c-text-faint);
+}
+
+.sent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.sentRow {
+  display: flex;
+  flex-direction: column;
+}
+.sName {
+  font-weight: var(--fw-semibold);
+}
+.sMeta {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.sentHint {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}

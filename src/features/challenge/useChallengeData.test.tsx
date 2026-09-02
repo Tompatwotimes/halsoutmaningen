@@ -36,6 +36,7 @@ const { useChallengeData } = await import('./useChallengeData');
 const CHALLENGE: ChallengeConfig = {
   id: 'c1',
   name: 'Test Challenge',
+  description: null,
   // Wide range so "real now" always falls inside — the test controls state
   // values directly via the mocked day-states rows, not via calendar math.
   startDate: '2000-01-01',
@@ -71,6 +72,24 @@ function wrapper(userId: string) {
         </AuthContext.Provider>
       </QueryClientProvider>
     );
+  };
+}
+
+function dsRow(
+  over: Partial<DayStateRow> &
+    Pick<DayStateRow, 'userId' | 'challengeDate' | 'state'>,
+): DayStateRow {
+  return {
+    sessionCount: 0,
+    validSessionCount: 0,
+    totalValidMinutes: 0,
+    requiredMinutes: 30,
+    requiredSessions: 1,
+    minMinutesPerSession: 0,
+    penaltyType: null,
+    penaltyDisplayName: null,
+    penaltyFromUserId: null,
+    ...over,
   };
 }
 
@@ -124,27 +143,20 @@ describe('useChallengeData', () => {
       }),
     ];
     const rows: DayStateRow[] = [
-      {
+      dsRow({
         userId: 'self',
         challengeDate: today,
         state: DayState.Completed,
-        entryId: 'e1',
-        durationMinutes: 40,
-      },
-      {
-        userId: 'full',
-        challengeDate: today,
-        state: DayState.Pending,
-        entryId: null,
-        durationMinutes: null,
-      },
-      {
+        sessionCount: 1,
+        validSessionCount: 1,
+        totalValidMinutes: 40,
+      }),
+      dsRow({ userId: 'full', challengeDate: today, state: DayState.Pending }),
+      dsRow({
         userId: 'paused',
         challengeDate: today,
         state: DayState.Pending,
-        entryId: null,
-        durationMinutes: null,
-      },
+      }),
     ];
 
     mocks.fetchMyPrimaryChallenge.mockResolvedValue({
@@ -187,36 +199,23 @@ describe('useChallengeData', () => {
       }),
     ];
     const rows: DayStateRow[] = [
-      {
+      dsRow({
         userId: 'self',
         challengeDate: addDays(today, -2),
         state: DayState.Completed,
-        entryId: 'e1',
-        durationMinutes: 40,
-      },
-      {
+        sessionCount: 1,
+        validSessionCount: 1,
+        totalValidMinutes: 40,
+      }),
+      dsRow({
         userId: 'self',
         challengeDate: addDays(today, -1),
         state: DayState.Missed,
-        entryId: null,
-        durationMinutes: null,
-      },
-      {
-        userId: 'self',
-        challengeDate: today,
-        state: DayState.Pending,
-        entryId: null,
-        durationMinutes: null,
-      },
+      }),
+      dsRow({ userId: 'self', challengeDate: today, state: DayState.Pending }),
       // The late joiner has no eligible rows before their start date at all —
       // days before `participationStartDate` must never appear as "missed".
-      {
-        userId: 'late',
-        challengeDate: today,
-        state: DayState.Pending,
-        entryId: null,
-        durationMinutes: null,
-      },
+      dsRow({ userId: 'late', challengeDate: today, state: DayState.Pending }),
     ];
 
     mocks.fetchMyPrimaryChallenge.mockResolvedValue({

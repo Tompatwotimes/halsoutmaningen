@@ -1,0 +1,20 @@
+.back {
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+.back a {
+  color: var(--c-accent-text);
+}
+.seed {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.err {
+  font-size: var(--fs-sm);
+  color: var(--c-danger-text);
+  margin-bottom: var(--sp-2);
+}

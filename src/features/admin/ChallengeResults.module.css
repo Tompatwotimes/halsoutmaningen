@@ -1,0 +1,62 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--c-border-faint);
+}
+.row:last-child {
+  border-bottom: none;
+}
+.rank {
+  width: 1.25rem;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+  font-weight: var(--fw-bold);
+}
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.name {
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+.meta {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+.pen {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--fs-2xs);
+  color: var(--c-missed-text);
+}
+.penIcon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+.right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.debt {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-sm);
+}
+.debtLabel,
+.streak {
+  font-size: var(--fs-2xs);
+  color: var(--c-text-faint);
+}

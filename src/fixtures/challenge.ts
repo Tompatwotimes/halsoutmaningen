@@ -9,6 +9,7 @@ import { ChallengeStatus, type ChallengeConfig } from '@/domain/challenge';
 export const activeChallenge: ChallengeConfig = {
   id: 'challenge-2026',
   name: 'Hälsoutmaningen 2026',
+  description: null,
   startDate: '2026-08-01',
   endDate: '2026-11-28',
   timeZone: 'Europe/Stockholm',

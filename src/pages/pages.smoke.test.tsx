@@ -56,25 +56,32 @@ const today = currentPlainDateInTimeZone(activeChallenge.timeZone);
 function buildDayStateRows(): DayStateRow[] {
   const rows: DayStateRow[] = [];
   for (const p of participantFixtures) {
-    const entriesByDate = new Map(
+    const sessionsByDate = new Map(
       [...entryFixtures.values()]
         .filter((e) => e.userId === p.userId)
-        .map((e) => [e.date, e] as const),
+        .map((e) => [e.date, [e]] as const),
     );
     const evaluation = evaluateParticipant({
       challenge: activeChallenge,
       membership: p.membership,
       currentDate: today,
-      entriesByDate,
+      sessionsByDate,
     });
     for (const day of evaluation.days) {
-      const entry = entriesByDate.get(day.date);
+      const session = sessionsByDate.get(day.date)?.[0];
       rows.push({
         userId: p.userId,
         challengeDate: day.date,
         state: day.state,
-        entryId: entry?.entryId ?? null,
-        durationMinutes: entry?.durationMinutes ?? null,
+        sessionCount: session ? 1 : 0,
+        validSessionCount: session ? 1 : 0,
+        totalValidMinutes: session?.durationMinutes ?? 0,
+        requiredMinutes: activeChallenge.requiredMinutes,
+        requiredSessions: 1,
+        minMinutesPerSession: 0,
+        penaltyType: null,
+        penaltyDisplayName: null,
+        penaltyFromUserId: null,
       });
     }
   }
@@ -88,6 +95,7 @@ function buildSelfEntries(userId: string): SelfEntry[] {
     .map((e) => ({
       entryId: e.entryId,
       date: e.date,
+      sessionSeq: 1,
       durationMinutes: e.durationMinutes,
       activity: e.activity,
       note: e.note,
@@ -117,10 +125,16 @@ vi.mock('@/features/challenge/entries-api', () => ({
   fetchSelfEntries: vi.fn((_challengeId: string, userId: string) =>
     Promise.resolve(buildSelfEntries(userId)),
   ),
-  fetchEntryDetail: vi.fn(() => Promise.resolve(null)),
+  fetchDaySessions: vi.fn(() => Promise.resolve([])),
   createProofSignedUrl: vi.fn(() =>
     Promise.resolve('https://example.invalid/signed.jpg'),
   ),
+}));
+
+vi.mock('@/features/straffbanken/straffbank-api', () => ({
+  fetchEarnedPenalties: vi.fn(() => Promise.resolve([])),
+  fetchPenaltyDefinitions: vi.fn(() => Promise.resolve([])),
+  fetchPenaltyAssignments: vi.fn(() => Promise.resolve([])),
 }));
 
 const auth: AuthContextValue = {

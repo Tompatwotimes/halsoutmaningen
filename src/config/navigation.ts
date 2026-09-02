@@ -7,6 +7,7 @@ import {
   OverviewIcon,
   ProfileIcon,
   RankingIcon,
+  SkullIcon,
 } from '@/components/icons';
 
 export interface NavItem {
@@ -46,6 +47,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { path: '/oversikt', label: 'Översikt', icon: OverviewIcon, slot: 'bar' },
   { path: '/ranking', label: 'Ranking', icon: RankingIcon, slot: 'bar' },
+  {
+    path: '/straffbanken',
+    label: 'Straffbanken',
+    icon: SkullIcon,
+    slot: 'menu',
+  },
   { path: '/profil', label: 'Profil', icon: ProfileIcon, slot: 'menu' },
   {
     path: '/admin',

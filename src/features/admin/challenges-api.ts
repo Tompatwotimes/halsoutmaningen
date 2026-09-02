@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { ChallengeStatus, type ChallengeConfig } from '@/domain/challenge';
 
+const CHALLENGE_COLUMNS =
+  'id, name, description, start_date, end_date, timezone, required_minutes, proof_required, missed_day_cost, status';
+
 function toStatus(value: string): ChallengeStatus {
   switch (value) {
     case 'active':
@@ -19,9 +22,7 @@ function toStatus(value: string): ChallengeStatus {
 export async function fetchChallenges(): Promise<ChallengeConfig[]> {
   const { data, error } = await supabase
     .from('challenges')
-    .select(
-      'id, name, start_date, end_date, timezone, required_minutes, proof_required, missed_day_cost, status',
-    )
+    .select(CHALLENGE_COLUMNS)
     .order('start_date', { ascending: false });
 
   if (error) {
@@ -31,6 +32,7 @@ export async function fetchChallenges(): Promise<ChallengeConfig[]> {
   return data.map((row) => ({
     id: row.id,
     name: row.name,
+    description: row.description,
     startDate: row.start_date,
     endDate: row.end_date,
     timeZone: row.timezone,

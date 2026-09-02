@@ -3,6 +3,7 @@ import { challengeDates, type ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
 import { parsePlainDate } from '@/domain/dates';
 import { statusMeta } from '@/components/status/statusMeta';
+import { PenaltyDot } from '@/components/ui/PenaltyBadge';
 import { CheckIcon, MissedIcon } from '@/components/icons';
 import type { ParticipantView } from '@/features/challenge/types';
 import styles from './PersonalCalendar.module.css';
@@ -81,6 +82,8 @@ export function PersonalCalendar({
                 const { day } = parsePlainDate(date);
                 const meta = statusMeta(state);
                 const isToday = date === today;
+                const penalised =
+                  participant.requirementByDate.get(date)?.penaltyType != null;
                 const canOpen = state === DayState.Completed;
                 const cls = [
                   styles.day,
@@ -97,6 +100,9 @@ export function PersonalCalendar({
                     )}
                     {state === DayState.Missed && (
                       <MissedIcon className={styles.glyph} />
+                    )}
+                    {penalised && state !== DayState.NotParticipating && (
+                      <PenaltyDot />
                     )}
                   </>
                 );

@@ -1,0 +1,124 @@
+.lead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-base);
+  color: var(--c-text-muted);
+  margin-bottom: var(--sp-4);
+}
+.lead strong {
+  color: var(--c-text);
+}
+.leadIcon {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--c-missed-text);
+  flex-shrink: 0;
+}
+.muted {
+  color: var(--c-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.targetRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-sunken);
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.targetRow:hover {
+  border-color: var(--c-border-strong);
+}
+.targetName {
+  flex: 1;
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+.targetStreak {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.confirmHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.confirmName {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+}
+.confirmPenalty {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--c-missed-text);
+  font-weight: var(--fw-semibold);
+}
+.previewDate {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-faint);
+}
+.previewDate strong {
+  color: var(--c-text);
+}
+.previewError {
+  font-size: var(--fs-sm);
+  color: var(--c-danger-text);
+}
+.confirmActions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+
+.done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+.doneMark {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--radius-full);
+  background: var(--c-missed-surface);
+  color: var(--c-missed-text);
+}
+.doneMark svg {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+.doneTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+}
+.doneSub {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}

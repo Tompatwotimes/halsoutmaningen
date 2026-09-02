@@ -84,6 +84,11 @@ problem.
   which _is_ the history.
 - **Revisit** if a real rejoin-with-gap case appears; migrate to multi-interval
   deliberately.
+- **Phase 9 note:** membership is still one row per (challenge, user). What
+  Phase 9 added is multiple **training sessions** per (challenge, user, day) —
+  `training_entries.session_seq` — for `Dubbelpass` and honest multi-session
+  days. Existing rows backfill to `session_seq = 1` and evaluate unchanged. See
+  [`PHASE_9_PLATFORM.md`](./PHASE_9_PLATFORM.md) §3.
 
 ### 1.5 Ranking formula is explicitly undefined
 
@@ -101,11 +106,14 @@ problem.
 
 `ARCHITECTURE §22`: changing `required_minutes` after start can rewrite history.
 
-- **Decision (made):** once `status = active` and `today >= start_date`, the
-  rule fields (`start_date`, `required_minutes`, `proof_required`,
-  `missed_day_cost`, `timezone`) are **locked**. Only `name`, `status` and
-  `end_date` (extend-only) may change. Enforced in RLS / a security-definer
-  update function. Rule versioning is out of scope for V1.
+- **Decision (made, reaffirmed in Phase 9):** once `status = active` and
+  `today >= start_date`, the rule fields (`start_date`, `required_minutes`,
+  `proof_required`, `missed_day_cost`, `timezone`) — and, from Phase 9, the
+  challenge's penalty definitions — are **locked**. Only `name`, `description`,
+  `status` and `end_date` (extend-only) may change. Enforced by
+  `challenges_guard` / `challenge_penalty_definitions_guard`. **Rule versioning
+  stays out of scope**; to change a running challenge's rules you
+  `duplicate_challenge()` into a fresh draft (PHASE_9_PLATFORM.md §2).
 
 ### 1.7 Admin-created accounts / invitations
 

@@ -1,0 +1,105 @@
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border-color: var(--c-missed-border);
+}
+.headLead {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+.progress {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  font-weight: var(--fw-semibold);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+}
+.dot {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+}
+.dotOk {
+  background: var(--c-completed-surface);
+  color: var(--c-completed-text);
+}
+.dotBad {
+  background: var(--c-pending-surface);
+  color: var(--c-pending-text);
+}
+.itemBody {
+  display: flex;
+  flex-direction: column;
+}
+.itemName {
+  font-weight: var(--fw-semibold);
+}
+.itemMeta {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.err {
+  font-size: var(--fs-sm);
+  color: var(--c-danger-text);
+  margin-bottom: var(--sp-2);
+}
+.addRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-2);
+}
+.doneMark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-full);
+  background: var(--c-completed-surface);
+  color: var(--c-completed-text);
+}
+.doneMark svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.doneTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+}
+.doneSub {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+.doneActions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}

@@ -13,7 +13,25 @@ import {
 } from './challenge-api';
 import { fetchChallengeRoster, type RosterMember } from './roster-api';
 import { fetchSelfEntries } from './entries-api';
-import type { ChallengeDataset, ParticipantView } from './types';
+import type {
+  ChallengeDataset,
+  DayRequirement,
+  ParticipantView,
+} from './types';
+
+function toRequirement(row: DayStateRow): DayRequirement {
+  return {
+    requiredMinutes: row.requiredMinutes,
+    requiredSessions: row.requiredSessions,
+    minMinutesPerSession: row.minMinutesPerSession,
+    penaltyType: row.penaltyType,
+    penaltyDisplayName: row.penaltyDisplayName,
+    penaltyFromUserId: row.penaltyFromUserId,
+    sessionCount: row.sessionCount,
+    validSessionCount: row.validSessionCount,
+    totalValidMinutes: row.totalValidMinutes,
+  };
+}
 
 /**
  * Adapter boundary for challenge data (docs/DESIGN_SYSTEM.md §7).
@@ -64,6 +82,9 @@ function buildParticipant(
   );
 
   const statesByDate = new Map(rows.map((r) => [r.challengeDate, r.state]));
+  const requirementByDate = new Map(
+    rows.map((r) => [r.challengeDate, toRequirement(r)]),
+  );
   const days = rows
     .filter((r) => r.state !== DayState.NotParticipating)
     .map((r) => ({ date: r.challengeDate, state: r.state }));
@@ -72,6 +93,8 @@ function buildParticipant(
   const rawTodayState = statesByDate.get(today) ?? null;
   const todayState =
     rawTodayState === DayState.NotParticipating ? null : rawTodayState;
+  const todayRequirement =
+    todayState === null ? null : (requirementByDate.get(today) ?? null);
 
   const liability = summarizeLiability(states, missedDayCost);
   const decidedDays = liability.completedDays + liability.missedDays;
@@ -86,7 +109,9 @@ function buildParticipant(
     membershipDisplay: membershipDisplayState(challenge, membership, today),
     days,
     statesByDate,
+    requirementByDate,
     todayState,
+    todayRequirement,
     activeToday: membership.active && todayState !== null,
     currentStreak: currentStreak(states),
     longestStreak: longestStreak(states),
@@ -156,7 +181,15 @@ async function loadChallengeDataset(
     throw new Error('Din egen medlemsrad saknas i deltagarlistan.');
   }
 
-  const selfEntryByDate = new Map(selfEntries.map((e) => [e.date, e]));
+  const selfSessionsByDate = new Map<string, typeof selfEntries>();
+  for (const e of selfEntries) {
+    const list = selfSessionsByDate.get(e.date) ?? [];
+    list.push(e);
+    selfSessionsByDate.set(e.date, list);
+  }
+  for (const list of selfSessionsByDate.values()) {
+    list.sort((a, b) => a.sessionSeq - b.sessionSeq);
+  }
 
   return {
     challenge,
@@ -165,7 +198,12 @@ async function loadChallengeDataset(
     participants,
     rosterToday: participants.filter((p) => p.activeToday),
     selfEntries,
-    getSelfEntry: (date) => selfEntryByDate.get(date) ?? null,
+    getSelfEntry: (date) => {
+      const list = selfSessionsByDate.get(date);
+      if (!list || list.length === 0) return null;
+      return list.find((e) => e.sessionSeq === 1) ?? list[0] ?? null;
+    },
+    getSelfSessions: (date) => selfSessionsByDate.get(date) ?? [],
   };
 }
 

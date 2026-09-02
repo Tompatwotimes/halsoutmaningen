@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { ChallengeStatus, type ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
+import { PenaltyType } from '@/domain/penalties';
 import type { MembershipConfig } from '@/domain/membership';
 
 function toStatus(value: string): ChallengeStatus {
@@ -19,6 +20,7 @@ function toStatus(value: string): ChallengeStatus {
 function toChallengeConfig(row: {
   id: string;
   name: string;
+  description: string | null;
   start_date: string;
   end_date: string;
   timezone: string;
@@ -30,6 +32,7 @@ function toChallengeConfig(row: {
   return {
     id: row.id,
     name: row.name,
+    description: row.description,
     startDate: row.start_date,
     endDate: row.end_date,
     timeZone: row.timezone,
@@ -73,7 +76,7 @@ export async function fetchMyMemberships(
   const { data: challenges, error: cErr } = await supabase
     .from('challenges')
     .select(
-      'id, name, start_date, end_date, timezone, required_minutes, proof_required, missed_day_cost, status',
+      'id, name, description, start_date, end_date, timezone, required_minutes, proof_required, missed_day_cost, status',
     )
     .in(
       'id',
@@ -133,8 +136,19 @@ export interface DayStateRow {
   userId: string;
   challengeDate: string;
   state: DayState;
-  entryId: string | null;
-  durationMinutes: number | null;
+  /** Every training session logged for the day, any status. */
+  sessionCount: number;
+  /** Sessions that contribute toward the (penalty-aware) requirement. */
+  validSessionCount: number;
+  totalValidMinutes: number;
+  /** Effective required total minutes for the day (penalty-aware). */
+  requiredMinutes: number;
+  requiredSessions: number;
+  minMinutesPerSession: number;
+  /** The active penalty on this day, or null for a normal day. */
+  penaltyType: PenaltyType | null;
+  penaltyDisplayName: string | null;
+  penaltyFromUserId: string | null;
 }
 
 function toDayState(value: string): DayState {
@@ -150,6 +164,12 @@ function toDayState(value: string): DayState {
     default:
       return DayState.NotParticipating;
   }
+}
+
+function toPenaltyType(value: string | null): PenaltyType | null {
+  if (value === PenaltyType.MinimumMinutes) return PenaltyType.MinimumMinutes;
+  if (value === PenaltyType.DoubleSession) return PenaltyType.DoubleSession;
+  return null;
 }
 
 /**
@@ -173,7 +193,14 @@ export async function fetchDayStates(
     userId: row.user_id,
     challengeDate: row.challenge_date,
     state: toDayState(row.state),
-    entryId: row.entry_id,
-    durationMinutes: row.duration_minutes,
+    sessionCount: row.session_count,
+    validSessionCount: row.valid_session_count,
+    totalValidMinutes: row.total_valid_minutes,
+    requiredMinutes: row.required_minutes,
+    requiredSessions: row.required_sessions,
+    minMinutesPerSession: row.min_minutes_per_session,
+    penaltyType: toPenaltyType(row.penalty_type),
+    penaltyDisplayName: row.penalty_display_name,
+    penaltyFromUserId: row.penalty_from_user_id,
   }));
 }

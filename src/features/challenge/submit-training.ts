@@ -106,11 +106,14 @@ async function upsertEntry(
         challenge_id: input.challengeId,
         user_id: input.userId,
         challenge_date: input.date,
+        // The primary session for the day; extra sessions (Dubbelpass) use
+        // add_training_session() which assigns the next seq server-side.
+        session_seq: 1,
         duration_minutes: input.durationMinutes,
         activity: normalizeText(input.activity),
         note: normalizeText(input.note),
       },
-      { onConflict: 'challenge_id,user_id,challenge_date' },
+      { onConflict: 'challenge_id,user_id,challenge_date,session_seq' },
     )
     .select('id')
     .single();
@@ -142,7 +145,7 @@ function normalizeText(value: string | null): string | null {
  * residual gap documented in docs/DATABASE.md §6). The newly uploaded object
  * is removed on any failure so it never becomes a permanent orphan.
  */
-async function attachProof(
+export async function attachProof(
   challengeId: string,
   userId: string,
   date: string,

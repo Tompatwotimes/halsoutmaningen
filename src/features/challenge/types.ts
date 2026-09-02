@@ -2,8 +2,28 @@ import type { ChallengeConfig } from '@/domain/challenge';
 import type { DayState } from '@/domain/dayState';
 import type { LiabilityBreakdown } from '@/domain/liability';
 import type { MembershipConfig } from '@/domain/membership';
+import type { PenaltyType } from '@/domain/penalties';
 import type { MembershipStateResult } from '@/features/admin/membershipState';
 import type { Role } from '@/features/profile/profile-api';
+
+/**
+ * The effective (penalty-aware) training requirement for one challenge day,
+ * plus that day's live session totals — straight from `challenge_day_states`.
+ * `penalty*` is null on a normal day.
+ */
+export interface DayRequirement {
+  requiredMinutes: number;
+  requiredSessions: number;
+  minMinutesPerSession: number;
+  penaltyType: PenaltyType | null;
+  penaltyDisplayName: string | null;
+  penaltyFromUserId: string | null;
+  /** Sessions logged for the day, any status. */
+  sessionCount: number;
+  /** Sessions that count toward the requirement. */
+  validSessionCount: number;
+  totalValidMinutes: number;
+}
 
 /**
  * Shared shapes for the real (Supabase-backed) challenge data layer.
@@ -28,6 +48,10 @@ export interface ParticipantView {
   statesByDate: Map<string, DayState>;
   /** Canonical state for today, or null when not eligible today. */
   todayState: DayState | null;
+  /** Effective requirement for today (penalty-aware), null when not eligible today. */
+  todayRequirement: DayRequirement | null;
+  /** Per-date effective requirement across the whole challenge (matrix / indicators). */
+  requirementByDate: Map<string, DayRequirement>;
   /** True when eligible today AND membership currently active. */
   activeToday: boolean;
   currentStreak: number;
@@ -38,10 +62,12 @@ export interface ParticipantView {
   decidedDays: number;
 }
 
-/** A lightweight projection of the signed-in user's own training entry. */
+/** A lightweight projection of one of the signed-in user's own training sessions. */
 export interface SelfEntry {
   entryId: string;
   date: string;
+  /** 1-based session ordinal within the day. */
+  sessionSeq: number;
   durationMinutes: number;
   activity: string | null;
   note: string | null;
@@ -59,7 +85,10 @@ export interface ChallengeDataset {
   participants: ParticipantView[];
   /** Participants eligible + active today, ordered by display name. */
   rosterToday: ParticipantView[];
-  /** The signed-in user's own entries, most recent first. */
+  /** The signed-in user's own sessions, most recent day first, seq ascending. */
   selfEntries: SelfEntry[];
+  /** The primary session (seq 1) for a date, or null. */
   getSelfEntry: (date: string) => SelfEntry | null;
+  /** Every session logged by the signed-in user on a date, seq ascending. */
+  getSelfSessions: (date: string) => SelfEntry[];
 }

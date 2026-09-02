@@ -27,6 +27,7 @@ import {
 } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
+import { MultiSessionLog } from '@/features/challenge/MultiSessionLog';
 import { useSubmitTraining } from '@/features/challenge/useSubmitTraining';
 import { useEntryDetail } from '@/features/challenge/useEntryDetail';
 import { useProfile } from '@/features/profile/useProfile';
@@ -74,6 +75,12 @@ export function LogPage() {
   }
   if (!data) {
     return <NoMembershipState title="Logga träning" />;
+  }
+
+  // A penalised day gets the dedicated multi-session experience.
+  const req = data.self.todayRequirement;
+  if (req && req.penaltyType !== null) {
+    return <MultiSessionLog data={data} requirement={req} />;
   }
 
   return <LogForm data={data} />;
@@ -446,9 +453,9 @@ function LogForm({
             </div>
           ) : keepsExistingProof ? (
             <>
-              {existingProofQuery.data?.proofSignedUrl ? (
+              {existingProofQuery.data?.sessions[0]?.proofSignedUrl ? (
                 <SignedProofImage
-                  src={existingProofQuery.data.proofSignedUrl}
+                  src={existingProofQuery.data.sessions[0].proofSignedUrl}
                   alt="Nuvarande bildbevis"
                 />
               ) : (

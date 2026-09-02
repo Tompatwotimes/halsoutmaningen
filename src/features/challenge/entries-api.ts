@@ -16,11 +16,12 @@ export async function fetchSelfEntries(
   const { data: entries, error } = await supabase
     .from('training_entries')
     .select(
-      'id, challenge_date, duration_minutes, activity, note, status, created_at',
+      'id, challenge_date, session_seq, duration_minutes, activity, note, status, created_at',
     )
     .eq('challenge_id', challengeId)
     .eq('user_id', userId)
-    .order('challenge_date', { ascending: false });
+    .order('challenge_date', { ascending: false })
+    .order('session_seq', { ascending: true });
 
   if (error) {
     throw new Error(error.message);
@@ -43,6 +44,7 @@ export async function fetchSelfEntries(
   return entries.map((e) => ({
     entryId: e.id,
     date: e.challenge_date,
+    sessionSeq: e.session_seq,
     durationMinutes: e.duration_minutes,
     activity: e.activity,
     note: e.note,
@@ -55,63 +57,72 @@ export async function fetchSelfEntries(
 export interface EntryDetail {
   entryId: string;
   date: string;
+  sessionSeq: number;
   durationMinutes: number;
   activity: string | null;
   note: string | null;
   submittedAt: string;
   status: EntryStatus;
+  invalidatedReason: string | null;
   proofPath: string | null;
 }
 
 /**
- * One participant's entry for one day, on demand — used only when a
- * completed dashboard/matrix cell is opened (CLAUDE.md §11, §12; never
- * prefetched for a whole grid). RLS (`training_entries_select`) allows this
- * for any shared-challenge member, not just the owner or an admin — that
- * shared visibility is the point of the social-transparency feature.
+ * One participant's session(s) for one day, on demand — used only when a
+ * dashboard/matrix cell is opened (CLAUDE.md §11, §12; never prefetched for a
+ * whole grid). A penalised day (Dubbelpass) can hold several sessions. RLS
+ * (`training_entries_select`) allows this for any shared-challenge member —
+ * that shared visibility is the point of the social-transparency feature.
  */
-export async function fetchEntryDetail(
+export async function fetchDaySessions(
   challengeId: string,
   userId: string,
   date: string,
-): Promise<EntryDetail | null> {
-  const { data: entry, error } = await supabase
+): Promise<EntryDetail[]> {
+  const { data: entries, error } = await supabase
     .from('training_entries')
     .select(
-      'id, challenge_date, duration_minutes, activity, note, status, created_at',
+      'id, challenge_date, session_seq, duration_minutes, activity, note, status, invalidated_reason, created_at',
     )
     .eq('challenge_id', challengeId)
     .eq('user_id', userId)
     .eq('challenge_date', date)
-    .maybeSingle();
+    .order('session_seq', { ascending: true });
 
   if (error) {
     throw new Error(error.message);
   }
-  if (!entry) {
-    return null;
+  if (entries.length === 0) {
+    return [];
   }
 
-  const { data: proof, error: proofError } = await supabase
+  const { data: proofs, error: proofError } = await supabase
     .from('training_proofs')
-    .select('storage_path')
-    .eq('training_entry_id', entry.id)
-    .maybeSingle();
+    .select('training_entry_id, storage_path')
+    .in(
+      'training_entry_id',
+      entries.map((e) => e.id),
+    );
 
   if (proofError) {
     throw new Error(proofError.message);
   }
+  const pathByEntry = new Map(
+    proofs.map((p) => [p.training_entry_id, p.storage_path]),
+  );
 
-  return {
-    entryId: entry.id,
-    date: entry.challenge_date,
-    durationMinutes: entry.duration_minutes,
-    activity: entry.activity,
-    note: entry.note,
-    submittedAt: entry.created_at,
-    status: entry.status as EntryStatus,
-    proofPath: proof?.storage_path ?? null,
-  };
+  return entries.map((e) => ({
+    entryId: e.id,
+    date: e.challenge_date,
+    sessionSeq: e.session_seq,
+    durationMinutes: e.duration_minutes,
+    activity: e.activity,
+    note: e.note,
+    submittedAt: e.created_at,
+    status: e.status as EntryStatus,
+    invalidatedReason: e.invalidated_reason,
+    proofPath: pathByEntry.get(e.id) ?? null,
+  }));
 }
 
 const PROOF_SIGNED_URL_TTL_SECONDS = 120;

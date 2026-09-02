@@ -12,13 +12,21 @@ import { StatTile } from '@/components/ui/StatTile';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { EmptyState } from '@/components/feedback/EmptyState';
-import { ClockIcon, GroupIcon, ShieldIcon } from '@/components/icons';
+import {
+  ChevronRightIcon,
+  ClockIcon,
+  GroupIcon,
+  ShieldIcon,
+  SkullIcon,
+} from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { useProfile } from '@/features/profile/useProfile';
 import { useAuth } from '@/features/auth/useAuth';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
+import { MyChallengesCard } from '@/features/challenge/MyChallengesCard';
 import { PersonalCalendar } from '@/features/profile/PersonalCalendar';
+import { useStraffbank } from '@/features/straffbanken/useStraffbank';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import type { SelfEntry } from '@/features/challenge/types';
 import styles from './ProfilePage.module.css';
@@ -145,6 +153,7 @@ export function ProfilePage() {
           isSelf
           userId={data.self.userId}
           date={openDate}
+          requirement={data.self.requirementByDate.get(openDate) ?? null}
         />
       )}
     </>
@@ -165,9 +174,34 @@ function ChallengeSection({
   const { self, challenge, today } = data;
   const { liability } = self;
   const decidedElapsed = liability.completedDays + liability.missedDays;
+  const straffbank = useStraffbank(
+    challenge.id,
+    self.userId,
+    self.currentStreak,
+  );
 
   return (
     <>
+      <Link to="/straffbanken" className={styles.straffLink}>
+        <Card padding="md" className={styles.straffCard}>
+          <span className={styles.straffIcon} aria-hidden="true">
+            <SkullIcon />
+          </span>
+          <span className={styles.straffBody}>
+            <span className={styles.straffTitle}>Straffbanken</span>
+            <span className={styles.straffText}>
+              {straffbank.totalAvailable} redo ·{' '}
+              {straffbank.received.length > 0
+                ? `${straffbank.received.length} straff mot dig`
+                : straffbank.nextMilestone
+                  ? `nästa vid ${straffbank.nextMilestone.definition.unlockStreak} d`
+                  : 'alla upplåsta'}
+            </span>
+          </span>
+          <ChevronRightIcon className={styles.straffChev} />
+        </Card>
+      </Link>
+
       <div className={styles.heroRow}>
         <Card padding="lg" className={styles.ringCard}>
           <ProgressRing
@@ -233,6 +267,12 @@ function ChallengeSection({
       <LiabilityCard
         liability={liability}
         missedDayCost={challenge.missedDayCost}
+      />
+
+      <MyChallengesCard
+        userId={self.userId}
+        today={today}
+        currentChallengeId={challenge.id}
       />
 
       <Card title="Din kalender">

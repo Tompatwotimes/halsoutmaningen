@@ -1,0 +1,52 @@
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.row {
+  display: flex;
+  gap: var(--sp-3);
+}
+.row > * {
+  flex: 1;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.field > span {
+  color: var(--c-text-muted);
+  font-weight: var(--fw-semibold);
+}
+.field input,
+.field select,
+.field textarea {
+  padding: var(--sp-2) var(--sp-3);
+  min-height: 2.75rem;
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font: inherit;
+}
+.field input:disabled,
+.field select:disabled {
+  opacity: 0.55;
+}
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+}
+.lockNote {
+  font-size: var(--fs-xs);
+  color: var(--c-pending-text);
+  background: var(--c-pending-surface);
+  border: 1px solid var(--c-pending-border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
