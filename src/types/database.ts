@@ -366,6 +366,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "penalty_assignments_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "penalty_assignments_challenge_id_fkey"
             columns: ["challenge_id"]
             isOneToOne: false
@@ -567,6 +574,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _next_penalty_target_date: {
+        Args: { p_challenge_id: string; p_to_user_id: string }
+        Returns: string
+      }
+      _reconcile_earned_penalties: {
+        Args: { p_challenge_id: string; p_user_id: string }
+        Returns: undefined
+      }
       add_training_session: {
         Args: {
           p_activity?: string
@@ -574,11 +589,55 @@ export type Database = {
           p_duration_minutes: number
           p_note?: string
         }
-        Returns: Database["public"]["Tables"]["training_entries"]["Row"]
+        Returns: {
+          activity: string | null
+          challenge_date: string
+          challenge_id: string
+          created_at: string
+          duration_minutes: number
+          id: string
+          invalidated_at: string | null
+          invalidated_by: string | null
+          invalidated_reason: string | null
+          invalidated_reason_code: string | null
+          note: string | null
+          session_seq: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "training_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       archive_challenge: {
         Args: { p_challenge_id: string }
-        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+        Returns: {
+          activated_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          missed_day_cost: number
+          name: string
+          proof_required: boolean
+          required_minutes: number
+          start_date: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       assign_penalty: {
         Args: { p_earned_penalty_id: string; p_to_user_id: string }
@@ -609,9 +668,9 @@ export type Database = {
         Returns: {
           challenge_date: string
           min_minutes_per_session: number
-          penalty_display_name: string | null
-          penalty_from_user_id: string | null
-          penalty_type: string | null
+          penalty_display_name: string
+          penalty_from_user_id: string
+          penalty_type: string
           required_minutes: number
           required_sessions: number
           session_count: number
@@ -633,7 +692,7 @@ export type Database = {
           longest_streak: number
           membership_active: boolean
           missed_days: number
-          participation_end_date: string | null
+          participation_end_date: string
           participation_start_date: string
           penalties_assigned: number
           penalties_earned: number
@@ -643,9 +702,47 @@ export type Database = {
           user_id: string
         }[]
       }
+      challenge_streak_runs: {
+        Args: { p_challenge_id: string; p_user_id: string }
+        Returns: {
+          run_days: string[]
+          run_len: number
+          run_start: string
+        }[]
+      }
+      challenge_valid_earned_penalties: {
+        Args: { p_challenge_id: string; p_user_id: string }
+        Returns: {
+          definition_id: string
+          earned_on_date: string
+          streak_run_start: string
+        }[]
+      }
       complete_challenge: {
         Args: { p_challenge_id: string }
-        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+        Returns: {
+          activated_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          missed_day_cost: number
+          name: string
+          proof_required: boolean
+          required_minutes: number
+          start_date: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_challenge: {
         Args: {
@@ -658,7 +755,29 @@ export type Database = {
           p_start_date: string
           p_timezone?: string
         }
-        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+        Returns: {
+          activated_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          missed_day_cost: number
+          name: string
+          proof_required: boolean
+          required_minutes: number
+          start_date: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       current_user_role: { Args: never; Returns: string }
       duplicate_challenge: {
@@ -669,11 +788,55 @@ export type Database = {
           p_source_id: string
           p_start_date: string
         }
-        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+        Returns: {
+          activated_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          missed_day_cost: number
+          name: string
+          proof_required: boolean
+          required_minutes: number
+          start_date: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       invalidate_training_session: {
         Args: { p_entry_id: string; p_reason: string; p_reason_code?: string }
-        Returns: Database["public"]["Tables"]["training_entries"]["Row"]
+        Returns: {
+          activity: string | null
+          challenge_date: string
+          challenge_id: string
+          created_at: string
+          duration_minutes: number
+          id: string
+          invalidated_at: string | null
+          invalidated_by: string | null
+          invalidated_reason: string | null
+          invalidated_reason_code: string | null
+          note: string | null
+          session_seq: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "training_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       is_admin: { Args: never; Returns: boolean }
       is_challenge_member: {
@@ -691,15 +854,76 @@ export type Database = {
       }
       reopen_challenge: {
         Args: { p_challenge_id: string }
-        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+        Returns: {
+          activated_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          missed_day_cost: number
+          name: string
+          proof_required: boolean
+          required_minutes: number
+          start_date: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       revalidate_training_session: {
         Args: { p_entry_id: string; p_reason: string }
-        Returns: Database["public"]["Tables"]["training_entries"]["Row"]
+        Returns: {
+          activity: string | null
+          challenge_date: string
+          challenge_id: string
+          created_at: string
+          duration_minutes: number
+          id: string
+          invalidated_at: string | null
+          invalidated_by: string | null
+          invalidated_reason: string | null
+          invalidated_reason_code: string | null
+          note: string | null
+          session_seq: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "training_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       seed_default_penalty_definitions: {
         Args: { p_challenge_id: string }
-        Returns: Database["public"]["Tables"]["challenge_penalty_definitions"]["Row"][]
+        Returns: {
+          active: boolean
+          challenge_id: string
+          created_at: string
+          display_name: string
+          id: string
+          penalty_type: string
+          sort_order: number
+          unlock_streak: number
+          updated_at: string
+          value: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "challenge_penalty_definitions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       shares_challenge_with: {
         Args: { p_other_user: string }
@@ -724,12 +948,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -753,11 +977,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -778,11 +1002,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -803,11 +1027,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -820,11 +1044,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
