@@ -56,25 +56,32 @@ const today = currentPlainDateInTimeZone(activeChallenge.timeZone);
 function buildDayStateRows(): DayStateRow[] {
   const rows: DayStateRow[] = [];
   for (const p of participantFixtures) {
-    const entriesByDate = new Map(
+    const sessionsByDate = new Map(
       [...entryFixtures.values()]
         .filter((e) => e.userId === p.userId)
-        .map((e) => [e.date, e] as const),
+        .map((e) => [e.date, [e]] as const),
     );
     const evaluation = evaluateParticipant({
       challenge: activeChallenge,
       membership: p.membership,
       currentDate: today,
-      entriesByDate,
+      sessionsByDate,
     });
     for (const day of evaluation.days) {
-      const entry = entriesByDate.get(day.date);
+      const session = sessionsByDate.get(day.date)?.[0];
       rows.push({
         userId: p.userId,
         challengeDate: day.date,
         state: day.state,
-        entryId: entry?.entryId ?? null,
-        durationMinutes: entry?.durationMinutes ?? null,
+        sessionCount: session ? 1 : 0,
+        validSessionCount: session ? 1 : 0,
+        totalValidMinutes: session?.durationMinutes ?? 0,
+        requiredMinutes: activeChallenge.requiredMinutes,
+        requiredSessions: 1,
+        minMinutesPerSession: 0,
+        penaltyType: null,
+        penaltyDisplayName: null,
+        penaltyFromUserId: null,
       });
     }
   }

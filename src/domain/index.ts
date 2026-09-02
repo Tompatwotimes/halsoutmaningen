@@ -10,6 +10,7 @@ export * from './dates';
 export * from './time';
 export * from './challenge';
 export * from './membership';
+export * from './penalties';
 export * from './dayState';
 export * from './streaks';
 export * from './liability';

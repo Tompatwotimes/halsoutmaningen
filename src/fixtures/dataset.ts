@@ -1,11 +1,26 @@
 import { evaluateParticipant } from '@/domain/liability';
 import { currentStreak, longestStreak } from '@/domain/streaks';
 import { isDateEligible } from '@/domain/membership';
+import { computeDailyRequirement } from '@/domain/penalties';
 import { membershipDisplayState } from '@/features/admin/membershipState';
 import type {
   ChallengeDataset,
+  DayRequirement,
   ParticipantView,
 } from '@/features/challenge/types';
+
+/** The fixture world has no penalties: every day requires the base rule. */
+function baseRequirement(): DayRequirement {
+  const req = computeDailyRequirement(activeChallenge, null);
+  return {
+    requiredMinutes: req.requiredTotalMinutes,
+    requiredSessions: req.requiredSessions,
+    minMinutesPerSession: req.minMinutesPerSession,
+    penaltyType: null,
+    penaltyDisplayName: null,
+    penaltyFromUserId: null,
+  };
+}
 import { activeChallenge, FIXTURE_TODAY } from './challenge';
 import { participantFixtures, SELF_USER_ID } from './participants';
 import { buildEntryMap } from './entries';
@@ -27,22 +42,30 @@ export function buildChallengeDataset(): ChallengeDataset {
 
   const participants: ParticipantView[] = participantFixtures
     .map((p) => {
-      const entriesByDate = new Map(
+      const sessionsByDate = new Map(
         [...entries.values()]
           .filter((e) => e.userId === p.userId)
-          .map((e) => [e.date, e] as const),
+          .map((e) => [e.date, [e]] as const),
       );
       const evaluation = evaluateParticipant({
         challenge: activeChallenge,
         membership: p.membership,
         currentDate: today,
-        entriesByDate,
+        sessionsByDate,
       });
       const statesByDate = new Map(
         evaluation.days.map((d) => [d.date, d.state] as const),
       );
+      const requirementByDate = new Map(
+        evaluation.days.map((d) => [d.date, baseRequirement()] as const),
+      );
       const decided =
         evaluation.liability.completedDays + evaluation.liability.missedDays;
+      const eligibleToday = isDateEligible(
+        activeChallenge,
+        p.membership,
+        today,
+      );
 
       return {
         userId: p.userId,
@@ -58,12 +81,10 @@ export function buildChallengeDataset(): ChallengeDataset {
         ),
         days: evaluation.days,
         statesByDate,
-        todayState: isDateEligible(activeChallenge, p.membership, today)
-          ? (statesByDate.get(today) ?? null)
-          : null,
-        activeToday:
-          p.membership.active &&
-          isDateEligible(activeChallenge, p.membership, today),
+        requirementByDate,
+        todayState: eligibleToday ? (statesByDate.get(today) ?? null) : null,
+        todayRequirement: eligibleToday ? baseRequirement() : null,
+        activeToday: p.membership.active && eligibleToday,
         currentStreak: currentStreak(evaluation.states),
         longestStreak: longestStreak(evaluation.states),
         liability: evaluation.liability,

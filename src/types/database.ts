@@ -139,10 +139,60 @@ export type Database = {
           },
         ]
       }
+      challenge_penalty_definitions: {
+        Row: {
+          active: boolean
+          challenge_id: string
+          created_at: string
+          display_name: string
+          id: string
+          penalty_type: string
+          sort_order: number
+          unlock_streak: number
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          active?: boolean
+          challenge_id: string
+          created_at?: string
+          display_name: string
+          id?: string
+          penalty_type: string
+          sort_order?: number
+          unlock_streak: number
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          active?: boolean
+          challenge_id?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          penalty_type?: string
+          sort_order?: number
+          unlock_streak?: number
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challenge_penalty_definitions_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       challenges: {
         Row: {
+          activated_at: string | null
+          completed_at: string | null
           created_at: string
           created_by: string | null
+          description: string | null
           end_date: string
           id: string
           missed_day_cost: number
@@ -155,8 +205,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          activated_at?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          description?: string | null
           end_date: string
           id?: string
           missed_day_cost: number
@@ -169,8 +222,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          activated_at?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string | null
+          description?: string | null
           end_date?: string
           id?: string
           missed_day_cost?: number
@@ -186,6 +242,153 @@ export type Database = {
           {
             foreignKeyName: "challenges_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      earned_penalties: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          display_name: string
+          earned_on_date: string
+          id: string
+          penalty_definition_id: string
+          penalty_type: string
+          spent_assignment_id: string | null
+          status: string
+          streak_run_start: string
+          user_id: string
+          value: number
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          display_name: string
+          earned_on_date: string
+          id?: string
+          penalty_definition_id: string
+          penalty_type: string
+          spent_assignment_id?: string | null
+          status?: string
+          streak_run_start: string
+          user_id: string
+          value: number
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          display_name?: string
+          earned_on_date?: string
+          id?: string
+          penalty_definition_id?: string
+          penalty_type?: string
+          spent_assignment_id?: string | null
+          status?: string
+          streak_run_start?: string
+          user_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "earned_penalties_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earned_penalties_penalty_definition_id_fkey"
+            columns: ["penalty_definition_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_penalty_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earned_penalties_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      penalty_assignments: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          cancelled_reason: string | null
+          challenge_id: string
+          created_at: string
+          display_name: string
+          earned_penalty_id: string
+          from_user_id: string
+          id: string
+          penalty_type: string
+          status: string
+          target_date: string
+          to_user_id: string
+          value: number
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          challenge_id: string
+          created_at?: string
+          display_name: string
+          earned_penalty_id: string
+          from_user_id: string
+          id?: string
+          penalty_type: string
+          status?: string
+          target_date: string
+          to_user_id: string
+          value: number
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          challenge_id?: string
+          created_at?: string
+          display_name?: string
+          earned_penalty_id?: string
+          from_user_id?: string
+          id?: string
+          penalty_type?: string
+          status?: string
+          target_date?: string
+          to_user_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_assignments_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_earned_penalty_id_fkey"
+            columns: ["earned_penalty_id"]
+            isOneToOne: true
+            referencedRelation: "earned_penalties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_from_user_id_fkey"
+            columns: ["from_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_to_user_id_fkey"
+            columns: ["to_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -233,7 +436,9 @@ export type Database = {
           invalidated_at: string | null
           invalidated_by: string | null
           invalidated_reason: string | null
+          invalidated_reason_code: string | null
           note: string | null
+          session_seq: number
           status: string
           updated_at: string
           user_id: string
@@ -248,7 +453,9 @@ export type Database = {
           invalidated_at?: string | null
           invalidated_by?: string | null
           invalidated_reason?: string | null
+          invalidated_reason_code?: string | null
           note?: string | null
+          session_seq?: number
           status?: string
           updated_at?: string
           user_id: string
@@ -263,7 +470,9 @@ export type Database = {
           invalidated_at?: string | null
           invalidated_by?: string | null
           invalidated_reason?: string | null
+          invalidated_reason_code?: string | null
           note?: string | null
+          session_seq?: number
           status?: string
           updated_at?: string
           user_id?: string
@@ -358,27 +567,140 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_training_session: {
+        Args: {
+          p_activity?: string
+          p_challenge_id: string
+          p_duration_minutes: number
+          p_note?: string
+        }
+        Returns: Database["public"]["Tables"]["training_entries"]["Row"]
+      }
+      archive_challenge: {
+        Args: { p_challenge_id: string }
+        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+      }
+      assign_penalty: {
+        Args: { p_earned_penalty_id: string; p_to_user_id: string }
+        Returns: Json
+      }
+      cancel_penalty_assignment: {
+        Args: { p_assignment_id: string; p_reason: string }
+        Returns: Json
+      }
       challenge_current_date: {
         Args: { p_challenge_id: string }
         Returns: string
       }
+      challenge_daily_requirement: {
+        Args: {
+          p_base_minutes: number
+          p_penalty_type: string
+          p_penalty_value: number
+        }
+        Returns: {
+          min_minutes_per_session: number
+          required_sessions: number
+          required_total_minutes: number
+        }[]
+      }
       challenge_day_states: {
-        Args: { p_challenge_id: string }
+        Args: { p_challenge_id: string; p_user_id?: string }
         Returns: {
           challenge_date: string
-          duration_minutes: number
-          entry_id: string
+          min_minutes_per_session: number
+          penalty_display_name: string | null
+          penalty_from_user_id: string | null
+          penalty_type: string | null
+          required_minutes: number
+          required_sessions: number
+          session_count: number
           state: string
+          total_valid_minutes: number
+          user_id: string
+          valid_session_count: number
+        }[]
+      }
+      challenge_results: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          completed_days: number
+          completion_rate: number
+          current_streak: number
+          eligible_days: number
+          future_days: number
+          liability_sek: number
+          longest_streak: number
+          membership_active: boolean
+          missed_days: number
+          participation_end_date: string | null
+          participation_start_date: string
+          penalties_assigned: number
+          penalties_earned: number
+          penalties_received: number
+          pending_days: number
+          total_valid_minutes: number
           user_id: string
         }[]
       }
+      complete_challenge: {
+        Args: { p_challenge_id: string }
+        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+      }
+      create_challenge: {
+        Args: {
+          p_description?: string
+          p_end_date: string
+          p_missed_day_cost: number
+          p_name: string
+          p_proof_required?: boolean
+          p_required_minutes: number
+          p_start_date: string
+          p_timezone?: string
+        }
+        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+      }
       current_user_role: { Args: never; Returns: string }
+      duplicate_challenge: {
+        Args: {
+          p_copy_roster?: boolean
+          p_end_date: string
+          p_name: string
+          p_source_id: string
+          p_start_date: string
+        }
+        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+      }
+      invalidate_training_session: {
+        Args: { p_entry_id: string; p_reason: string; p_reason_code?: string }
+        Returns: Database["public"]["Tables"]["training_entries"]["Row"]
+      }
       is_admin: { Args: never; Returns: boolean }
       is_challenge_member: {
         Args: { p_challenge_id: string }
         Returns: boolean
       }
       is_valid_timezone: { Args: { p_tz: string }; Returns: boolean }
+      preview_penalty_target: {
+        Args: { p_earned_penalty_id: string; p_to_user_id: string }
+        Returns: Json
+      }
+      reconcile_earned_penalties: {
+        Args: { p_challenge_id: string; p_user_id?: string }
+        Returns: undefined
+      }
+      reopen_challenge: {
+        Args: { p_challenge_id: string }
+        Returns: Database["public"]["Tables"]["challenges"]["Row"]
+      }
+      revalidate_training_session: {
+        Args: { p_entry_id: string; p_reason: string }
+        Returns: Database["public"]["Tables"]["training_entries"]["Row"]
+      }
+      seed_default_penalty_definitions: {
+        Args: { p_challenge_id: string }
+        Returns: Database["public"]["Tables"]["challenge_penalty_definitions"]["Row"][]
+      }
       shares_challenge_with: {
         Args: { p_other_user: string }
         Returns: boolean

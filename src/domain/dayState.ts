@@ -1,14 +1,26 @@
 /**
  * The single canonical challenge-day state calculation.
  *
- * This mirrors the PostgreSQL implementation (docs/ARCHITECTURE.md §11) so the
- * frontend can render optimistically. It must never be re-implemented ad hoc
- * inside individual components — import from here.
+ * This mirrors the PostgreSQL implementation (`challenge_day_states`,
+ * docs/ARCHITECTURE.md §11, docs/PHASE_9_PLATFORM.md) so the frontend can render
+ * optimistically. It must never be re-implemented ad hoc inside individual
+ * components — import from here.
+ *
+ * Phase 9: a challenge day can hold *multiple* training sessions, and an active
+ * penalty can raise the day's requirement. Completion is decided by the shared
+ * requirement engine in `./penalties`, never by a per-entry check in a screen.
  */
 
 import type { ChallengeConfig } from './challenge';
 import { compareDates } from './dates';
 import { isDateEligible, type MembershipConfig } from './membership';
+import {
+  computeDailyRequirement,
+  evaluateDay,
+  type ActivePenalty,
+  type DailyRequirement,
+  type SessionSummary,
+} from './penalties';
 
 export const DayState = {
   Completed: 'completed',
@@ -20,24 +32,33 @@ export const DayState = {
 export type DayState = (typeof DayState)[keyof typeof DayState];
 
 /**
- * The minimal projection of a training entry needed to decide qualification.
- * `invalidated` covers admin correction (docs/PRODUCT_SPEC.md §12).
+ * The minimal projection of a training session needed to decide qualification.
+ * Retained name/shape for existing call sites; a day may have several of these.
  */
-export interface TrainingEntrySummary {
-  durationMinutes: number;
-  hasProof: boolean;
-  invalidated?: boolean;
+export type TrainingEntrySummary = SessionSummary;
+
+/**
+ * Whether a set of sessions satisfies the challenge's *normal* completion rule
+ * for a day (no penalty). Kept for call sites that only need the base check.
+ */
+export function isQualifyingDay(
+  challenge: ChallengeConfig,
+  sessions: readonly SessionSummary[],
+): boolean {
+  return evaluateDay(computeDailyRequirement(challenge, null), sessions)
+    .completed;
 }
 
-/** Whether an entry satisfies the challenge's completion rule. */
+/**
+ * Back-compat single-session helper: does this one session alone satisfy a
+ * normal day? Equivalent to the pre-Phase-9 `isQualifyingEntry`.
+ */
 export function isQualifyingEntry(
   challenge: ChallengeConfig,
-  entry: TrainingEntrySummary | null | undefined,
+  entry: SessionSummary | null | undefined,
 ): boolean {
-  if (!entry || entry.invalidated) return false;
-  if (entry.durationMinutes < challenge.requiredMinutes) return false;
-  if (challenge.proofRequired && !entry.hasProof) return false;
-  return true;
+  if (!entry) return false;
+  return isQualifyingDay(challenge, [entry]);
 }
 
 export interface ComputeDayStateInput {
@@ -47,21 +68,49 @@ export interface ComputeDayStateInput {
   date: string;
   /** "Today" as a plain date in the challenge timezone. */
   currentDate: string;
-  /** The participant's canonical entry for `date`, if any. */
-  entry: TrainingEntrySummary | null | undefined;
+  /** Every training session the participant logged for `date` (any status). */
+  sessions: readonly SessionSummary[];
+  /** The penalty in force against this participant on `date`, if any. */
+  penalty?: ActivePenalty | null;
 }
 
-export function computeDayState(input: ComputeDayStateInput): DayState {
-  const { challenge, membership, date, currentDate, entry } = input;
+export interface DayStateResult {
+  state: DayState;
+  requirement: DailyRequirement;
+  totalValidMinutes: number;
+  contributingSessions: number;
+  loggedSessions: number;
+}
 
+/** Full evaluation: state plus the requirement/totals that produced it. */
+export function evaluateDayState(input: ComputeDayStateInput): DayStateResult {
+  const { challenge, membership, date, currentDate, sessions } = input;
+  const penalty = input.penalty ?? null;
+  const requirement = computeDailyRequirement(challenge, penalty);
+  const evaluation = evaluateDay(requirement, sessions);
+
+  let state: DayState;
   if (!isDateEligible(challenge, membership, date)) {
-    return DayState.NotParticipating;
+    state = DayState.NotParticipating;
+  } else if (evaluation.completed) {
+    state = DayState.Completed;
+  } else {
+    const relToToday = compareDates(date, currentDate);
+    if (relToToday > 0) state = DayState.Future;
+    else if (relToToday === 0) state = DayState.Pending;
+    else state = DayState.Missed;
   }
-  if (isQualifyingEntry(challenge, entry)) {
-    return DayState.Completed;
-  }
-  const relToToday = compareDates(date, currentDate);
-  if (relToToday > 0) return DayState.Future;
-  if (relToToday === 0) return DayState.Pending;
-  return DayState.Missed;
+
+  return {
+    state,
+    requirement,
+    totalValidMinutes: evaluation.totalValidMinutes,
+    contributingSessions: evaluation.contributingSessions,
+    loggedSessions: evaluation.loggedSessions,
+  };
+}
+
+/** Canonical day state only. */
+export function computeDayState(input: ComputeDayStateInput): DayState {
+  return evaluateDayState(input).state;
 }

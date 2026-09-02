@@ -2,8 +2,22 @@ import type { ChallengeConfig } from '@/domain/challenge';
 import type { DayState } from '@/domain/dayState';
 import type { LiabilityBreakdown } from '@/domain/liability';
 import type { MembershipConfig } from '@/domain/membership';
+import type { PenaltyType } from '@/domain/penalties';
 import type { MembershipStateResult } from '@/features/admin/membershipState';
 import type { Role } from '@/features/profile/profile-api';
+
+/**
+ * The effective (penalty-aware) training requirement for one challenge day,
+ * straight from `challenge_day_states`. `penalty*` is null on a normal day.
+ */
+export interface DayRequirement {
+  requiredMinutes: number;
+  requiredSessions: number;
+  minMinutesPerSession: number;
+  penaltyType: PenaltyType | null;
+  penaltyDisplayName: string | null;
+  penaltyFromUserId: string | null;
+}
 
 /**
  * Shared shapes for the real (Supabase-backed) challenge data layer.
@@ -28,6 +42,10 @@ export interface ParticipantView {
   statesByDate: Map<string, DayState>;
   /** Canonical state for today, or null when not eligible today. */
   todayState: DayState | null;
+  /** Effective requirement for today (penalty-aware), null when not eligible today. */
+  todayRequirement: DayRequirement | null;
+  /** Per-date effective requirement across the whole challenge (matrix / indicators). */
+  requirementByDate: Map<string, DayRequirement>;
   /** True when eligible today AND membership currently active. */
   activeToday: boolean;
   currentStreak: number;

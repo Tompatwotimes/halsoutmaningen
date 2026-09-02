@@ -5,7 +5,13 @@ import {
   summarizeLiability,
   tallyDayStates,
 } from './liability';
-import { entriesFor, firstChallenge, makeMembership } from '@/test/fixtures';
+import {
+  sessionsFor,
+  firstChallenge,
+  makeMembership,
+  qualifyingEntry,
+  activePenalty,
+} from '@/test/fixtures';
 import { enumerateDates } from './dates';
 
 describe('summarizeLiability', () => {
@@ -48,7 +54,7 @@ describe('evaluateParticipant', () => {
       challenge: firstChallenge,
       membership,
       currentDate: '2026-09-01',
-      entriesByDate: entriesFor(past),
+      sessionsByDate: sessionsFor(past),
     });
     expect(result.liability.confirmedDebt).toBe(0);
     expect(result.liability.completedDays).toBe(31);
@@ -63,7 +69,7 @@ describe('evaluateParticipant', () => {
       challenge: firstChallenge,
       membership,
       currentDate: '2026-09-01',
-      entriesByDate: new Map(),
+      sessionsByDate: new Map(),
     });
     // 2026-08-20..2026-11-28 = 101 eligible days.
     expect(result.liability.eligibleDays).toBe(101);
@@ -79,10 +85,72 @@ describe('evaluateParticipant', () => {
       challenge: firstChallenge,
       membership,
       currentDate: '2026-08-01',
-      entriesByDate: new Map(),
+      sessionsByDate: new Map(),
     });
     expect(result.liability.confirmedDebt).toBe(0);
     expect(result.liability.futureDays).toBe(119);
     expect(result.liability.pendingDays).toBe(1);
+  });
+
+  it('a penalty day that meets the base rule but fails the penalty is still MISSED, costed once', () => {
+    const membership = makeMembership();
+    // 2026-08-10 has a 60-min penalty; the participant trained a normally-fine
+    // 35 minutes. Every other past day is completed.
+    const past = enumerateDates('2026-08-01', '2026-08-31');
+    const sessionsByDate = new Map(
+      past.map(
+        (d) =>
+          [
+            d,
+            d === '2026-08-10'
+              ? [qualifyingEntry({ durationMinutes: 35 })]
+              : [qualifyingEntry()],
+          ] as const,
+      ),
+    );
+    const penaltiesByDate = new Map([['2026-08-10', activePenalty()]]);
+
+    const result = evaluateParticipant({
+      challenge: firstChallenge,
+      membership,
+      currentDate: '2026-09-01',
+      sessionsByDate,
+      penaltiesByDate,
+    });
+
+    expect(result.liability.missedDays).toBe(1);
+    // one missed day × 50 SEK — the penalty never adds a second charge
+    expect(result.liability.confirmedDebt).toBe(firstChallenge.missedDayCost);
+    expect(result.days.find((d) => d.date === '2026-08-10')?.state).toBe(
+      DayState.Missed,
+    );
+  });
+
+  it('a penalty day whose enhanced requirement is met extends the streak normally', () => {
+    const membership = makeMembership();
+    const past = enumerateDates('2026-08-01', '2026-08-20');
+    const sessionsByDate = new Map(
+      past.map(
+        (d) =>
+          [
+            d,
+            d === '2026-08-15'
+              ? [qualifyingEntry({ durationMinutes: 60 })]
+              : [qualifyingEntry()],
+          ] as const,
+      ),
+    );
+    const penaltiesByDate = new Map([['2026-08-15', activePenalty()]]);
+
+    const result = evaluateParticipant({
+      challenge: firstChallenge,
+      membership,
+      currentDate: '2026-08-21',
+      sessionsByDate,
+      penaltiesByDate,
+    });
+
+    expect(result.liability.missedDays).toBe(0);
+    expect(result.liability.completedDays).toBe(20);
   });
 });

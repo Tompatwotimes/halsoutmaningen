@@ -5,6 +5,7 @@ import { membershipDisplayState } from './membershipState';
 const challenge: ChallengeConfig = {
   id: 'c1',
   name: 'Testutmaning',
+  description: null,
   startDate: '2026-08-01',
   endDate: '2026-11-28',
   timeZone: 'Europe/Stockholm',
