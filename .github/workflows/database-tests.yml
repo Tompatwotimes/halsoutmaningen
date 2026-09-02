@@ -1,0 +1,54 @@
+name: Database Tests
+
+# TEMPORARY workflow.
+#
+# Purpose: exercise the repository's FULL current migration chain
+# (supabase/migrations/*) and every pgTAP file under supabase/tests/ on a
+# throwaway local Supabase Postgres stack.
+#
+# This project is not on the Supabase Pro plan, so Preview Branches are not
+# available; this workflow is the stand-in until that changes.
+#
+# Safety properties (do not remove):
+#   * Never links to the hosted Supabase project.
+#   * Never needs production / service-role credentials or any secrets.
+#   * Never runs `supabase db push`.
+#   * Never deploys anything.
+# Everything happens inside the Docker Postgres container that the Supabase CLI
+# starts on the runner, and is discarded when the job ends.
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  database-tests:
+    name: Migration chain + pgTAP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Postgres (applies all migrations + seed.sql)
+        run: supabase db start
+
+      - name: Reset database to the full migration chain
+        # Explicit, deterministic re-apply of every migration in
+        # supabase/migrations from a clean database.
+        run: supabase db reset --local
+
+      - name: Run pgTAP tests (supabase/tests/*.sql)
+        run: supabase test db --local
+
+      - name: Stop local stack
+        if: always()
+        run: supabase stop --no-backup
