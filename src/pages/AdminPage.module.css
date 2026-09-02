@@ -96,6 +96,13 @@ a.tile:hover {
   color: var(--c-text-faint);
 }
 
+.challengeActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+
 .muted {
   color: var(--c-text-muted);
   font-size: var(--fs-sm);

@@ -1,0 +1,60 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+.row .field {
+  flex: 1 1 10rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.field label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.field input,
+.field select {
+  height: var(--touch-target);
+  padding: 0 var(--sp-3);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font: inherit;
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  border-color: var(--c-accent);
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+
+.hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.error {
+  color: var(--c-danger);
+  font-size: var(--fs-sm);
+}
+
+.success {
+  color: var(--c-accent);
+  font-size: var(--fs-sm);
+}

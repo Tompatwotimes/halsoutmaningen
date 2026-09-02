@@ -9,9 +9,10 @@ import {
   OverviewIcon,
   ShieldIcon,
 } from '@/components/icons';
-import { challengeDurationDays } from '@/domain/challenge';
+import { ChallengeStatus, challengeDurationDays } from '@/domain/challenge';
 import { formatDayMonth } from '@/domain/format';
 import { useChallenges } from '@/features/admin/challenges-api';
+import { ActivateChallengeControl } from '@/features/admin/ActivateChallengeControl';
 import styles from './AdminPage.module.css';
 
 const STATUS_TONE = {
@@ -102,9 +103,14 @@ export function AdminPage() {
                     · {challengeDurationDays(c)} dagar
                   </span>
                 </div>
-                <Badge tone={STATUS_TONE[c.status]} size="sm">
-                  {STATUS_LABEL[c.status]}
-                </Badge>
+                <div className={styles.challengeActions}>
+                  <Badge tone={STATUS_TONE[c.status]} size="sm">
+                    {STATUS_LABEL[c.status]}
+                  </Badge>
+                  {c.status === ChallengeStatus.Draft && (
+                    <ActivateChallengeControl challenge={c} />
+                  )}
+                </div>
               </li>
             ))}
           </ul>

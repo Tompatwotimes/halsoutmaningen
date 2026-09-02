@@ -12,6 +12,7 @@ import {
   useAccountStatuses,
 } from '@/features/admin/participants-api';
 import { InviteParticipantForm } from '@/features/admin/InviteParticipantForm';
+import { AddExistingParticipantForm } from '@/features/admin/AddExistingParticipantForm';
 import { ParticipantList } from '@/features/admin/ParticipantList';
 import styles from './ParticipantsPage.module.css';
 
@@ -89,7 +90,14 @@ export function ParticipantsPage() {
           </Card>
 
           {challenge && today && (
-            <InviteParticipantForm challenge={challenge} today={today} />
+            <>
+              <AddExistingParticipantForm
+                challenge={challenge}
+                today={today}
+                existingMembers={participantsQuery.data ?? []}
+              />
+              <InviteParticipantForm challenge={challenge} today={today} />
+            </>
           )}
 
           <Card
