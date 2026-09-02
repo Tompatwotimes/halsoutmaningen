@@ -1,5 +1,6 @@
-# Cloudflare Pages response headers.
-# https://developers.cloudflare.com/pages/configuration/headers/
+# Cloudflare response headers. Honored by Workers Static Assets (the current
+# production setup) and by classic Pages.
+# https://developers.cloudflare.com/workers/static-assets/headers/
 #
 # No Content-Security-Policy here on purpose: a correct policy needs the
 # per-environment Supabase project origin (API + Storage) and is best added

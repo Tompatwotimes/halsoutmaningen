@@ -31,8 +31,25 @@ AuthProvider  ──►  useProfile()  ── reads public.profiles for auth.uid
   `role, active` from `profiles`. `isAdmin` is `role === 'admin' && active`,
   matching the DB `is_admin()` predicate exactly. There is no client-held role.
 - **`/aktivera`:** landing page for the Supabase invite / password-reset email.
-  The link establishes a session (`detectSessionInUrl`); the page collects a
-  password via `supabase.auth.updateUser({ password })` and enters the app.
+  `useActivation` runs a small state machine
+  (`resolving → ready → submitting → success`, plus `link-error` / `no-session`)
+  that turns the redirect into an authenticated session, then the page collects
+  a password via `supabase.auth.updateUser({ password })` and enters the app.
+  Two redirect shapes reach this route:
+  - **admin invite** → implicit-grant hash
+    (`#access_token=…&refresh_token=…&type=invite`). The `flowType: 'pkce'`
+    client refuses this URL ("Not a valid PKCE flow url"), so `useActivation`
+    consumes it explicitly with `supabase.auth.setSession(...)` and strips the
+    tokens from the address bar.
+  - **password reset** → PKCE `?code=…` (client-initiated
+    `resetPasswordForEmail`). `supabase-js` exchanges this itself via
+    `detectSessionInUrl`; the page just waits for the session.
+
+  Reaching a session is **not** treated as "account activated" — only a
+  successful `updateUser({ password })` is. The route is public and never
+  wrapped in `RequireAuth`, and nothing in `AuthProvider` navigates, so the
+  session establishing mid-flow never bounces the user off `/aktivera`.
+
 - **`/logga-in`:** password login + a "Glömt lösenord?" action that calls
   `resetPasswordForEmail(redirectTo: /aktivera)` and always shows the same
   neutral confirmation (never reveals whether an address has an account).
