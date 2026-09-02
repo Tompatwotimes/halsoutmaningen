@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import type { Database } from '@/types/database';
 import { ChallengeStatus, type ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
 import { PenaltyType } from '@/domain/penalties';
@@ -172,24 +173,105 @@ function toPenaltyType(value: string | null): PenaltyType | null {
   return null;
 }
 
+type DayStateRpcRow =
+  Database['public']['Functions']['challenge_day_states']['Returns'][number];
+
 /**
- * The canonical per-participant, per-day state for an entire challenge in one
- * round trip (`challenge_day_states` RPC — docs/DATABASE.md §4). This is the
+ * PostgREST caps a single response at a fixed row count (`db-max-rows`,
+ * 1000 on this project — see supabase/config.toml `[api] max_rows`).
+ * `challenge_day_states` returns one row per participant × challenge day, so a
+ * normal challenge blows past that: 21 participants × 120 days = 2520 rows. An
+ * un-paginated call was silently truncated to the first 1000, and every
+ * participant/date pair missing from the response was then rendered as
+ * `not_participating` ("—") on Översikt/Gruppen.
+ *
+ * We page through the whole set with deterministic `Range` windows:
+ *
+ * - Ordering is applied by PostgREST at the outer query level (`ORDER BY
+ *   user_id, challenge_date` wrapped around the function call). `(user_id,
+ *   challenge_date)` is unique — one row per member per day — so the paging is
+ *   stable and needs no change to the SQL function itself.
+ * - `count: 'exact'` returns the full result-set size (`Content-Range` total),
+ *   so we page until we have all of it rather than guessing from page length.
+ * - The first page's length is taken as the effective server cap and reused as
+ *   the step, so paging stays correct even if the cap is ever set below
+ *   `DAY_STATES_PAGE_SIZE`.
+ */
+const DAY_STATES_PAGE_SIZE = 1000;
+/** Runaway guard: 1000 participants over a ~370-day challenge still fits. */
+const DAY_STATES_MAX_REQUESTS = 500;
+
+/**
+ * The canonical per-participant, per-day state for an entire challenge
+ * (`challenge_day_states` RPC — docs/DATABASE.md §4). This is the
  * authoritative source for every status surface; the frontend never
  * recomputes qualification itself (CLAUDE.md §12, §17).
+ *
+ * Fetched in deterministic pages (no per-cell or per-participant requests) so
+ * it is correct for any realistic participant count and challenge length.
  */
 export async function fetchDayStates(
   challengeId: string,
 ): Promise<DayStateRow[]> {
-  const { data, error } = await supabase.rpc('challenge_day_states', {
-    p_challenge_id: challengeId,
-  });
+  const page = (from: number, to: number) =>
+    supabase
+      .rpc(
+        'challenge_day_states',
+        { p_challenge_id: challengeId },
+        { count: 'exact' },
+      )
+      .order('user_id', { ascending: true })
+      .order('challenge_date', { ascending: true })
+      .range(from, to);
 
-  if (error) {
-    throw new Error(error.message);
+  const first = await page(0, DAY_STATES_PAGE_SIZE - 1);
+  if (first.error) {
+    throw new Error(first.error.message);
   }
 
-  return data.map((row) => ({
+  const rows: DayStateRpcRow[] = [...first.data];
+  // Whatever the server returned for a full request IS the effective cap, so
+  // paging stays correct even if it is ever set below DAY_STATES_PAGE_SIZE.
+  const step = rows.length > 0 ? rows.length : DAY_STATES_PAGE_SIZE;
+  // `count: 'exact'` gives the full result-set size. If the header is ever
+  // absent, fall back to "keep going while the last page came back full" so we
+  // never stop short.
+  const total = first.count ?? Number.POSITIVE_INFINITY;
+
+  for (let request = 1; ; request++) {
+    const more = Number.isFinite(total)
+      ? rows.length < total
+      : rows.length > 0 && rows.length % step === 0;
+    if (!more) break;
+
+    if (request >= DAY_STATES_MAX_REQUESTS) {
+      throw new Error(
+        `fetchDayStates: challenge_day_states exceeded ${String(DAY_STATES_MAX_REQUESTS)} ` +
+          `requests for challenge ${challengeId} (have ${String(rows.length)} of ${String(total)}).`,
+      );
+    }
+
+    const from = request * step;
+    const { data, error } = await page(from, from + step - 1);
+    if (error) {
+      throw new Error(error.message);
+    }
+    if (data.length === 0) break;
+    rows.push(...data);
+  }
+
+  if (Number.isFinite(total) && rows.length !== total) {
+    throw new Error(
+      `fetchDayStates: got ${String(rows.length)} of ${String(total)} challenge_day_states ` +
+        `rows for challenge ${challengeId} — response is incomplete.`,
+    );
+  }
+
+  return rows.map(toDayStateRow);
+}
+
+function toDayStateRow(row: DayStateRpcRow): DayStateRow {
+  return {
     userId: row.user_id,
     challengeDate: row.challenge_date,
     state: toDayState(row.state),
@@ -202,5 +284,5 @@ export async function fetchDayStates(
     penaltyType: toPenaltyType(row.penalty_type),
     penaltyDisplayName: row.penalty_display_name,
     penaltyFromUserId: row.penalty_from_user_id,
-  }));
+  };
 }

@@ -1,9 +1,13 @@
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import type { ChallengeConfig } from '@/domain/challenge';
+import {
+  challengeDurationDays,
+  type ChallengeConfig,
+} from '@/domain/challenge';
 import { currentPlainDateInTimeZone } from '@/domain/time';
 import { DayState } from '@/domain/dayState';
 import { currentStreak, longestStreak } from '@/domain/streaks';
 import { summarizeLiability } from '@/domain/liability';
+import { eligibleDates } from '@/domain/membership';
 import { membershipDisplayState } from '@/features/admin/membershipState';
 import { useAuth } from '@/features/auth/useAuth';
 import {
@@ -159,6 +163,44 @@ async function loadChallengeDataset(
     const list = dayStatesByUser.get(row.userId) ?? [];
     list.push(row);
     dayStatesByUser.set(row.userId, list);
+  }
+
+  // Invariant: every date a roster member is *eligible* for must have a
+  // `challenge_day_states` row. A missing eligible-day row is silently
+  // rendered as `not_participating` ("—") on Översikt/Gruppen — historically
+  // caused by PostgREST truncating the un-paginated RPC response at its row
+  // cap. `fetchDayStates` now pages the full set; this check fails loudly on
+  // any regression rather than showing wrong data as if it were correct.
+  // (Pre-/post-membership `not_participating` rows are not required here —
+  // their absence renders the same, correct state.)
+  const missingByMember = roster
+    .map((m) => {
+      const present = new Set(
+        (dayStatesByUser.get(m.userId) ?? []).map((r) => r.challengeDate),
+      );
+      const eligible = eligibleDates(challenge, {
+        userId: m.userId,
+        participationStartDate: m.participationStartDate,
+        participationEndDate: m.participationEndDate,
+        active: m.membershipActive,
+      });
+      return { member: m, missing: eligible.filter((d) => !present.has(d)) };
+    })
+    .filter((r) => r.missing.length > 0);
+  if (missingByMember.length > 0) {
+    const expectedTotal = roster.length * challengeDurationDays(challenge);
+    console.error(
+      `[useChallengeData] challenge_day_states is missing eligible-day rows for ` +
+        `challenge ${challenge.id} — Översikt/Gruppen would show these as "—". ` +
+        `Returned ${String(dayStateRows.length)} rows (a full grid is ${String(expectedTotal)}). ` +
+        `Affected: ` +
+        missingByMember
+          .map(
+            (r) =>
+              `${r.member.displayName} (${String(r.missing.length)} days, first ${String(r.missing[0])})`,
+          )
+          .join('; '),
+    );
   }
 
   const participants = roster
