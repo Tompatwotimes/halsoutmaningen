@@ -1,0 +1,28 @@
+.group {
+  margin-bottom: var(--sp-3);
+}
+.group:last-child {
+  margin-bottom: 0;
+}
+.groupLabel {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--c-text-faint);
+  margin-bottom: var(--sp-1);
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+}
+.name {
+  font-weight: var(--fw-semibold);
+}
+.meta {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}

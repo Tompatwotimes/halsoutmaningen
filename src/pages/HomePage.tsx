@@ -17,11 +17,14 @@ import {
   ChevronRightIcon,
   ClockIcon,
   LogIcon,
+  SkullIcon,
 } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
+import { useStraffbank } from '@/features/straffbanken/useStraffbank';
+import { describeRequirement } from '@/features/straffbanken/straffbanken';
 import styles from './HomePage.module.css';
 
 function greeting(): string {
@@ -35,6 +38,11 @@ function greeting(): string {
 
 export function HomePage() {
   const { data, isLoading, isError, refetch } = useChallengeData();
+  const straffbank = useStraffbank(
+    data?.challenge.id ?? null,
+    data?.self.userId ?? null,
+    data?.self.currentStreak ?? 0,
+  );
 
   const progress = useMemo(
     () => (data ? challengeProgress(data.challenge, data.today) : null),
@@ -58,6 +66,13 @@ export function HomePage() {
   const { self, challenge, today } = data;
   const todayEntry = data.getSelfEntry(today);
   const completedToday = self.todayState === DayState.Completed;
+  const req = self.todayRequirement;
+  const reqCopy = req ? describeRequirement(req) : null;
+  const penalisedBy =
+    req?.penaltyFromUserId != null
+      ? (data.participants.find((p) => p.userId === req.penaltyFromUserId)
+          ?.displayName ?? 'Någon')
+      : null;
 
   const roster = data.rosterToday;
   const doneToday = roster.filter((p) => p.todayState === DayState.Completed);
@@ -77,6 +92,21 @@ export function HomePage() {
         </h1>
       </header>
 
+      {/* --- Penalised today --- */}
+      {reqCopy?.penalised && !completedToday && (
+        <Card variant="raised" padding="lg" className={styles.penalty}>
+          <Badge tone="missed" icon={<SkullIcon />}>
+            Du har blivit straffad
+          </Badge>
+          <p className={styles.penaltyLead}>
+            {penalisedBy
+              ? `${penalisedBy.split(' ')[0]} har gett dig ${reqCopy.penaltyName ?? 'ett straff'}.`
+              : `Du har ${reqCopy.penaltyName ?? 'ett straff'} idag.`}
+          </p>
+          <p className={styles.penaltySub}>Dagens krav: {reqCopy.detail}.</p>
+        </Card>
+      )}
+
       {/* --- Today hero --- */}
       <Card variant="gradient" padding="lg" className={styles.hero}>
         {completedToday && todayEntry ? (
@@ -85,12 +115,16 @@ export function HomePage() {
               Klart för idag
             </Badge>
             <p className={styles.heroLead}>
-              {todayEntry.activity} ·{' '}
-              {formatMinutes(todayEntry.durationMinutes)}
+              {todayEntry.activity ?? 'Träning'}
+              {req && req.sessionCount > 1
+                ? ` · ${String(req.totalValidMinutes)} min på ${String(req.validSessionCount)} pass`
+                : ` · ${formatMinutes(todayEntry.durationMinutes)}`}
             </p>
             <p className={styles.heroSub}>
-              Bra jobbat. Din streak är uppe i{' '}
-              <strong>{self.currentStreak} dagar</strong>.
+              {reqCopy?.penalised
+                ? `Du klarade ${reqCopy.penaltyName ?? 'straffet'}. `
+                : 'Bra jobbat. '}
+              Din streak är uppe i <strong>{self.currentStreak} dagar</strong>.
             </p>
             <Link to="/gruppen" className={styles.heroLink}>
               Se hur gruppen ligger till
@@ -102,14 +136,26 @@ export function HomePage() {
             <Badge tone="pending" dot>
               Dagens pass kvar
             </Badge>
-            <p className={styles.heroLead}>Du har inte tränat idag</p>
+            <p className={styles.heroLead}>
+              {req && req.sessionCount > 0
+                ? `${String(req.validSessionCount)} av ${String(req.requiredSessions)} pass klara`
+                : 'Du har inte tränat idag'}
+            </p>
             <p className={styles.heroSub}>
-              {formatMinutes(challenge.requiredMinutes)} krävs
-              {challenge.proofRequired ? ' · bildbevis behövs' : ''}
+              {reqCopy
+                ? reqCopy.detail
+                : `${formatMinutes(challenge.requiredMinutes)} krävs`}
+              {challenge.proofRequired
+                ? req && req.requiredSessions > 1
+                  ? ' · bildbevis per pass'
+                  : ' · bildbevis behövs'
+                : ''}
             </p>
             <Link to="/logga" className={styles.heroCta}>
               <Button size="lg" fullWidth icon={<LogIcon />}>
-                Logga träning
+                {req && req.requiredSessions > 1
+                  ? 'Logga pass'
+                  : 'Logga träning'}
               </Button>
             </Link>
           </>
@@ -218,6 +264,26 @@ export function HomePage() {
           />
         </div>
       </Card>
+
+      {/* --- Straffbanken teaser --- */}
+      <Link to="/straffbanken" className={styles.straffLink}>
+        <Card padding="md" className={styles.straffCard}>
+          <span className={styles.straffIcon} aria-hidden="true">
+            <SkullIcon />
+          </span>
+          <span className={styles.straffBody}>
+            <span className={styles.straffTitle}>Straffbanken</span>
+            <span className={styles.straffText}>
+              {straffbank.totalAvailable > 0
+                ? `${String(straffbank.totalAvailable)} straff redo att delas ut`
+                : straffbank.nextMilestone
+                  ? `${String(straffbank.nextMilestone.daysAway)} dagar till ${straffbank.nextMilestone.definition.displayName}`
+                  : 'Håll streaken – tjäna ammunition'}
+            </span>
+          </span>
+          <ChevronRightIcon className={styles.linkIcon} />
+        </Card>
+      </Link>
 
       <LiabilityCard
         liability={self.liability}

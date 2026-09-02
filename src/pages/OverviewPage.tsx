@@ -129,6 +129,9 @@ export function OverviewPage() {
           isSelf={selected.participant.isSelf}
           userId={selected.participant.userId}
           date={selected.date}
+          requirement={
+            selected.participant.requirementByDate.get(selected.date) ?? null
+          }
         />
       )}
     </>

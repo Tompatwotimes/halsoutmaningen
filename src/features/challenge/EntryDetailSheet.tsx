@@ -1,15 +1,29 @@
+import { useState } from 'react';
 import type { ChallengeConfig } from '@/domain/challenge';
 import { formatLongDate, formatMinutes } from '@/domain/format';
 import { Sheet } from '@/components/ui/Sheet';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
+import { Button } from '@/components/ui/Button';
 import { SkeletonText } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { SignedProofImage } from '@/components/proof/SignedProofImage';
-import { CheckIcon, ClockIcon, ImageOffIcon } from '@/components/icons';
-import { useEntryDetail } from './useEntryDetail';
+import {
+  CheckIcon,
+  ClockIcon,
+  ImageOffIcon,
+  SkullIcon,
+} from '@/components/icons';
+import { useProfile } from '@/features/profile/useProfile';
+import {
+  INVALIDATION_REASONS,
+  useTrainingCorrection,
+  type InvalidationReasonCode,
+} from '@/features/admin/corrections-api';
+import { useEntryDetail, type SessionDetailWithProof } from './useEntryDetail';
 import { weekdayLong, capitalize } from './labels';
+import type { DayRequirement } from './types';
 import styles from './EntryDetailSheet.module.css';
 
 interface Props {
@@ -20,6 +34,8 @@ interface Props {
   isSelf: boolean;
   userId: string;
   date: string;
+  /** Effective (penalty-aware) requirement for this day, when known. */
+  requirement?: DayRequirement | null;
 }
 
 function timeOf(iso: string): string {
@@ -29,11 +45,6 @@ function timeOf(iso: string): string {
   });
 }
 
-/**
- * Entry + proof detail for one (participant, date) cell — always fetched on
- * demand when opened, for self and others alike (Part 8 of the real-data
- * phase). Nothing here is preloaded for a whole grid.
- */
 export function EntryDetailSheet({
   open,
   onClose,
@@ -42,6 +53,7 @@ export function EntryDetailSheet({
   isSelf,
   userId,
   date,
+  requirement,
 }: Props) {
   const { data, isLoading, isError, refetch } = useEntryDetail(
     challenge.id,
@@ -49,6 +61,14 @@ export function EntryDetailSheet({
     date,
     open,
   );
+  const { isAdmin } = useProfile();
+  const sessions = data?.sessions ?? [];
+  const effectiveMinutes =
+    requirement?.requiredMinutes ?? challenge.requiredMinutes;
+  const perSessionMin =
+    requirement && requirement.requiredSessions > 1
+      ? requirement.minMinutesPerSession
+      : challenge.requiredMinutes;
 
   return (
     <Sheet
@@ -70,8 +90,17 @@ export function EntryDetailSheet({
         </div>
       </div>
 
-      {isLoading && <SkeletonText lines={4} />}
+      {requirement?.penaltyType != null && (
+        <p className={styles.reqLine}>
+          <SkullIcon className={styles.reqIcon} aria-hidden="true" />
+          {requirement.penaltyDisplayName ?? 'Straff'} —{' '}
+          {requirement.requiredSessions > 1
+            ? `${String(requirement.requiredSessions)} pass à minst ${formatMinutes(perSessionMin)} · ${String(requirement.validSessionCount)}/${String(requirement.requiredSessions)} klara`
+            : `minst ${formatMinutes(effectiveMinutes)} totalt · ${String(requirement.totalValidMinutes)}/${String(effectiveMinutes)} giltiga`}
+        </p>
+      )}
 
+      {isLoading && <SkeletonText lines={4} />}
       {isError && (
         <ErrorState
           title="Kunde inte hämta passet"
@@ -79,7 +108,7 @@ export function EntryDetailSheet({
         />
       )}
 
-      {!isLoading && !isError && !data && (
+      {!isLoading && !isError && sessions.length === 0 && (
         <EmptyState
           icon={<ImageOffIcon />}
           title="Ingen registrering"
@@ -87,54 +116,201 @@ export function EntryDetailSheet({
         />
       )}
 
-      {!isLoading && !isError && data && (
-        <>
-          <div className={styles.metrics}>
-            <div className={styles.metric}>
-              <span className={styles.metricLabel}>Tid</span>
-              <span className={`${styles.metricValue} tnum`}>
-                {formatMinutes(data.durationMinutes)}
-              </span>
-              {data.durationMinutes >= challenge.requiredMinutes && (
-                <Badge tone="completed" size="sm" icon={<CheckIcon />}>
-                  Kravet uppfyllt
-                </Badge>
-              )}
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.metricLabel}>Aktivitet</span>
-              <span className={styles.metricValue}>{data.activity ?? '—'}</span>
-              <span className={styles.metricSub}>
-                Minst {formatMinutes(challenge.requiredMinutes)} krävs
-              </span>
-            </div>
-          </div>
-
-          {data.note && <p className={styles.note}>”{data.note}”</p>}
-
-          {data.proofSignedUrl ? (
-            <SignedProofImage
-              src={data.proofSignedUrl}
-              alt={
-                data.activity
-                  ? `Bildbevis för ${data.activity.toLowerCase()}`
-                  : 'Bildbevis'
-              }
-            />
-          ) : (
-            <EmptyState
-              icon={<ImageOffIcon />}
-              title="Inget bildbevis"
-              body="Passet registrerades utan bild."
-            />
-          )}
-
-          <p className={styles.submitted}>
-            <ClockIcon className={styles.clock} />
-            Registrerad kl. {timeOf(data.submittedAt)}
-          </p>
-        </>
-      )}
+      {!isLoading &&
+        !isError &&
+        sessions.map((s, i) => (
+          <SessionBlock
+            key={s.entryId}
+            session={s}
+            index={i}
+            total={sessions.length}
+            challengeId={challenge.id}
+            targetUserId={userId}
+            perSessionMin={perSessionMin}
+            proofRequired={challenge.proofRequired}
+            isAdmin={isAdmin}
+          />
+        ))}
     </Sheet>
+  );
+}
+
+function SessionBlock({
+  session,
+  index,
+  total,
+  challengeId,
+  targetUserId,
+  perSessionMin,
+  proofRequired,
+  isAdmin,
+}: {
+  session: SessionDetailWithProof;
+  index: number;
+  total: number;
+  challengeId: string;
+  targetUserId: string;
+  perSessionMin: number;
+  proofRequired: boolean;
+  isAdmin: boolean;
+}) {
+  const s = session;
+  const invalid = s.status === 'invalidated';
+  const meetsMinutes = s.durationMinutes >= perSessionMin;
+  const correction = useTrainingCorrection(challengeId, targetUserId);
+  const [mode, setMode] = useState<'idle' | 'invalidate' | 'revalidate'>(
+    'idle',
+  );
+  const [reasonCode, setReasonCode] =
+    useState<InvalidationReasonCode>('felregistrerad');
+  const [reasonText, setReasonText] = useState('');
+
+  const busy =
+    correction.invalidate.isPending || correction.revalidate.isPending;
+
+  async function submit() {
+    if (reasonText.trim().length < 3) return;
+    try {
+      if (mode === 'invalidate') {
+        await correction.invalidate.mutateAsync({
+          entryId: s.entryId,
+          reason: reasonText.trim(),
+          reasonCode,
+        });
+      } else {
+        await correction.revalidate.mutateAsync({
+          entryId: s.entryId,
+          reason: reasonText.trim(),
+        });
+      }
+      setMode('idle');
+      setReasonText('');
+    } catch {
+      /* surfaced below */
+    }
+  }
+
+  return (
+    <div
+      className={`${styles.session} ${invalid ? styles.sessionInvalid : ''}`}
+    >
+      {total > 1 && (
+        <p className={styles.sessionLabel}>
+          Pass {index + 1} av {total}
+        </p>
+      )}
+      <div className={styles.metrics}>
+        <div className={styles.metric}>
+          <span className={styles.metricLabel}>Tid</span>
+          <span className={`${styles.metricValue} tnum`}>
+            {formatMinutes(s.durationMinutes)}
+          </span>
+          {invalid ? (
+            <Badge tone="missed" size="sm">
+              Ogiltigförklarat
+            </Badge>
+          ) : meetsMinutes && (!proofRequired || s.proofSignedUrl) ? (
+            <Badge tone="completed" size="sm" icon={<CheckIcon />}>
+              Räknas
+            </Badge>
+          ) : (
+            <Badge tone="pending" size="sm">
+              Räknas inte
+            </Badge>
+          )}
+        </div>
+        <div className={styles.metric}>
+          <span className={styles.metricLabel}>Aktivitet</span>
+          <span className={styles.metricValue}>{s.activity ?? '—'}</span>
+          <span className={styles.metricSub}>
+            Minst {formatMinutes(perSessionMin)} krävs
+          </span>
+        </div>
+      </div>
+
+      {invalid && s.invalidatedReason && (
+        <p className={styles.invalidReason}>Anledning: {s.invalidatedReason}</p>
+      )}
+      {s.note && !invalid && <p className={styles.note}>”{s.note}”</p>}
+
+      {s.proofSignedUrl ? (
+        <SignedProofImage src={s.proofSignedUrl} alt="Bildbevis" />
+      ) : (
+        <EmptyState
+          icon={<ImageOffIcon />}
+          title="Inget bildbevis"
+          body="Passet registrerades utan bild."
+        />
+      )}
+
+      <p className={styles.submitted}>
+        <ClockIcon className={styles.clock} />
+        Registrerad kl. {timeOf(s.submittedAt)}
+      </p>
+
+      {isAdmin && (
+        <div className={styles.admin}>
+          {mode === 'idle' ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMode(invalid ? 'revalidate' : 'invalidate')}
+            >
+              {invalid ? 'Återställ passet' : 'Ogiltigförklara passet'}
+            </Button>
+          ) : (
+            <div className={styles.correction}>
+              {mode === 'invalidate' && (
+                <select
+                  className={styles.select}
+                  value={reasonCode}
+                  onChange={(e) =>
+                    setReasonCode(e.target.value as InvalidationReasonCode)
+                  }
+                >
+                  {INVALIDATION_REASONS.map((r) => (
+                    <option key={r.code} value={r.code}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <textarea
+                className={styles.reasonText}
+                value={reasonText}
+                onChange={(e) => setReasonText(e.target.value)}
+                placeholder="Anledning (obligatorisk)"
+                rows={2}
+                maxLength={1000}
+              />
+              {(correction.invalidate.error ?? correction.revalidate.error) && (
+                <p className={styles.err}>Kunde inte spara korrigeringen.</p>
+              )}
+              <div className={styles.correctionActions}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setMode('idle');
+                    setReasonText('');
+                  }}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  variant={mode === 'invalidate' ? 'danger' : 'primary'}
+                  size="sm"
+                  loading={busy}
+                  disabled={reasonText.trim().length < 3}
+                  onClick={() => void submit()}
+                >
+                  Bekräfta
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

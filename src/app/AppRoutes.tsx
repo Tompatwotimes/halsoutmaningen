@@ -33,6 +33,11 @@ const RankingPage = lazy(() =>
 const ProfilePage = lazy(() =>
   import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })),
 );
+const StraffbankenPage = lazy(() =>
+  import('@/pages/StraffbankenPage').then((m) => ({
+    default: m.StraffbankenPage,
+  })),
+);
 const AdminPage = lazy(() =>
   import('@/pages/AdminPage').then((m) => ({ default: m.AdminPage })),
 );
@@ -40,6 +45,24 @@ const ParticipantsPage = lazy(() =>
   import('@/pages/admin/ParticipantsPage').then((m) => ({
     default: m.ParticipantsPage,
   })),
+);
+const AdminChallengesPage = lazy(() =>
+  import('@/pages/admin/ChallengesPage').then((m) => ({
+    default: m.ChallengesPage,
+  })),
+);
+const CreateChallengePage = lazy(() =>
+  import('@/pages/admin/CreateChallengePage').then((m) => ({
+    default: m.CreateChallengePage,
+  })),
+);
+const ChallengeDetailPage = lazy(() =>
+  import('@/pages/admin/ChallengeDetailPage').then((m) => ({
+    default: m.ChallengeDetailPage,
+  })),
+);
+const AuditPage = lazy(() =>
+  import('@/pages/admin/AuditPage').then((m) => ({ default: m.AuditPage })),
 );
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
@@ -65,8 +88,11 @@ export function AppRoutes() {
             <Route path="gruppen" element={<GroupPage />} />
             <Route path="oversikt" element={<OverviewPage />} />
             <Route path="ranking" element={<RankingPage />} />
+            <Route path="straffbanken" element={<StraffbankenPage />} />
             <Route path="profil" element={<ProfilePage />} />
             <Route path="admin" element={<AdminPage />} />
+            <Route path="admin-utmaningar" element={<AdminChallengesPage />} />
+            <Route path="admin-granskningslogg" element={<AuditPage />} />
           </Route>
         )}
         <Route path="/logga-in" element={<LoginPage />} />
@@ -83,6 +109,7 @@ export function AppRoutes() {
           <Route path="gruppen" element={<GroupPage />} />
           <Route path="oversikt" element={<OverviewPage />} />
           <Route path="ranking" element={<RankingPage />} />
+          <Route path="straffbanken" element={<StraffbankenPage />} />
           <Route path="profil" element={<ProfilePage />} />
           <Route
             path="admin"
@@ -97,6 +124,38 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <ParticipantsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/utmaningar"
+            element={
+              <RequireAdmin>
+                <AdminChallengesPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/utmaningar/ny"
+            element={
+              <RequireAdmin>
+                <CreateChallengePage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/utmaningar/:challengeId"
+            element={
+              <RequireAdmin>
+                <ChallengeDetailPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/granskningslogg"
+            element={
+              <RequireAdmin>
+                <AuditPage />
               </RequireAdmin>
             }
           />

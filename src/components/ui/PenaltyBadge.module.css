@@ -1,0 +1,43 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--c-missed-border);
+  background: var(--c-missed-surface);
+  color: var(--c-missed-text);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.md {
+  padding: 0.2rem var(--sp-2);
+  font-size: var(--fs-2xs);
+}
+
+.sm {
+  padding: 0.1rem var(--sp-1);
+  font-size: 0.62rem;
+}
+
+.icon {
+  width: 0.85em;
+  height: 0.85em;
+}
+
+.text {
+  line-height: 1;
+}
+
+.dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--c-missed);
+  box-shadow: 0 0 0 1.5px var(--c-surface);
+}

@@ -95,6 +95,7 @@ function buildSelfEntries(userId: string): SelfEntry[] {
     .map((e) => ({
       entryId: e.entryId,
       date: e.date,
+      sessionSeq: 1,
       durationMinutes: e.durationMinutes,
       activity: e.activity,
       note: e.note,
@@ -124,10 +125,16 @@ vi.mock('@/features/challenge/entries-api', () => ({
   fetchSelfEntries: vi.fn((_challengeId: string, userId: string) =>
     Promise.resolve(buildSelfEntries(userId)),
   ),
-  fetchEntryDetail: vi.fn(() => Promise.resolve(null)),
+  fetchDaySessions: vi.fn(() => Promise.resolve([])),
   createProofSignedUrl: vi.fn(() =>
     Promise.resolve('https://example.invalid/signed.jpg'),
   ),
+}));
+
+vi.mock('@/features/straffbanken/straffbank-api', () => ({
+  fetchEarnedPenalties: vi.fn(() => Promise.resolve([])),
+  fetchPenaltyDefinitions: vi.fn(() => Promise.resolve([])),
+  fetchPenaltyAssignments: vi.fn(() => Promise.resolve([])),
 }));
 
 const auth: AuthContextValue = {

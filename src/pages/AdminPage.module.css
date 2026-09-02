@@ -107,3 +107,19 @@ a.tile:hover {
   color: var(--c-text-muted);
   font-size: var(--fs-sm);
 }
+
+/* --- Phase 9 --- */
+.challengeLink {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  color: var(--c-accent-text);
+  font-weight: var(--fw-semibold);
+}

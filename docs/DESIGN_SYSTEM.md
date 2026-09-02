@@ -143,7 +143,9 @@ Rules:
 - **Mobile:** sticky `TopBar` (brand + avatar → Profil) and a fixed
   `BottomNav` with five destinations — **Hem · Gruppen · [Logga] · Översikt ·
   Ranking** — where _Logga_ is an elevated accent button (the primary action).
-  Profil is reached from the avatar; Admin from within Profil (admins only).
+  Profil is reached from the avatar; **Straffbanken** and Admin from within
+  Profil / Hem teasers (Straffbanken also has a desktop-rail entry); Admin is
+  admins only.
 - **Desktop (≥60rem):** the bottom bar is replaced by a left `SideNav` rail
   with every destination labelled, plus account + sign-out at the foot. Content
   widens to `--app-max-width-wide` and several screens switch to two columns.

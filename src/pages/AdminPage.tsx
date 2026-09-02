@@ -9,10 +9,9 @@ import {
   OverviewIcon,
   ShieldIcon,
 } from '@/components/icons';
-import { ChallengeStatus, challengeDurationDays } from '@/domain/challenge';
+import { challengeDurationDays } from '@/domain/challenge';
 import { formatDayMonth } from '@/domain/format';
 import { useChallenges } from '@/features/admin/challenges-api';
-import { ActivateChallengeControl } from '@/features/admin/ActivateChallengeControl';
 import styles from './AdminPage.module.css';
 
 const STATUS_TONE = {
@@ -54,68 +53,68 @@ export function AdminPage() {
           <ChevronRightIcon className={styles.tileChevron} />
         </Link>
 
-        <span className={`${styles.tile} ${styles.tileDisabled}`}>
+        <Link to="/admin/utmaningar" className={styles.tile}>
           <span className={styles.tileIcon}>
             <OverviewIcon />
           </span>
           <span className={styles.tileBody}>
-            <span className={styles.tileTitle}>
-              Utmaningar
-              <Badge tone="neutral" size="sm">
-                Fas 9
-              </Badge>
-            </span>
+            <span className={styles.tileTitle}>Utmaningar</span>
             <span className={styles.tileText}>
-              Skapa och konfigurera utmaningar utan kodändring.
+              Skapa, konfigurera, aktivera, avsluta och kopiera utmaningar.
             </span>
           </span>
-        </span>
+          <ChevronRightIcon className={styles.tileChevron} />
+        </Link>
 
-        <span className={`${styles.tile} ${styles.tileDisabled}`}>
+        <Link to="/admin/granskningslogg" className={styles.tile}>
           <span className={styles.tileIcon}>
             <ShieldIcon />
           </span>
           <span className={styles.tileBody}>
-            <span className={styles.tileTitle}>
-              Granskningslogg
-              <Badge tone="neutral" size="sm">
-                Fas 9
-              </Badge>
-            </span>
+            <span className={styles.tileTitle}>Granskningslogg</span>
             <span className={styles.tileText}>
-              Ändringar av medlemskap, regler och ogiltigförklarade pass.
+              Ändringar av medlemskap, regler, straff och rättade pass.
             </span>
           </span>
-        </span>
+          <ChevronRightIcon className={styles.tileChevron} />
+        </Link>
       </nav>
 
-      <Card title="Utmaningar">
+      <Card
+        title="Utmaningar"
+        action={
+          <Link to="/admin/utmaningar" className={styles.cardLink}>
+            Alla <ChevronRightIcon className={styles.tileChevron} />
+          </Link>
+        }
+      >
         {isLoading ? (
           <Spinner label="Laddar utmaningar…" />
         ) : challenges && challenges.length > 0 ? (
           <ul className={styles.challengeList}>
-            {challenges.map((c) => (
+            {challenges.slice(0, 4).map((c) => (
               <li key={c.id} className={styles.challengeRow}>
-                <div>
+                <Link
+                  to={`/admin/utmaningar/${c.id}`}
+                  className={styles.challengeLink}
+                >
                   <span className={styles.challengeName}>{c.name}</span>
                   <span className={styles.challengeMeta}>
                     {formatDayMonth(c.startDate)} – {formatDayMonth(c.endDate)}{' '}
                     · {challengeDurationDays(c)} dagar
                   </span>
-                </div>
-                <div className={styles.challengeActions}>
-                  <Badge tone={STATUS_TONE[c.status]} size="sm">
-                    {STATUS_LABEL[c.status]}
-                  </Badge>
-                  {c.status === ChallengeStatus.Draft && (
-                    <ActivateChallengeControl challenge={c} />
-                  )}
-                </div>
+                </Link>
+                <Badge tone={STATUS_TONE[c.status]} size="sm">
+                  {STATUS_LABEL[c.status]}
+                </Badge>
               </li>
             ))}
           </ul>
         ) : (
-          <p className={styles.muted}>Inga utmaningar ännu.</p>
+          <p className={styles.muted}>
+            Inga utmaningar ännu.{' '}
+            <Link to="/admin/utmaningar/ny">Skapa den första</Link>.
+          </p>
         )}
       </Card>
     </>

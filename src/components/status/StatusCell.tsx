@@ -1,4 +1,5 @@
 import type { DayState } from '@/domain/dayState';
+import { PenaltyDot } from '@/components/ui/PenaltyBadge';
 import { statusMeta } from './statusMeta';
 import styles from './StatusCell.module.css';
 
@@ -11,6 +12,8 @@ export interface StatusCellProps {
   onClick?: (() => void) | undefined;
   /** Full accessible sentence, e.g. "Anna, idag: genomförd". */
   ariaLabel?: string | undefined;
+  /** Marks the day as carrying an offensive penalty. */
+  penalised?: boolean;
 }
 
 export function StatusCell({
@@ -19,6 +22,7 @@ export function StatusCell({
   size = 'md',
   onClick,
   ariaLabel,
+  penalised = false,
 }: StatusCellProps) {
   const meta = statusMeta(state);
   const className = [
@@ -31,11 +35,19 @@ export function StatusCell({
     .filter(Boolean)
     .join(' ');
 
-  const content = meta.Icon ? (
-    <meta.Icon className={styles.glyph} />
-  ) : (
-    <span className={styles.mark} aria-hidden="true" />
+  const content = (
+    <>
+      {meta.Icon ? (
+        <meta.Icon className={styles.glyph} />
+      ) : (
+        <span className={styles.mark} aria-hidden="true" />
+      )}
+      {penalised && <PenaltyDot />}
+    </>
   );
+  const label = penalised
+    ? `${ariaLabel ?? meta.label} (straff)`
+    : (ariaLabel ?? meta.label);
 
   if (onClick) {
     return (
@@ -43,7 +55,7 @@ export function StatusCell({
         type="button"
         className={className}
         onClick={onClick}
-        aria-label={ariaLabel ?? meta.label}
+        aria-label={label}
       >
         {content}
       </button>
@@ -51,7 +63,7 @@ export function StatusCell({
   }
 
   return (
-    <span className={className} role="img" aria-label={ariaLabel ?? meta.label}>
+    <span className={className} role="img" aria-label={label}>
       {content}
     </span>
   );

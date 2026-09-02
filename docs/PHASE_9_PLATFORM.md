@@ -6,8 +6,7 @@ Design reference for the Phase 9 **database + domain foundation**. Migrations
 this explains the model and the decisions.
 
 The Phase 9 UI (challenge management screens, the Straffbank surface, the audit
-viewer, corrections UI, export) is built **after** this foundation is reviewed
-and lands on `phase-9-platform`.
+viewer, corrections UI, export) is documented in §13 — same branch.
 
 ---
 
@@ -474,3 +473,58 @@ npm run db:types          # supabase gen types typescript --linked > src/types/d
 
 `src/types/database.ts` was hand-updated in this phase to match the migrations;
 step 3 replaces it with the canonical generated version.
+
+---
+
+## 13. Phase 9 UI (built on `phase-9-platform`)
+
+Native to the existing dark Nordic system — same tokens, `Card`/`Button`/
+`Badge`/`Sheet`/`StatusCell`, same bottom-nav (untouched). New surfaces:
+
+**Participant**
+
+- **Straffbanken** (`/straffbanken`, menu slot — reached from the desktop rail
+  and teaser cards on Hem/Profil). Inventory grouped by kind (`×N`), next-unlock
+  milestone, received penalties ("Du har blivit straffad"), sent list. The
+  assignment flow is a `Sheet`: pick penalty → pick target → **live
+  `preview_penalty_target` shows the exact landing date** → confirm →
+  `assign_penalty`. Cancellation is admin-only.
+- **Multi-session logging** (`MultiSessionLog`, auto-routed from `/logga` when
+  the day carries a penalty). "Pass N av M" progress, per-session validity
+  (`✓`/`!`), each session its own `SessionForm` with its own proof. Session 1 =
+  `submitTraining` (upsert `session_seq=1`); session 2+ = `add_training_session`.
+  Copy states plainly that one long session ≠ two.
+- **Enhanced requirement everywhere**: `challenge_day_states` now returns the
+  effective `requiredMinutes`/`requiredSessions`/penalty per day, threaded into
+  `ParticipantView.todayRequirement` / `requirementByDate`. Hem shows the real
+  bar + "Erik har gett dig …"; `EntryDetailSheet` shows the day total vs. the
+  effective requirement; `RecentGrid` / `MatrixGrid` cells get a small `☠` dot
+  (colour is never the only signal — the aria-label says "(straff)").
+- **Challenge switcher**: `MyChallengesCard` on Profil lists every membership,
+  bucketed current / upcoming / past. Read-oriented; the app's primary-challenge
+  focus is unchanged.
+
+**Admin** (mobile-first card lists, no desktop-only tables)
+
+- **Utmaningar** (`/admin/utmaningar`): list by status; **create**
+  (`/admin/utmaningar/ny`) → `create_challenge` (+ optional default penalties);
+  **detail** (`/admin/utmaningar/:id`): derived facts, `ChallengeRuleFields`
+  (locked with a clear warning once active/started, end-date still extendable),
+  `PenaltyDefinitionList` (editable only while draft), lifecycle
+  (activate/complete/archive/reopen — each a `ConfirmSheet`), **duplicate**
+  (`DuplicateChallengeSheet`, optional roster copy), delete (draft only),
+  results + **CSV export** (`challenge_results` → `buildChallengeResultsCsv`,
+  no proof URLs/tokens).
+- **Granskningslogg** (`/admin/granskningslogg`): filter by category / challenge
+  / person / date; each row humanised to Swedish (`describeAuditEvent`) with
+  before → after diffs; automatic corrections shown as "Automatiskt".
+- **Admin corrections**: `EntryDetailSheet` gains a per-session
+  "Ogiltigförklara / Återställ" control (admins only) with a mandatory reason +
+  reason code → `invalidate_training_session` / `revalidate_training_session`.
+
+**Files** — see the completion report for the full list. New feature dirs:
+`src/features/straffbanken/*`, admin additions under `src/features/admin/*`,
+new pages under `src/pages/admin/*` + `src/pages/StraffbankenPage.tsx`, shared
+`src/components/ui/{PenaltyBadge,ConfirmSheet}.tsx`.
+
+**Not merged. No migration pushed.**

@@ -171,3 +171,46 @@ export const ShieldIcon = (p: IconProps) => (
     <path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z" />
   </Base>
 );
+
+/** Straffbanken marker — a spare skull, not a cartoon. */
+export const SkullIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 3a7 7 0 0 0-7 7v3l1.5 2v2.5A1.5 1.5 0 0 0 8 20h8a1.5 1.5 0 0 0 1.5-1.5V16L19 14v-4a7 7 0 0 0-7-7Z" />
+    <circle cx="9" cy="11" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="11" r="1.4" fill="currentColor" stroke="none" />
+    <path d="M12 14v3M10.5 20v-2M13.5 20v-2" />
+  </Base>
+);
+
+export const CalendarIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4" />
+  </Base>
+);
+
+export const PlusIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Base>
+);
+
+export const CopyIcon = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+  </Base>
+);
+
+export const DownloadIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 4v11M8 11l4 4 4-4" />
+    <path d="M5 19h14" />
+  </Base>
+);
+
+export const FilterIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 5h16l-6 8v6l-4-2v-4z" />
+  </Base>
+);

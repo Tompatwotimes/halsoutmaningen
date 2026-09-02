@@ -8,10 +8,17 @@ import type {
   DayRequirement,
   ParticipantView,
 } from '@/features/challenge/types';
+import { activeChallenge, FIXTURE_TODAY } from './challenge';
+import { participantFixtures, SELF_USER_ID } from './participants';
+import { buildEntryMap, type EntryFixture } from './entries';
 
 /** The fixture world has no penalties: every day requires the base rule. */
-function baseRequirement(): DayRequirement {
+function baseRequirement(entry: EntryFixture | undefined): DayRequirement {
   const req = computeDailyRequirement(activeChallenge, null);
+  const valid =
+    entry !== undefined &&
+    entry.durationMinutes >= activeChallenge.requiredMinutes &&
+    (!activeChallenge.proofRequired || entry.hasProof);
   return {
     requiredMinutes: req.requiredTotalMinutes,
     requiredSessions: req.requiredSessions,
@@ -19,11 +26,11 @@ function baseRequirement(): DayRequirement {
     penaltyType: null,
     penaltyDisplayName: null,
     penaltyFromUserId: null,
+    sessionCount: entry ? 1 : 0,
+    validSessionCount: valid ? 1 : 0,
+    totalValidMinutes: valid ? entry.durationMinutes : 0,
   };
 }
-import { activeChallenge, FIXTURE_TODAY } from './challenge';
-import { participantFixtures, SELF_USER_ID } from './participants';
-import { buildEntryMap } from './entries';
 
 export type {
   ParticipantView,
@@ -42,10 +49,12 @@ export function buildChallengeDataset(): ChallengeDataset {
 
   const participants: ParticipantView[] = participantFixtures
     .map((p) => {
+      const ownEntries = [...entries.values()].filter(
+        (e) => e.userId === p.userId,
+      );
+      const entryByDate = new Map(ownEntries.map((e) => [e.date, e] as const));
       const sessionsByDate = new Map(
-        [...entries.values()]
-          .filter((e) => e.userId === p.userId)
-          .map((e) => [e.date, [e]] as const),
+        ownEntries.map((e) => [e.date, [e]] as const),
       );
       const evaluation = evaluateParticipant({
         challenge: activeChallenge,
@@ -57,7 +66,9 @@ export function buildChallengeDataset(): ChallengeDataset {
         evaluation.days.map((d) => [d.date, d.state] as const),
       );
       const requirementByDate = new Map(
-        evaluation.days.map((d) => [d.date, baseRequirement()] as const),
+        evaluation.days.map(
+          (d) => [d.date, baseRequirement(entryByDate.get(d.date))] as const,
+        ),
       );
       const decided =
         evaluation.liability.completedDays + evaluation.liability.missedDays;
@@ -83,7 +94,9 @@ export function buildChallengeDataset(): ChallengeDataset {
         statesByDate,
         requirementByDate,
         todayState: eligibleToday ? (statesByDate.get(today) ?? null) : null,
-        todayRequirement: eligibleToday ? baseRequirement() : null,
+        todayRequirement: eligibleToday
+          ? baseRequirement(entryByDate.get(today))
+          : null,
         activeToday: p.membership.active && eligibleToday,
         currentStreak: currentStreak(evaluation.states),
         longestStreak: longestStreak(evaluation.states),
@@ -108,6 +121,7 @@ export function buildChallengeDataset(): ChallengeDataset {
     .map((e) => ({
       entryId: e.entryId,
       date: e.date,
+      sessionSeq: 1,
       durationMinutes: e.durationMinutes,
       activity: e.activity,
       note: e.note,
@@ -125,5 +139,9 @@ export function buildChallengeDataset(): ChallengeDataset {
     rosterToday: participants.filter((p) => p.activeToday),
     selfEntries,
     getSelfEntry: (date) => selfEntryByDate.get(date) ?? null,
+    getSelfSessions: (date) => {
+      const e = selfEntryByDate.get(date);
+      return e ? [e] : [];
+    },
   };
 }

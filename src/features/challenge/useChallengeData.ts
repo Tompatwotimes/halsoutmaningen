@@ -27,6 +27,9 @@ function toRequirement(row: DayStateRow): DayRequirement {
     penaltyType: row.penaltyType,
     penaltyDisplayName: row.penaltyDisplayName,
     penaltyFromUserId: row.penaltyFromUserId,
+    sessionCount: row.sessionCount,
+    validSessionCount: row.validSessionCount,
+    totalValidMinutes: row.totalValidMinutes,
   };
 }
 
@@ -178,7 +181,15 @@ async function loadChallengeDataset(
     throw new Error('Din egen medlemsrad saknas i deltagarlistan.');
   }
 
-  const selfEntryByDate = new Map(selfEntries.map((e) => [e.date, e]));
+  const selfSessionsByDate = new Map<string, typeof selfEntries>();
+  for (const e of selfEntries) {
+    const list = selfSessionsByDate.get(e.date) ?? [];
+    list.push(e);
+    selfSessionsByDate.set(e.date, list);
+  }
+  for (const list of selfSessionsByDate.values()) {
+    list.sort((a, b) => a.sessionSeq - b.sessionSeq);
+  }
 
   return {
     challenge,
@@ -187,7 +198,12 @@ async function loadChallengeDataset(
     participants,
     rosterToday: participants.filter((p) => p.activeToday),
     selfEntries,
-    getSelfEntry: (date) => selfEntryByDate.get(date) ?? null,
+    getSelfEntry: (date) => {
+      const list = selfSessionsByDate.get(date);
+      if (!list || list.length === 0) return null;
+      return list.find((e) => e.sessionSeq === 1) ?? list[0] ?? null;
+    },
+    getSelfSessions: (date) => selfSessionsByDate.get(date) ?? [],
   };
 }
 
