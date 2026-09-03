@@ -39,126 +39,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      retroactive_training_requests: {
-        Row: {
-          challenge_date: string
-          challenge_id: string
-          created_at: string
-          id: string
-          participant_reason: string
-          review_note: string | null
-          reviewed_at: string | null
-          reviewed_by: string | null
-          status: string
-          submitted_at: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          challenge_date: string
-          challenge_id: string
-          created_at?: string
-          id?: string
-          participant_reason: string
-          review_note?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          status?: string
-          submitted_at?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          challenge_date?: string
-          challenge_id?: string
-          created_at?: string
-          id?: string
-          participant_reason?: string
-          review_note?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          status?: string
-          submitted_at?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "retroactive_training_requests_challenge_id_fkey"
-            columns: ["challenge_id"]
-            isOneToOne: false
-            referencedRelation: "challenges"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "retroactive_training_requests_reviewed_by_fkey"
-            columns: ["reviewed_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "retroactive_training_requests_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      retroactive_training_request_sessions: {
-        Row: {
-          activity: string | null
-          created_at: string
-          duration_minutes: number
-          id: string
-          note: string | null
-          proof_height: number | null
-          proof_mime_type: string | null
-          proof_size_bytes: number | null
-          proof_storage_path: string | null
-          proof_width: number | null
-          request_id: string
-          sort_order: number
-        }
-        Insert: {
-          activity?: string | null
-          created_at?: string
-          duration_minutes: number
-          id?: string
-          note?: string | null
-          proof_height?: number | null
-          proof_mime_type?: string | null
-          proof_size_bytes?: number | null
-          proof_storage_path?: string | null
-          proof_width?: number | null
-          request_id: string
-          sort_order?: number
-        }
-        Update: {
-          activity?: string | null
-          created_at?: string
-          duration_minutes?: number
-          id?: string
-          note?: string | null
-          proof_height?: number | null
-          proof_mime_type?: string | null
-          proof_size_bytes?: number | null
-          proof_storage_path?: string | null
-          proof_width?: number | null
-          request_id?: string
-          sort_order?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "retroactive_training_request_sessions_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "retroactive_training_requests"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       audit_log: {
         Row: {
           action: string
@@ -552,6 +432,126 @@ export type Database = {
         }
         Relationships: []
       }
+      retroactive_training_request_sessions: {
+        Row: {
+          activity: string | null
+          created_at: string
+          duration_minutes: number
+          id: string
+          note: string | null
+          proof_height: number | null
+          proof_mime_type: string | null
+          proof_size_bytes: number | null
+          proof_storage_path: string | null
+          proof_width: number | null
+          request_id: string
+          sort_order: number
+        }
+        Insert: {
+          activity?: string | null
+          created_at?: string
+          duration_minutes: number
+          id?: string
+          note?: string | null
+          proof_height?: number | null
+          proof_mime_type?: string | null
+          proof_size_bytes?: number | null
+          proof_storage_path?: string | null
+          proof_width?: number | null
+          request_id: string
+          sort_order?: number
+        }
+        Update: {
+          activity?: string | null
+          created_at?: string
+          duration_minutes?: number
+          id?: string
+          note?: string | null
+          proof_height?: number | null
+          proof_mime_type?: string | null
+          proof_size_bytes?: number | null
+          proof_storage_path?: string | null
+          proof_width?: number | null
+          request_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retroactive_training_request_sessions_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "retroactive_training_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      retroactive_training_requests: {
+        Row: {
+          challenge_date: string
+          challenge_id: string
+          created_at: string
+          id: string
+          participant_reason: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          submitted_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          challenge_date: string
+          challenge_id: string
+          created_at?: string
+          id?: string
+          participant_reason: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          challenge_date?: string
+          challenge_id?: string
+          created_at?: string
+          id?: string
+          participant_reason?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retroactive_training_requests_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retroactive_training_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "retroactive_training_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       training_entries: {
         Row: {
           activity: string | null
@@ -706,6 +706,15 @@ export type Database = {
         Args: { p_challenge_id: string; p_user_id: string }
         Returns: undefined
       }
+      _retroactive_block_message: { Args: { p_chk: Json }; Returns: string }
+      _retroactive_request_eligibility_check: {
+        Args: {
+          p_challenge_date: string
+          p_challenge_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       add_training_session: {
         Args: {
           p_activity?: string
@@ -736,6 +745,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      approve_retroactive_registration: {
+        Args: { p_admin_note?: string; p_request_id: string }
+        Returns: Json
       }
       archive_challenge: {
         Args: { p_challenge_id: string }
@@ -769,6 +782,10 @@ export type Database = {
       }
       cancel_penalty_assignment: {
         Args: { p_assignment_id: string; p_reason: string }
+        Returns: Json
+      }
+      cancel_retroactive_registration: {
+        Args: { p_request_id: string }
         Returns: Json
       }
       challenge_current_date: {
@@ -1006,9 +1023,17 @@ export type Database = {
         Args: { p_earned_penalty_id: string; p_to_user_id: string }
         Returns: Json
       }
+      preview_retroactive_approval: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
       reconcile_earned_penalties: {
         Args: { p_challenge_id: string; p_user_id?: string }
         Returns: undefined
+      }
+      reject_retroactive_registration: {
+        Args: { p_reason: string; p_request_id: string }
+        Returns: Json
       }
       reopen_challenge: {
         Args: { p_challenge_id: string }
@@ -1035,6 +1060,21 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      retroactive_requests_for_challenge: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          challenge_date: string
+          id: string
+          participant_reason: string
+          review_note: string
+          reviewed_at: string
+          reviewed_by: string
+          session_count: number
+          status: string
+          submitted_at: string
+          user_id: string
+        }[]
       }
       revalidate_training_session: {
         Args: { p_entry_id: string; p_reason: string }
@@ -1087,56 +1127,16 @@ export type Database = {
         Args: { p_other_user: string }
         Returns: boolean
       }
-      try_cast_uuid: { Args: { p: string }; Returns: string }
-      _retroactive_block_message: { Args: { p_chk: Json }; Returns: string }
-      _retroactive_request_eligibility_check: {
-        Args: {
-          p_challenge_id: string
-          p_user_id: string
-          p_challenge_date: string
-        }
-        Returns: Json
-      }
       submit_retroactive_registration: {
         Args: {
-          p_challenge_id: string
           p_challenge_date: string
+          p_challenge_id: string
           p_reason: string
           p_sessions: Json
         }
         Returns: Json
       }
-      cancel_retroactive_registration: {
-        Args: { p_request_id: string }
-        Returns: Json
-      }
-      preview_retroactive_approval: {
-        Args: { p_request_id: string }
-        Returns: Json
-      }
-      approve_retroactive_registration: {
-        Args: { p_request_id: string; p_admin_note?: string }
-        Returns: Json
-      }
-      reject_retroactive_registration: {
-        Args: { p_request_id: string; p_reason: string }
-        Returns: Json
-      }
-      retroactive_requests_for_challenge: {
-        Args: { p_challenge_id: string }
-        Returns: {
-          id: string
-          user_id: string
-          challenge_date: string
-          participant_reason: string
-          status: string
-          submitted_at: string
-          reviewed_at: string
-          reviewed_by: string
-          review_note: string
-          session_count: number
-        }[]
-      }
+      try_cast_uuid: { Args: { p: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
