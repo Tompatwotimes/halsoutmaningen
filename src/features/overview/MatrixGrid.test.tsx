@@ -232,3 +232,109 @@ describe('MatrixGrid — full challenge period', () => {
     );
   });
 });
+
+/**
+ * Exact production repro (bug report 2026-09-03): after the Aug 1 → Sep 1
+ * start-date correction, every membership begins Sep 3 and "today" is Sep 3.
+ * Sep 1 and Sep 2 vanished from the scrollable matrix entirely. This block
+ * pins that the date axis comes from the challenge, and that scroll-to-today
+ * only *moves the viewport* — it never slices leading columns.
+ */
+describe('MatrixGrid — production repro: challenge start Sep 1, all join Sep 3', () => {
+  let scrollToSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    scrollToSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      value: 320,
+    });
+    HTMLElement.prototype.scrollTo = scrollToSpy;
+  });
+
+  const TODAY = '2026-09-03';
+  const roster = () => [
+    makeParticipant(SEP_CHALLENGE, TODAY, {
+      userId: 'u-anna',
+      displayName: 'Anna Andersson',
+      participationStartDate: '2026-09-03',
+    }),
+    makeParticipant(SEP_CHALLENGE, TODAY, {
+      userId: 'u-erik',
+      displayName: 'Erik Eriksson',
+      participationStartDate: '2026-09-03',
+    }),
+  ];
+
+  function renderGrid(ref?: ReturnType<typeof createRef<MatrixGridHandle>>) {
+    return render(
+      <MatrixGrid
+        challenge={SEP_CHALLENGE}
+        today={TODAY}
+        participants={roster()}
+        onOpenEntry={vi.fn()}
+        {...(ref ? { handleRef: ref } : {})}
+      />,
+    );
+  }
+
+  it('keeps Sep 1, Sep 2 and Sep 3 as columns', () => {
+    renderGrid();
+    // 2026-09-01 Tue, 2026-09-02 Wed, 2026-09-03 Thu.
+    expect(
+      screen.getByLabelText('Anna Andersson, Tis 1: Deltog inte'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Anna Andersson, Ons 2: Deltog inte'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Anna Andersson, Tor 3: Väntar på dagens pass'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders Sep 1/2 cells as not_participating for every member', () => {
+    renderGrid();
+    for (const name of ['Anna Andersson', 'Erik Eriksson']) {
+      expect(
+        screen.getByLabelText(`${name}, Tis 1: Deltog inte`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`${name}, Ons 2: Deltog inte`),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('renders Sep 1 first and Nov 28 last on the date axis', () => {
+    renderGrid();
+    const cells = screen.getAllByLabelText(/^Anna Andersson,/);
+    expect(cells).toHaveLength(TOTAL_DAYS);
+    expect(cells[0]).toHaveAttribute(
+      'aria-label',
+      'Anna Andersson, Tis 1: Deltog inte',
+    );
+    expect(cells[cells.length - 1]).toHaveAttribute(
+      'aria-label',
+      'Anna Andersson, Lör 28: Kommande dag',
+    );
+  });
+
+  it('scroll target is Sep 3 (index 2), and Sep 1/2 survive the scroll', () => {
+    const ref = createRef<MatrixGridHandle>();
+    renderGrid(ref);
+    ref.current?.scrollToToday();
+    // Sep 3 is column index 2 → 2*22 - 320/2 + 22.
+    expect(scrollToSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ left: 2 * 22 - 160 + 22 }),
+    );
+    // The scroll only moves the viewport — the leading columns are still there.
+    expect(
+      screen.getByLabelText('Anna Andersson, Tis 1: Deltog inte'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Anna Andersson, Ons 2: Deltog inte'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^Anna Andersson,/)).toHaveLength(
+      TOTAL_DAYS,
+    );
+  });
+});
