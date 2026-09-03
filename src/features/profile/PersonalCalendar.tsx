@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { challengeDates, type ChallengeConfig } from '@/domain/challenge';
+import type { ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
-import { parsePlainDate } from '@/domain/dates';
+import { enumerateDates, parsePlainDate } from '@/domain/dates';
+import { effectiveEligibleStart } from '@/domain/membership';
 import { statusMeta } from '@/components/status/statusMeta';
 import { PenaltyDot } from '@/components/ui/PenaltyBadge';
 import { CheckIcon, MissedIcon } from '@/components/icons';
@@ -45,7 +46,8 @@ export function PersonalCalendar({
 }: Props) {
   const months = useMemo(() => {
     const groups = new Map<string, string[]>();
-    for (const date of challengeDates(challenge)) {
+    const start = effectiveEligibleStart(challenge, participant.membership);
+    for (const date of enumerateDates(start, challenge.endDate)) {
       const { year, month } = parsePlainDate(date);
       const key = `${String(year)}-${String(month)}`;
       const list = groups.get(key) ?? [];
@@ -56,7 +58,7 @@ export function PersonalCalendar({
       const parts = key.split('-');
       return { monthNum: Number(parts[1]), dates };
     });
-  }, [challenge]);
+  }, [challenge, participant.membership]);
 
   return (
     <div className={styles.wrap}>

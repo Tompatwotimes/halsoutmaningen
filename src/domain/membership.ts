@@ -84,3 +84,24 @@ export function eligibleDayCount(
 ): number {
   return eligibleDates(challenge, membership).length;
 }
+
+/**
+ * Earliest plain date genuinely worth *displaying* across a set of
+ * memberships — a presentation-only clipping rule, never a challenge-
+ * semantics one (CLAUDE.md §7 states are unchanged; this only trims leading
+ * columns/weeks nobody could have participated on).
+ *
+ * Never earlier than the challenge start, and never later than any one of
+ * the given memberships' own effective eligible start — so no date any of
+ * them actually participated on is ever hidden. With no memberships it falls
+ * back to the challenge start date.
+ */
+export function visibleRangeStart(
+  challenge: ChallengeConfig,
+  memberships: readonly MembershipConfig[],
+): string {
+  if (memberships.length === 0) return challenge.startDate;
+  return memberships
+    .map((m) => effectiveEligibleStart(challenge, m))
+    .reduce((earliest, start) => minDate(earliest, start));
+}

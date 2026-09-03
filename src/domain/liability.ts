@@ -63,6 +63,16 @@ export function tallyDayStates(states: readonly DayState[]): DayStateTotals {
   return totals;
 }
 
+/**
+ * "Kassan" — the group's total current liability, summed straight from each
+ * participant's own confirmed debt (never recomputed here). The application
+ * only ever knows what is owed, not what has actually been paid — there is
+ * no payment/paid-state concept anywhere in this codebase.
+ */
+export function totalKassan(confirmedDebts: readonly number[]): number {
+  return confirmedDebts.reduce((sum, amount) => sum + amount, 0);
+}
+
 export function summarizeLiability(
   states: readonly DayState[],
   missedDayCost: number,

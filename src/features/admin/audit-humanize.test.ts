@@ -97,6 +97,26 @@ describe('describeAuditEvent', () => {
     expect(d.category).toBe('training');
   });
 
+  it('humanises a start-date correction with the old/new dates and reason', () => {
+    const d = describeAuditEvent(
+      row({
+        action: 'challenge_start_date_corrected',
+        beforeData: { start_date: '2026-08-01' },
+        afterData: { start_date: '2026-09-01' },
+        note: 'felaktigt startdatum vid aktivering',
+      }),
+      resolve,
+    );
+    expect(d.title).toBe('Startdatum rättat');
+    expect(d.detail).toContain('2026-08-01');
+    expect(d.detail).toContain('2026-09-01');
+    expect(d.detail).toContain('felaktigt startdatum vid aktivering');
+    expect(d.changes).toEqual([
+      { label: 'Startdatum', before: '2026-08-01', after: '2026-09-01' },
+    ]);
+    expect(d.category).toBe('challenge');
+  });
+
   it('falls back gracefully for an unknown action', () => {
     const d = describeAuditEvent(
       row({ entityType: 'training_proof', action: 'delete' }),

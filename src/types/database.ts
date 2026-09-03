@@ -574,6 +574,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _challenge_start_date_correction_check: {
+        Args: { p_challenge_id: string; p_new_start_date: string }
+        Returns: Json
+      }
       _next_penalty_target_date: {
         Args: { p_challenge_id: string; p_to_user_id: string }
         Returns: string
@@ -744,6 +748,32 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      correct_challenge_start_date: {
+        Args: { p_challenge_id: string; p_new_start_date: string; p_reason?: string }
+        Returns: {
+          activated_at: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          missed_day_cost: number
+          name: string
+          proof_required: boolean
+          required_minutes: number
+          start_date: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_challenge: {
         Args: {
           p_description?: string
@@ -844,6 +874,10 @@ export type Database = {
         Returns: boolean
       }
       is_valid_timezone: { Args: { p_tz: string }; Returns: boolean }
+      preview_challenge_start_date_correction: {
+        Args: { p_challenge_id: string; p_new_start_date: string }
+        Returns: Json
+      }
       preview_penalty_target: {
         Args: { p_earned_penalty_id: string; p_to_user_id: string }
         Returns: Json

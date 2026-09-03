@@ -2,7 +2,13 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { challengeProgress } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
-import { formatDayMonth, formatMinutes, formatPercent } from '@/domain/format';
+import { totalKassan } from '@/domain/liability';
+import {
+  formatDayMonth,
+  formatMinutes,
+  formatPercent,
+  formatSek,
+} from '@/domain/format';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -78,6 +84,9 @@ export function HomePage() {
   const doneToday = roster.filter((p) => p.todayState === DayState.Completed);
   const pendingToday = roster.filter((p) => p.todayState === DayState.Pending);
   const groupRatio = roster.length === 0 ? 0 : doneToday.length / roster.length;
+  const kassan = totalKassan(
+    data.participants.map((p) => p.liability.confirmedDebt),
+  );
 
   const firstName = self.displayName.split(' ')[0] ?? self.displayName;
 
@@ -232,6 +241,12 @@ export function HomePage() {
             {pendingToday.length > 4 && ` +${pendingToday.length - 4}`}
           </p>
         )}
+        <p className={styles.kassaRow}>
+          <span className={styles.kassaLabel}>Kassan</span>
+          <span className={`${styles.kassaValue} tnum`}>
+            {formatSek(kassan)}
+          </span>
+        </p>
       </Card>
 
       {/* --- Personal standing --- */}

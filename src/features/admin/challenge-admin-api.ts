@@ -203,6 +203,117 @@ export async function setChallengeStatus(
   if (error) throw new Error(translateChallengeError(error.message));
 }
 
+// ---------------------------------------------------------------------------
+// Start-date correction — a narrow, audited escape hatch for an ACTIVE
+// challenge whose start_date was configured wrong (CLAUDE.md-adjacent
+// production correction, forward-only). See docs on the RPC in the
+// migration; preview and apply share the exact same server-side check.
+// ---------------------------------------------------------------------------
+
+export type StartDateBlockingCode =
+  | 'not_found'
+  | 'not_active'
+  | 'not_forward'
+  | 'past_end'
+  | 'training_exists'
+  | 'penalty_target_exists'
+  | 'penalty_earned_exists';
+
+export interface StartDateCorrectionPreview {
+  ok: boolean;
+  blockingCode: StartDateBlockingCode | null;
+  blockingDate: string | null;
+  oldStartDate: string | null;
+  newStartDate: string | null;
+  removedRangeStart: string | null;
+  removedRangeEnd: string | null;
+}
+
+interface StartDateCorrectionCheckJson {
+  ok: boolean;
+  blocking_code?: string;
+  blocking_date?: string;
+  old_start_date?: string;
+  new_start_date?: string;
+  removed_range_start?: string;
+  removed_range_end?: string;
+}
+
+function toPreview(json: unknown): StartDateCorrectionPreview {
+  const j = (json ?? {}) as StartDateCorrectionCheckJson;
+  return {
+    ok: j.ok,
+    blockingCode:
+      (j.blocking_code as StartDateBlockingCode | undefined) ?? null,
+    blockingDate: j.blocking_date ?? null,
+    oldStartDate: j.old_start_date ?? null,
+    newStartDate: j.new_start_date ?? null,
+    removedRangeStart: j.removed_range_start ?? null,
+    removedRangeEnd: j.removed_range_end ?? null,
+  };
+}
+
+/** Human, Swedish description of why a start-date correction is blocked. */
+export function describeStartDateBlock(
+  preview: Pick<
+    StartDateCorrectionPreview,
+    'blockingCode' | 'blockingDate' | 'newStartDate'
+  >,
+  formatDate: (plainDate: string) => string,
+): string {
+  const { blockingCode: code, blockingDate, newStartDate } = preview;
+  const to = newStartDate ? formatDate(newStartDate) : 'det nya datumet';
+  const d = blockingDate ? formatDate(blockingDate) : null;
+  switch (code) {
+    case 'not_active':
+      return 'Bara en aktiv utmaning kan rättas på det här sättet.';
+    case 'not_forward':
+      return 'Det nya startdatumet måste vara efter det nuvarande.';
+    case 'past_end':
+      return 'Startdatumet kan inte vara efter utmaningens slutdatum.';
+    case 'training_exists':
+      return `Startdatumet kan inte flyttas till ${to} eftersom det finns registrerade träningspass${d ? ` den ${d}` : ''}.`;
+    case 'penalty_target_exists':
+      return `Startdatumet kan inte flyttas till ${to} eftersom ett straff är tilldelat med måldatum${d ? ` ${d}` : ''}.`;
+    case 'penalty_earned_exists':
+      return `Startdatumet kan inte flyttas till ${to} eftersom ett straff intjänades${d ? ` den ${d}` : ''}.`;
+    case 'not_found':
+      return 'Utmaningen hittades inte.';
+    default:
+      return 'Rättningen kan inte genomföras just nu. Förhandsgranska igen.';
+  }
+}
+
+export async function previewStartDateCorrection(
+  challengeId: string,
+  newStartDate: string,
+): Promise<StartDateCorrectionPreview> {
+  const { data, error } = await supabase.rpc(
+    'preview_challenge_start_date_correction',
+    { p_challenge_id: challengeId, p_new_start_date: newStartDate },
+  );
+  if (error) throw new Error(translateChallengeError(error.message));
+  return toPreview(data);
+}
+
+export interface CorrectStartDateInput {
+  challengeId: string;
+  newStartDate: string;
+  reason: string | null;
+}
+
+export async function correctChallengeStartDate(
+  input: CorrectStartDateInput,
+): Promise<ChallengeConfig> {
+  const { data, error } = await supabase.rpc('correct_challenge_start_date', {
+    p_challenge_id: input.challengeId,
+    p_new_start_date: input.newStartDate,
+    ...(input.reason ? { p_reason: input.reason } : {}),
+  });
+  if (error) throw new Error(translateChallengeError(error.message));
+  return toConfig(data);
+}
+
 function translateChallengeError(message: string): string {
   if (message.includes('rule fields are locked'))
     return 'Reglerna är låsta när utmaningen är aktiv eller har startat. Skapa en ny från denna för att ändra dem.';

@@ -7,6 +7,7 @@ import {
   fullPeriodMaxLiability,
 } from '@/domain/challenge';
 import { currentPlainDateInTimeZone } from '@/domain/time';
+import { totalKassan } from '@/domain/liability';
 import { formatDayMonth, formatSek } from '@/domain/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -34,6 +35,7 @@ import {
   useChallengeAdminMutation,
 } from '@/features/admin/challenge-admin-api';
 import { DuplicateChallengeSheet } from '@/features/admin/DuplicateChallengeSheet';
+import { CorrectStartDateSheet } from '@/features/admin/CorrectStartDateSheet';
 import { useParticipants } from '@/features/admin/participants-api';
 import { useChallengeResults } from '@/features/admin/challenge-results-api';
 import {
@@ -60,6 +62,7 @@ export function ChallengeDetailPage() {
     'activate' | 'complete' | 'archive' | 'reopen' | 'delete' | null
   >(null);
   const [showDuplicate, setShowDuplicate] = useState(false);
+  const [showStartDateCorrection, setShowStartDateCorrection] = useState(false);
 
   const save = useChallengeAdminMutation(updateChallenge);
   const lifecycle = useChallengeAdminMutation(
@@ -110,6 +113,9 @@ export function ChallengeDetailPage() {
   const activeParticipants = (roster.data ?? []).filter(
     (p) => p.membershipActive,
   ).length;
+  const kassan = totalKassan(
+    (resultsQuery.data ?? []).map((r) => r.liabilitySek),
+  );
 
   const current: ChallengeRuleValue = form ?? {
     name: challenge.name,
@@ -192,6 +198,7 @@ export function ChallengeDetailPage() {
           label="Kvar"
           value={isFinished ? '–' : `${String(progress.remainingDays)} d`}
         />
+        <Fact label="Kassan" value={isDraft ? '–' : formatSek(kassan)} />
       </Card>
 
       {/* Rules */}
@@ -246,6 +253,14 @@ export function ChallengeDetailPage() {
           {isActive && (
             <Button variant="secondary" onClick={() => setConfirm('complete')}>
               Avsluta utmaningen
+            </Button>
+          )}
+          {isActive && (
+            <Button
+              variant="ghost"
+              onClick={() => setShowStartDateCorrection(true)}
+            >
+              Rätta utmaningsdatum
             </Button>
           )}
           {isFinished && (
@@ -419,6 +434,15 @@ export function ChallengeDetailPage() {
             setShowDuplicate(false);
             void navigate(`/admin/utmaningar/${id}`);
           }}
+        />
+      )}
+
+      {showStartDateCorrection && (
+        <CorrectStartDateSheet
+          open
+          onClose={() => setShowStartDateCorrection(false)}
+          challenge={challenge}
+          onCorrected={() => setShowStartDateCorrection(false)}
         />
       )}
     </>

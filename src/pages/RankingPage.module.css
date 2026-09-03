@@ -8,6 +8,33 @@
   line-height: var(--lh-snug);
 }
 
+.kassaCard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kassaLabel {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-faint);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+.kassaValue {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--c-text);
+}
+
+.kassaHint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
 /* ---- Podium ---- */
 .podium {
   display: grid;
