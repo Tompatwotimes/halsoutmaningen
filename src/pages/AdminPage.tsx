@@ -5,14 +5,45 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import {
   ChevronRightIcon,
+  ClockIcon,
   GroupIcon,
   OverviewIcon,
   ShieldIcon,
 } from '@/components/icons';
-import { challengeDurationDays } from '@/domain/challenge';
+import { ChallengeStatus, challengeDurationDays } from '@/domain/challenge';
 import { formatDayMonth } from '@/domain/format';
 import { useChallenges } from '@/features/admin/challenges-api';
+import { useRetroactiveQueue } from '@/features/retroactive/useRetroactive';
 import styles from './AdminPage.module.css';
+
+function EfterregTile({ challengeId }: { challengeId: string | null }) {
+  const queue = useRetroactiveQueue(challengeId);
+  const pending = (queue.data ?? []).filter(
+    (r) => r.status === 'pending',
+  ).length;
+
+  return (
+    <Link to="/admin/efterregistreringar" className={styles.tile}>
+      <span className={styles.tileIcon}>
+        <ClockIcon />
+      </span>
+      <span className={styles.tileBody}>
+        <span className={styles.tileTitle}>
+          Efterregistreringar
+          {pending > 0 && (
+            <Badge tone="pending" size="sm">
+              {pending} väntar
+            </Badge>
+          )}
+        </span>
+        <span className={styles.tileText}>
+          Granska och godkänn begäran om att registrera tidigare pass.
+        </span>
+      </span>
+      <ChevronRightIcon className={styles.tileChevron} />
+    </Link>
+  );
+}
 
 const STATUS_TONE = {
   active: 'completed',
@@ -30,6 +61,8 @@ const STATUS_LABEL = {
 
 export function AdminPage() {
   const { data: challenges, isLoading } = useChallenges();
+  const activeChallengeId =
+    challenges?.find((c) => c.status === ChallengeStatus.Active)?.id ?? null;
 
   return (
     <>
@@ -65,6 +98,8 @@ export function AdminPage() {
           </span>
           <ChevronRightIcon className={styles.tileChevron} />
         </Link>
+
+        <EfterregTile challengeId={activeChallengeId} />
 
         <Link to="/admin/granskningslogg" className={styles.tile}>
           <span className={styles.tileIcon}>

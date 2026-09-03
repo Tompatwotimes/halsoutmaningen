@@ -38,6 +38,7 @@ import { DuplicateChallengeSheet } from '@/features/admin/DuplicateChallengeShee
 import { CorrectStartDateSheet } from '@/features/admin/CorrectStartDateSheet';
 import { useParticipants } from '@/features/admin/participants-api';
 import { useChallengeResults } from '@/features/admin/challenge-results-api';
+import { useRetroactiveQueue } from '@/features/retroactive/useRetroactive';
 import {
   buildChallengeResultsCsv,
   downloadCsv,
@@ -56,6 +57,10 @@ export function ChallengeDetailPage() {
   } = useChallenge(challengeId);
   const roster = useParticipants(challengeId);
   const resultsQuery = useChallengeResults(challengeId);
+  const retroQueue = useRetroactiveQueue(challengeId);
+  const retroPending = (retroQueue.data ?? []).filter(
+    (r) => r.status === 'pending',
+  ).length;
 
   const [form, setForm] = useState<ChallengeRuleValue | null>(null);
   const [confirm, setConfirm] = useState<
@@ -245,6 +250,12 @@ export function ChallengeDetailPage() {
           <Link to={`/admin/deltagare`} className={styles.lcLink}>
             Hantera deltagare →
           </Link>
+          {(isActive || isFinished) && (
+            <Link to="/admin/efterregistreringar" className={styles.lcLink}>
+              Efterregistreringar
+              {retroPending > 0 ? ` (${String(retroPending)})` : ''} →
+            </Link>
+          )}
           {isDraft && (
             <Button variant="secondary" onClick={() => setConfirm('activate')}>
               Aktivera utmaningen

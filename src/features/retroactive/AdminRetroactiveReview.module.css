@@ -1,0 +1,115 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.date {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.submitted {
+  font-size: var(--fs-2xs);
+  color: var(--c-text-faint);
+}
+
+.req {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.reason {
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--c-border-strong);
+  background: var(--c-surface-sunken);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.reasonLabel {
+  display: block;
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--c-text-faint);
+  margin-bottom: var(--sp-1);
+}
+
+.session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.sessionHead {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.note {
+  font-size: var(--fs-sm);
+  font-style: italic;
+  color: var(--c-text-muted);
+}
+
+.impact {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+}
+
+.reviewNote {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+}
+
+.err {
+  font-size: var(--fs-sm);
+  color: var(--c-danger-text);
+}
+
+.actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  margin-top: var(--sp-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-3);
+}
+
+.field textarea {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font: inherit;
+  resize: vertical;
+}

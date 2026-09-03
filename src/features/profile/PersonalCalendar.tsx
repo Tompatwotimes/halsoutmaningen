@@ -86,7 +86,10 @@ export function PersonalCalendar({
                 const isToday = date === today;
                 const penalised =
                   participant.requirementByDate.get(date)?.penaltyType != null;
-                const canOpen = state === DayState.Completed;
+                // Completed days open the entry detail; missed days open it too
+                // so the participant can request efterregistrering.
+                const canOpen =
+                  state === DayState.Completed || state === DayState.Missed;
                 const cls = [
                   styles.day,
                   styles[meta.tone],

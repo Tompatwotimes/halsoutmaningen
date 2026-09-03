@@ -1,0 +1,29 @@
+.back {
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+
+.challengeName {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.count {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-pending-text, var(--c-text));
+}
+
+.handledHead {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+}

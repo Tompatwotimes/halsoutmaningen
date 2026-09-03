@@ -21,10 +21,19 @@ import {
   useTrainingCorrection,
   type InvalidationReasonCode,
 } from '@/features/admin/corrections-api';
+import type { RetroactiveRequestRow } from '@/features/retroactive/retroactive-api';
 import { useEntryDetail, type SessionDetailWithProof } from './useEntryDetail';
 import { weekdayLong, capitalize } from './labels';
 import type { DayRequirement } from './types';
 import styles from './EntryDetailSheet.module.css';
+
+export interface RetroactivePrompt {
+  /** The signed-in participant may request efterregistrering for this day. */
+  canRequest: boolean;
+  /** An existing request for this exact day, if any. */
+  existing: RetroactiveRequestRow | null;
+  onRequest: () => void;
+}
 
 interface Props {
   open: boolean;
@@ -36,6 +45,8 @@ interface Props {
   date: string;
   /** Effective (penalty-aware) requirement for this day, when known. */
   requirement?: DayRequirement | null;
+  /** Efterregistrering affordance for the signed-in participant's own past day. */
+  retroactive?: RetroactivePrompt | null;
 }
 
 function timeOf(iso: string): string {
@@ -54,6 +65,7 @@ export function EntryDetailSheet({
   userId,
   date,
   requirement,
+  retroactive,
 }: Props) {
   const { data, isLoading, isError, refetch } = useEntryDetail(
     challenge.id,
@@ -131,7 +143,40 @@ export function EntryDetailSheet({
             isAdmin={isAdmin}
           />
         ))}
+
+      {isSelf && retroactive && <RetroactiveBlock prompt={retroactive} />}
     </Sheet>
+  );
+}
+
+function RetroactiveBlock({ prompt }: { prompt: RetroactivePrompt }) {
+  const existing = prompt.existing;
+  if (existing) {
+    const line =
+      existing.status === 'pending'
+        ? 'Efterregistrering väntar på godkännande.'
+        : existing.status === 'approved'
+          ? 'Efterregistreringen är godkänd.'
+          : existing.status === 'rejected'
+            ? `Efterregistreringen avslogs${existing.reviewNote ? `: ${existing.reviewNote}` : '.'}`
+            : 'Efterregistreringen återkallades.';
+    return (
+      <div className={styles.retro}>
+        <p className={styles.retroStatus}>{line}</p>
+      </div>
+    );
+  }
+  if (!prompt.canRequest) return null;
+  return (
+    <div className={styles.retro}>
+      <p className={styles.retroHint}>
+        Tränade du men hann inte logga? Be en administratör registrera passet i
+        efterhand.
+      </p>
+      <Button variant="secondary" size="sm" onClick={prompt.onRequest}>
+        Begär efterregistrering
+      </Button>
+    </div>
   );
 }
 

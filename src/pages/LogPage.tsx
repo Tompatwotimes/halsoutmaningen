@@ -18,6 +18,7 @@ import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { MultiSessionLog } from '@/features/challenge/MultiSessionLog';
 import { useSubmitTraining } from '@/features/challenge/useSubmitTraining';
+import { RetroactiveEntryLink } from '@/features/retroactive/RetroactiveEntryLink';
 import { useEntryDetail } from '@/features/challenge/useEntryDetail';
 import { useProfile } from '@/features/profile/useProfile';
 import { SubmitTrainingError } from '@/features/challenge/submit-training';
@@ -191,6 +192,7 @@ function LogForm({
           <p className={styles.hint}>
             Du kan ändra dagens pass fram till midnatt.
           </p>
+          <RetroactiveEntryLink data={data} />
         </Card>
       </>
     );
@@ -429,6 +431,8 @@ function LogForm({
           )}
         </div>
       </form>
+
+      {!editing && <RetroactiveEntryLink data={data} />}
     </>
   );
 }

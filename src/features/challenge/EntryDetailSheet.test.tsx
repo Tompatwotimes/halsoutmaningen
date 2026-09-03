@@ -31,7 +31,7 @@ vi.mock('@/components/proof/SignedProofImage', () => ({
   SignedProofImage: () => <div data-testid="proof" />,
 }));
 
-import { EntryDetailSheet } from './EntryDetailSheet';
+import { EntryDetailSheet, type RetroactivePrompt } from './EntryDetailSheet';
 
 const CHALLENGE = {
   id: 'c1',
@@ -134,6 +134,73 @@ describe('EntryDetailSheet requirement agreement', () => {
     renderSheet(null, false);
     expect(
       screen.queryByRole('button', { name: 'Ogiltigförklara passet' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('EntryDetailSheet — efterregistrering affordance', () => {
+  function renderWithRetro(retro: RetroactivePrompt) {
+    entryDetailMock.mockReturnValue({
+      data: { sessions: [] },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    profileMock.mockReturnValue({ isAdmin: false });
+    return render(
+      <EntryDetailSheet
+        open
+        onClose={vi.fn()}
+        challenge={CHALLENGE}
+        participantName="Du"
+        isSelf
+        userId="self"
+        date="2026-08-15"
+        requirement={null}
+        retroactive={retro}
+      />,
+    );
+  }
+
+  it('offers "Begär efterregistrering" on a self past missed day', async () => {
+    const onRequest = vi.fn();
+    renderWithRetro({ canRequest: true, existing: null, onRequest });
+    const btn = screen.getByRole('button', {
+      name: 'Begär efterregistrering',
+    });
+    await userEvent.setup().click(btn);
+    expect(onRequest).toHaveBeenCalledOnce();
+  });
+
+  it('shows a pending status instead of the request button', () => {
+    renderWithRetro({
+      canRequest: true,
+      existing: {
+        id: 'r1',
+        userId: 'self',
+        challengeDate: '2026-08-15',
+        participantReason: 'x',
+        status: 'pending',
+        submittedAt: '2026-08-16T00:00:00Z',
+        reviewedAt: null,
+        reviewedBy: null,
+        reviewNote: null,
+        sessionCount: 1,
+      },
+      onRequest: vi.fn(),
+    });
+    expect(
+      screen.getByText('Efterregistrering väntar på godkännande.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Begär efterregistrering' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows nothing when the day is not eligible for a request', () => {
+    renderWithRetro({ canRequest: false, existing: null, onRequest: vi.fn() });
+    expect(
+      screen.queryByRole('button', { name: 'Begär efterregistrering' }),
     ).not.toBeInTheDocument();
   });
 });
