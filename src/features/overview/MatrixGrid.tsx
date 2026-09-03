@@ -182,7 +182,8 @@ export function MatrixGrid({
                         p.requirementByDate.get(date)?.penaltyType != null
                       }
                       onClick={
-                        state === DayState.Completed
+                        state === DayState.Completed ||
+                        (p.isSelf && state === DayState.Missed)
                           ? () => onOpenEntry(p, date)
                           : undefined
                       }

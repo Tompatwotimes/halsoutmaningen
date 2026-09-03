@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { challengeProgress } from '@/domain/challenge';
+import { ChallengeStatus, challengeProgress } from '@/domain/challenge';
 import { formatMinutes, formatPercent, formatDayMonth } from '@/domain/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -19,10 +19,18 @@ import {
   ShieldIcon,
   SkullIcon,
 } from '@/components/icons';
+import { compareDates } from '@/domain/dates';
+import { DayState } from '@/domain/dayState';
+import {
+  effectiveEligibleEnd,
+  effectiveEligibleStart,
+} from '@/domain/membership';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { useProfile } from '@/features/profile/useProfile';
 import { useAuth } from '@/features/auth/useAuth';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
+import { RetroactiveRequestSheet } from '@/features/retroactive/RetroactiveRequestSheet';
+import { useMyRetroactiveRequests } from '@/features/retroactive/useRetroactive';
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
 import { MyChallengesCard } from '@/features/challenge/MyChallengesCard';
 import { PersonalCalendar } from '@/features/profile/PersonalCalendar';
@@ -36,7 +44,17 @@ export function ProfilePage() {
   const { profile, isAdmin } = useProfile();
   const { signOut } = useAuth();
   const [openDate, setOpenDate] = useState<string | null>(null);
+  const [retroDate, setRetroDate] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+
+  const myRequests = useMyRetroactiveRequests(
+    data?.challenge.id ?? null,
+    data?.self.userId ?? null,
+  );
+  const requestByDate = useMemo(
+    () => new Map((myRequests.data ?? []).map((r) => [r.challengeDate, r])),
+    [myRequests.data],
+  );
 
   const progress = useMemo(
     () => (data ? challengeProgress(data.challenge, data.today) : null),
@@ -154,9 +172,78 @@ export function ProfilePage() {
           userId={data.self.userId}
           date={openDate}
           requirement={data.self.requirementByDate.get(openDate) ?? null}
+          retroactive={{
+            canRequest:
+              data.challenge.status === ChallengeStatus.Active &&
+              (data.self.statesByDate.get(openDate) ?? null) ===
+                DayState.Missed &&
+              compareDates(openDate, data.today) < 0 &&
+              compareDates(
+                openDate,
+                effectiveEligibleStart(data.challenge, data.self.membership),
+              ) >= 0 &&
+              compareDates(
+                openDate,
+                effectiveEligibleEnd(data.challenge, data.self.membership),
+              ) <= 0,
+            existing: requestByDate.get(openDate) ?? null,
+            onRequest: () => {
+              setOpenDate(null);
+              setRetroDate(openDate);
+            },
+          }}
+        />
+      )}
+
+      {data && retroDate && (
+        <RetroactiveRequestSheet
+          open
+          onClose={() => setRetroDate(null)}
+          challenge={data.challenge}
+          userId={data.self.userId}
+          challengeDate={retroDate}
+          requirement={data.self.requirementByDate.get(retroDate) ?? null}
+          onSubmitted={() => void myRequests.refetch()}
         />
       )}
     </>
+  );
+}
+
+const RETRO_STATUS_LABEL: Record<string, string> = {
+  pending: 'Väntar på godkännande',
+  approved: 'Godkänd',
+  rejected: 'Avslagen',
+  cancelled: 'Återkallad',
+};
+
+function RetroactiveRequestsCard({
+  challengeId,
+  userId,
+}: {
+  challengeId: string;
+  userId: string;
+}) {
+  const { data } = useMyRetroactiveRequests(challengeId, userId);
+  if (!data || data.length === 0) return null;
+  return (
+    <Card title="Mina efterregistreringar">
+      <ul className={styles.retroList}>
+        {data.map((r) => (
+          <li key={r.id} className={styles.retroRow}>
+            <span className={styles.retroDate}>
+              {formatDayMonth(r.challengeDate)}
+            </span>
+            <span className={styles.retroStatus}>
+              {RETRO_STATUS_LABEL[r.status] ?? r.status}
+              {r.status === 'rejected' && r.reviewNote
+                ? ` · ${r.reviewNote}`
+                : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -273,6 +360,11 @@ function ChallengeSection({
         userId={self.userId}
         today={today}
         currentChallengeId={challenge.id}
+      />
+
+      <RetroactiveRequestsCard
+        challengeId={challenge.id}
+        userId={self.userId}
       />
 
       <Card title="Din kalender">

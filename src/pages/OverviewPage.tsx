@@ -1,5 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
-import { challengeProgress } from '@/domain/challenge';
+import { ChallengeStatus, challengeProgress } from '@/domain/challenge';
+import { compareDates } from '@/domain/dates';
+import { DayState } from '@/domain/dayState';
+import {
+  effectiveEligibleEnd,
+  effectiveEligibleStart,
+} from '@/domain/membership';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -11,6 +17,8 @@ import { FlagIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
+import { RetroactiveRequestSheet } from '@/features/retroactive/RetroactiveRequestSheet';
+import { useMyRetroactiveRequests } from '@/features/retroactive/useRetroactive';
 import {
   MatrixGrid,
   type MatrixGridHandle,
@@ -28,6 +36,16 @@ export function OverviewPage() {
     participant: ParticipantView;
     date: string;
   } | null>(null);
+  const [retroDate, setRetroDate] = useState<string | null>(null);
+
+  const myRequests = useMyRetroactiveRequests(
+    data?.challenge.id ?? null,
+    data?.self.userId ?? null,
+  );
+  const requestByDate = useMemo(
+    () => new Map((myRequests.data ?? []).map((r) => [r.challengeDate, r])),
+    [myRequests.data],
+  );
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -132,6 +150,49 @@ export function OverviewPage() {
           requirement={
             selected.participant.requirementByDate.get(selected.date) ?? null
           }
+          retroactive={
+            selected.participant.isSelf
+              ? {
+                  canRequest:
+                    data.challenge.status === ChallengeStatus.Active &&
+                    (data.self.statesByDate.get(selected.date) ?? null) ===
+                      DayState.Missed &&
+                    compareDates(selected.date, data.today) < 0 &&
+                    compareDates(
+                      selected.date,
+                      effectiveEligibleStart(
+                        data.challenge,
+                        data.self.membership,
+                      ),
+                    ) >= 0 &&
+                    compareDates(
+                      selected.date,
+                      effectiveEligibleEnd(
+                        data.challenge,
+                        data.self.membership,
+                      ),
+                    ) <= 0,
+                  existing: requestByDate.get(selected.date) ?? null,
+                  onRequest: () => {
+                    const d = selected.date;
+                    setSelected(null);
+                    setRetroDate(d);
+                  },
+                }
+              : null
+          }
+        />
+      )}
+
+      {retroDate && (
+        <RetroactiveRequestSheet
+          open
+          onClose={() => setRetroDate(null)}
+          challenge={data.challenge}
+          userId={data.self.userId}
+          challengeDate={retroDate}
+          requirement={data.self.requirementByDate.get(retroDate) ?? null}
+          onSubmitted={() => void myRequests.refetch()}
         />
       )}
     </>

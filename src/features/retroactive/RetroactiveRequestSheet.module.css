@@ -1,0 +1,140 @@
+.lead {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: var(--lh-snug);
+  margin-bottom: var(--sp-3);
+}
+
+.req {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  margin-bottom: var(--sp-2);
+}
+
+.hint {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  margin-bottom: var(--sp-3);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-faint);
+}
+
+.itemName {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.itemMeta {
+  grid-column: 1;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.remove {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  font-size: var(--fs-xs);
+  color: var(--c-danger-text);
+  background: none;
+  border: none;
+  padding: var(--sp-1);
+}
+
+.formWrap {
+  margin: var(--sp-3) 0;
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border-faint);
+}
+
+.formTitle {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--c-text-faint);
+  margin-bottom: var(--sp-2);
+}
+
+.reasonLabel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-top: var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.reason {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.err {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--c-danger-text);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0;
+}
+
+.successMark {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-full);
+  background: var(--c-completed-quiet, var(--c-surface-sunken));
+  color: var(--c-completed-text, var(--c-text));
+}
+
+.successMark svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.successTitle {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.successSub {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: var(--lh-snug);
+}

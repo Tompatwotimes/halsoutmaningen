@@ -64,6 +64,11 @@ const ChallengeDetailPage = lazy(() =>
 const AuditPage = lazy(() =>
   import('@/pages/admin/AuditPage').then((m) => ({ default: m.AuditPage })),
 );
+const RetroactiveRequestsPage = lazy(() =>
+  import('@/pages/admin/RetroactiveRequestsPage').then((m) => ({
+    default: m.RetroactiveRequestsPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -156,6 +161,14 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <AuditPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/efterregistreringar"
+            element={
+              <RequireAdmin>
+                <RetroactiveRequestsPage />
               </RequireAdmin>
             }
           />
