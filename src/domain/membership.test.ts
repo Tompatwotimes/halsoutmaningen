@@ -5,7 +5,6 @@ import {
   eligibleDayCount,
   hasEligibleOverlap,
   isDateEligible,
-  visibleRangeStart,
 } from './membership';
 import { firstChallenge, makeMembership } from '@/test/fixtures';
 
@@ -50,49 +49,6 @@ describe('early departure (Lisa, ends 2026-10-15)', () => {
   it('does not count days after departure as misses', () => {
     expect(isDateEligible(firstChallenge, m, '2026-10-15')).toBe(true);
     expect(isDateEligible(firstChallenge, m, '2026-10-16')).toBe(false);
-  });
-});
-
-describe('visibleRangeStart', () => {
-  const sepChallenge = { ...firstChallenge, startDate: '2026-09-01' };
-
-  it('falls back to the challenge start date with no memberships', () => {
-    expect(visibleRangeStart(sepChallenge, [])).toBe('2026-09-01');
-  });
-
-  it('clips forward to the earliest membership when everyone joins late', () => {
-    const members = [
-      makeMembership({ userId: 'a', participationStartDate: '2026-09-03' }),
-      makeMembership({ userId: 'b', participationStartDate: '2026-09-03' }),
-    ];
-    expect(visibleRangeStart(sepChallenge, members)).toBe('2026-09-03');
-  });
-
-  it('never clips past the challenge start when at least one member starts then', () => {
-    const members = [
-      makeMembership({ userId: 'a', participationStartDate: '2026-09-01' }),
-      makeMembership({ userId: 'b', participationStartDate: '2026-09-03' }),
-    ];
-    expect(visibleRangeStart(sepChallenge, members)).toBe('2026-09-01');
-  });
-
-  it('clips forward when the earliest membership starts after an early challenge start', () => {
-    const members = [
-      makeMembership({ userId: 'a', participationStartDate: '2026-08-15' }),
-    ];
-    // firstChallenge starts 2026-08-01; the only member joins on the 15th.
-    expect(visibleRangeStart(firstChallenge, members)).toBe('2026-08-15');
-  });
-
-  it('never hides a date any given membership actually participated on', () => {
-    const members = [
-      makeMembership({ userId: 'a', participationStartDate: '2026-09-03' }),
-      makeMembership({ userId: 'b', participationStartDate: '2026-09-10' }),
-    ];
-    const visible = visibleRangeStart(sepChallenge, members);
-    for (const m of members) {
-      expect(visible <= effectiveEligibleStart(sepChallenge, m)).toBe(true);
-    }
   });
 });
 

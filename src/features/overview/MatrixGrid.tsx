@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useImperativeHandle } from 'react';
 import type { Ref } from 'react';
 import type { ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
-import { enumerateDates, parsePlainDate } from '@/domain/dates';
-import { visibleRangeStart } from '@/domain/membership';
+import { compareDates, enumerateDates, parsePlainDate } from '@/domain/dates';
 import { formatPercent } from '@/domain/format';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusCell } from '@/components/status/StatusCell';
@@ -47,14 +46,23 @@ export function MatrixGrid({
   handleRef,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dates = useMemo(() => {
-    const start = visibleRangeStart(
-      challenge,
-      participants.map((p) => p.membership),
-    );
-    return enumerateDates(start, challenge.endDate);
-  }, [challenge, participants]);
+  // The shared matrix always spans the FULL challenge period — every column
+  // from start_date to end_date. Days before a participant's own window render
+  // as `not_participating` ("—"), never hidden (CLAUDE.md §5.4).
+  const dates = useMemo(
+    () => enumerateDates(challenge.startDate, challenge.endDate),
+    [challenge.startDate, challenge.endDate],
+  );
   const todayIndex = dates.indexOf(today);
+  // Where the viewport rests on open and on "Hoppa till idag": today while the
+  // challenge is running, otherwise the near end — the start for a not-yet-
+  // started challenge, the end for a finished one.
+  const focusIndex =
+    todayIndex >= 0
+      ? todayIndex
+      : compareDates(today, challenge.startDate) < 0
+        ? 0
+        : dates.length - 1;
 
   const months = useMemo(() => {
     const groups: { key: string; label: string; count: number }[] = [];
@@ -73,24 +81,25 @@ export function MatrixGrid({
     return groups;
   }, [dates]);
 
-  const scrollToToday = () => {
-    const el = scrollRef.current;
-    if (!el || todayIndex < 0) return;
-    const cell = 22; // px, keep in sync with --cell-w
-    el.scrollTo({
-      left: todayIndex * cell - el.clientWidth / 2 + cell,
-      behavior: 'smooth',
-    });
-  };
+  const CELL_W = 22; // px, keep in sync with --cell-w
+  const focusOffset = (clientWidth: number) =>
+    focusIndex * CELL_W - clientWidth / 2 + CELL_W;
 
-  useImperativeHandle(handleRef, () => ({ scrollToToday }));
+  useImperativeHandle(handleRef, () => ({
+    scrollToToday: () => {
+      const el = scrollRef.current;
+      if (!el || focusIndex < 0) return;
+      el.scrollTo({ left: focusOffset(el.clientWidth), behavior: 'smooth' });
+    },
+  }));
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && todayIndex >= 0) {
-      el.scrollLeft = todayIndex * 22 - el.clientWidth / 2;
+    if (el && focusIndex >= 0) {
+      el.scrollLeft = focusOffset(el.clientWidth);
     }
-  }, [todayIndex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusIndex]);
 
   return (
     <div className={`${styles.scroll} scroll-x`} ref={scrollRef}>
