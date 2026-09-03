@@ -90,6 +90,31 @@ hacks". We rejected them because:
 A running challenge whose rules are wrong is duplicated into a fresh draft; the
 broken one is completed/archived. History is never rewritten.
 
+### One narrow exception: correcting a misconfigured active start_date
+
+`duplicate_challenge` doesn't help when the mistake is the **start_date itself**
+on a challenge people are already logging real training against — duplicating
+loses the running history. Migration `20260903100000` adds exactly one
+flag-gated bypass to the lock above, forward-only:
+
+- `preview_challenge_start_date_correction` / `correct_challenge_start_date`
+  (admin-only, `SECURITY DEFINER`) — the only way to move `start_date`, and
+  only when no `active` `training_entries`, `active` `penalty_assignments`, or
+  `earned_penalties` fall in the period being dropped. Nothing is ever
+  deleted: `challenge_day_states`/streaks/liability are derived live from
+  `challenges.start_date`, so the dropped dates simply stop being generated.
+- `challenges_guard` reads a transaction-local `app.allow_start_date_correction`
+  flag (set only by that RPC, mirroring the `app.audit_reason` idiom used by
+  `invalidate_training_session`) to let `start_date` move forward through the
+  lock; every other locked field stays locked during the same UPDATE.
+- Audited as `challenge_start_date_corrected` (old/new start, actor, optional
+  reason) via `audit_row_change`, distinct from the generic
+  `challenge_rules_changed`.
+
+This is a correction of a data-entry mistake, not a rule-mutation policy
+change — the hard-immutability decision above still holds for every other
+field, and for moving a date _backward_ or on a non-`active` challenge.
+
 ### One-time bootstrap for the already-running 2026 challenge
 
 Migration `20260902090700` introduces the default Straffbanken definitions into

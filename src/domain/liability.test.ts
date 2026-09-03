@@ -4,6 +4,7 @@ import {
   evaluateParticipant,
   summarizeLiability,
   tallyDayStates,
+  totalKassan,
 } from './liability';
 import {
   sessionsFor,
@@ -44,6 +45,57 @@ describe('summarizeLiability', () => {
     ]);
     expect(totals.eligibleDays).toBe(0);
   });
+});
+
+describe('totalKassan', () => {
+  it('is zero for no participants', () => {
+    expect(totalKassan([])).toBe(0);
+  });
+
+  it("is one participant's confirmed debt", () => {
+    expect(totalKassan([150])).toBe(150);
+  });
+
+  it("sums multiple participants' confirmed debts", () => {
+    expect(totalKassan([150, 50, 100])).toBe(300);
+  });
+
+  it(
+    "sums straight from each participant's own confirmedDebt — completed, " +
+      'pending, future and not-participating days contribute nothing, a ' +
+      'penalised missed day contributes the same single missed_day_cost',
+    () => {
+      const missedDayCost = 50;
+      const participants = [
+        // All completed: 0.
+        summarizeLiability(
+          [DayState.Completed, DayState.Completed],
+          missedDayCost,
+        ),
+        // Pending + future only: 0 (not yet decided, never a debt).
+        summarizeLiability([DayState.Pending, DayState.Future], missedDayCost),
+        // Not participating: 0, and excluded from eligibleDays entirely.
+        summarizeLiability(
+          [DayState.NotParticipating, DayState.NotParticipating],
+          missedDayCost,
+        ),
+        // Two missed days, one of them under an active penalty at the
+        // dayState layer — by the time it reaches liability it is simply
+        // MISSED, costed exactly once, never a second "penalty charge".
+        summarizeLiability([DayState.Missed, DayState.Missed], missedDayCost),
+      ];
+
+      expect(totalKassan(participants.map((p) => p.confirmedDebt))).toBe(
+        2 * missedDayCost,
+      );
+
+      // No payment-related concept exists anywhere in the breakdown.
+      for (const p of participants) {
+        expect(Object.keys(p)).not.toContain('paid');
+        expect(Object.keys(p)).not.toContain('outstanding');
+      }
+    },
+  );
 });
 
 describe('evaluateParticipant', () => {

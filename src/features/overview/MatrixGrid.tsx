@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useImperativeHandle } from 'react';
 import type { Ref } from 'react';
-import { challengeDates, type ChallengeConfig } from '@/domain/challenge';
+import type { ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
-import { parsePlainDate } from '@/domain/dates';
+import { enumerateDates, parsePlainDate } from '@/domain/dates';
+import { visibleRangeStart } from '@/domain/membership';
 import { formatPercent } from '@/domain/format';
 import { Avatar } from '@/components/ui/Avatar';
 import { StatusCell } from '@/components/status/StatusCell';
@@ -46,7 +47,13 @@ export function MatrixGrid({
   handleRef,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dates = useMemo(() => challengeDates(challenge), [challenge]);
+  const dates = useMemo(() => {
+    const start = visibleRangeStart(
+      challenge,
+      participants.map((p) => p.membership),
+    );
+    return enumerateDates(start, challenge.endDate);
+  }, [challenge, participants]);
   const todayIndex = dates.indexOf(today);
 
   const months = useMemo(() => {

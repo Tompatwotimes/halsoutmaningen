@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { formatPercent } from '@/domain/format';
+import { formatPercent, formatSek } from '@/domain/format';
+import { totalKassan } from '@/domain/liability';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -16,6 +17,13 @@ export function RankingPage() {
 
   const result = useMemo(
     () => (data ? rankParticipants(data.participants) : null),
+    [data],
+  );
+  const kassan = useMemo(
+    () =>
+      data
+        ? totalKassan(data.participants.map((p) => p.liability.confirmedDebt))
+        : 0,
     [data],
   );
 
@@ -60,6 +68,14 @@ export function RankingPage() {
         Preliminär ordning. Den slutgiltiga rankingformeln fastställs innan
         utmaningen avgörs.
       </p>
+
+      <Card padding="md" className={styles.kassaCard}>
+        <span className={styles.kassaLabel}>Kassan</span>
+        <p className={styles.kassaValue}>
+          <span className="tnum">{formatSek(kassan)}</span>
+        </p>
+        <span className={styles.kassaHint}>Gruppens samlade skuld just nu</span>
+      </Card>
 
       {podiumOrder.length > 0 && (
         <div className={styles.podium}>

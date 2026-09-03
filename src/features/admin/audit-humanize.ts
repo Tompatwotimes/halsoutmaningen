@@ -159,6 +159,20 @@ export function describeAuditEvent(
         }.`,
         changes: [],
       };
+    case 'challenge_start_date_corrected':
+      return {
+        ...base,
+        category: 'challenge',
+        title: 'Startdatum rättat',
+        detail: `${actor} rättade startdatumet från ${str(
+          row.beforeData?.start_date,
+        )} till ${str(row.afterData?.start_date)}${
+          row.note ? `: ${row.note}` : ''
+        }.`,
+        changes: diff(row.beforeData, row.afterData, [
+          { key: 'start_date', label: 'Startdatum' },
+        ]),
+      };
     case 'challenge_rules_changed':
       return {
         ...base,
