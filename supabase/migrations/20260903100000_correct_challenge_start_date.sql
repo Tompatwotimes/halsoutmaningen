@@ -403,10 +403,17 @@ begin
     raise exception 'Utmaningen finns inte';
   end if;
 
+  -- Never trust a stale client-side preview: re-run the exact same check
+  -- inside this transaction. The failure message stays free of internal
+  -- detail (blocking_code / blocking_date) — those are for the preview RPC's
+  -- JSON response to humanize, not for a raised exception a client surfaces
+  -- verbatim (CLAUDE.md §4 "do not expose raw SQL/backend wording"). Since
+  -- the confirm UI only ever calls this after an 'ok' preview, reaching this
+  -- branch means something changed in between; ask the admin to re-check.
   chk := public._challenge_start_date_correction_check(p_challenge_id, p_new_start_date);
   if not (chk ->> 'ok')::boolean then
-    raise exception 'Rättningen kan inte genomföras (kod: %, datum: %)',
-      chk ->> 'blocking_code', chk ->> 'blocking_date';
+    raise exception
+      'Rättningen kan inte längre genomföras — något ändrades sedan förhandsgranskningen. Förhandsgranska igen.';
   end if;
 
   perform set_config(
