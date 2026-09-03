@@ -749,7 +749,11 @@ export type Database = {
         }
       }
       correct_challenge_start_date: {
-        Args: { p_challenge_id: string; p_new_start_date: string; p_reason?: string }
+        Args: {
+          p_challenge_id: string
+          p_new_start_date: string
+          p_reason?: string
+        }
         Returns: {
           activated_at: string | null
           completed_at: string | null
