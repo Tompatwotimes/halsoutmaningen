@@ -3,6 +3,7 @@ coverage
 CLAUDE.md
 docs/PRODUCT_SPEC.md
 docs/ARCHITECTURE.md
+docs/superpowers
 node_modules
 supabase
 *.toml
