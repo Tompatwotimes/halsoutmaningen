@@ -115,3 +115,29 @@
   width: 1rem;
   height: 1rem;
 }
+
+/* Arkivet — a deliberately quiet chronicle link, no badge, no count. */
+.archiveLink {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--c-border-faint);
+  background: var(--c-surface);
+}
+.archiveLink:hover {
+  border-color: var(--c-border);
+}
+
+.archiveEyebrow {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--c-text-muted);
+}
+
+.archiveText {
+  font-size: var(--fs-sm);
+  color: var(--c-text-faint);
+}

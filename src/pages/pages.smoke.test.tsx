@@ -22,6 +22,7 @@ import { LogPage } from './LogPage';
 import { OverviewPage } from './OverviewPage';
 import { RankingPage } from './RankingPage';
 import { ProfilePage } from './ProfilePage';
+import { GameMasterArchivePage } from './GameMasterArchivePage';
 
 /**
  * These are integration-ish smoke tests over the real Supabase-backed data
@@ -137,6 +138,52 @@ vi.mock('@/features/straffbanken/straffbank-api', () => ({
   fetchPenaltyAssignments: vi.fn(() => Promise.resolve([])),
 }));
 
+// Game Master is an isolated, optional subsystem — the shell's Ambush and the
+// Arkivet page both read through this adapter. Stub the whole transport: the
+// pulse/next-event paths stay silent, the archive returns a couple of frozen
+// public events.
+vi.mock('@/features/game-master/game-master-api', () => ({
+  fetchGameMasterArchive: vi.fn(() =>
+    Promise.resolve([
+      {
+        id: 'gm-2',
+        challengeId: 'challenge-1',
+        family: 'kassan',
+        visibility: 'public',
+        subjectUserId: null,
+        title: 'KASSAN VÄXER',
+        body: 'Gruppen har gemensamt misslyckats ihop till 3 000 kr.',
+        severity: 3,
+        archive: true,
+        startsAt: '2026-09-03T18:00:00Z',
+        expiresAt: null,
+        status: 'active',
+        firstSeenAt: null,
+        dismissedAt: null,
+      },
+      {
+        id: 'gm-1',
+        challengeId: 'challenge-1',
+        family: 'streak_long',
+        visibility: 'public',
+        subjectUserId: null,
+        title: 'STATUS',
+        body: 'Någon ligger farligt långt före sin dokumenterade förmåga.',
+        severity: 2,
+        archive: true,
+        startsAt: '2026-09-02T06:00:00Z',
+        expiresAt: null,
+        status: 'active',
+        firstSeenAt: null,
+        dismissedAt: null,
+      },
+    ]),
+  ),
+  fetchNextGameMasterEvent: vi.fn(() => Promise.resolve(null)),
+  requestGameMasterPulse: vi.fn(() => Promise.resolve(null)),
+  markGameMasterEventSeen: vi.fn(() => Promise.resolve()),
+}));
+
 const auth: AuthContextValue = {
   initializing: false,
   session: { user: { id: SELF_USER_ID } } as AuthContextValue['session'],
@@ -204,5 +251,16 @@ describe('participant screens render from mocked Supabase data', () => {
     await waitFor(() =>
       expect(screen.getByText(/Nuvarande streak/i)).toBeInTheDocument(),
     );
+  });
+
+  it('Arkivet renders the chronicle', async () => {
+    wrap(<GameMasterArchivePage />);
+    expect(await screen.findByText('KASSAN VÄXER')).toBeInTheDocument();
+    expect(screen.getByText('STATUS')).toBeInTheDocument();
+    // Arkivet is a chronicle, not a feed — no composer, likes or comments.
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /gilla|kommentera|svara/i }),
+    ).not.toBeInTheDocument();
   });
 });

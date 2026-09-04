@@ -169,6 +169,13 @@ export function GroupPage() {
         <ChevronRightIcon className={styles.linkIcon} />
       </Link>
 
+      <Link to="/arkivet" className={styles.archiveLink}>
+        <span className={styles.archiveEyebrow}>ARKIVET</span>
+        <span className={styles.archiveText}>
+          Systemets officiella historieskrivning.
+        </span>
+      </Link>
+
       {selected && (
         <EntryDetailSheet
           open
