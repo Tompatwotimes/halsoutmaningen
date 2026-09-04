@@ -363,6 +363,12 @@ select throws_ok(
 -- deterministic per-local-window dedupe.
 -- ========================================================================
 set local role postgres;
+-- Section E left `request.jwt.claims` pointed at Anna (a non-admin, non-member
+-- of several fixture challenges below); clear it so the remaining sections run
+-- as the unrestricted postgres role, exactly like every earlier section that
+-- returns to `postgres` (see 0013/0016 house style).
+select set_config('request.jwt.claims', '', true);
+
 select lives_ok($$select public._game_master_tick_all()$$, 'first dispatcher tick runs without error');
 select lives_ok($$select public._game_master_tick_all()$$, 'second dispatcher tick (same call) runs without error');
 
@@ -492,12 +498,16 @@ select is(
      and p.proname ~ '^game_master_|^_game_master_'),
   0, 'no trigger on a non-Game-Master table calls a Game Master function');
 
+-- Every Game Master function's own name contains "game_master" somewhere
+-- (internal _game_master_*/_run_game_master_pulse, or an RPC like
+-- request_game_master_pulse/cancel_game_master_event) — unlike the trigger
+-- scan above, this exclusion must not be anchored to the start of the name.
 select is(
   (select count(*)::int
    from pg_proc p
    join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public'
-     and p.proname !~ '^game_master_|^_game_master_'
+     and p.proname !~ 'game_master'
      and p.prosrc ~ 'game_master_'),
   0, 'no non-Game-Master function body references game_master_ at all');
 
