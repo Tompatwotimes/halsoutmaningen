@@ -264,8 +264,13 @@ select set_config('request.jwt.claims',
 
 select is((select count(*)::int from public.game_master_events), 5,
   'an admin sees every event (incl. private and cancelled)');
-select is((select count(*)::int from public.game_master_settings), 1,
-  'an admin can SELECT game_master_settings');
+-- The migration backfills a settings row for every pre-existing challenge
+-- (incl. the seeded first challenge), so scope the admin-visibility check to
+-- challenge A; the point is that the admin policy lets an admin read the row.
+select is(
+  (select count(*)::int from public.game_master_settings
+   where challenge_id = '00000000-0000-0000-0000-0000000000fa'),
+  1, 'an admin can SELECT game_master_settings');
 select is((select count(*)::int from public.game_master_templates), 2,
   'an admin can SELECT game_master_templates');
 select is((select count(*)::int from public.game_master_memories), 1,
