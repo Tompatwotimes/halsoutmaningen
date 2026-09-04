@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom';
+import { GameMasterAmbush } from '@/features/game-master/GameMasterAmbush';
 import { TopBar } from './TopBar';
 import { BottomNav } from './BottomNav';
 import { SideNav } from './SideNav';
@@ -12,6 +13,10 @@ export function AppShell() {
         <TopBar />
         <main className={styles.main}>
           <Outlet />
+          {/* Game Master GM1 ambushes. Mounted once inside the authenticated
+              shell (never on /logga-in or /aktivera). Isolated and optional —
+              a Game Master failure renders nothing and never blocks the app. */}
+          <GameMasterAmbush />
         </main>
       </div>
       <BottomNav />
