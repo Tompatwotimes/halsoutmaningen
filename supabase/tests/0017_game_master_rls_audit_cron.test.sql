@@ -244,6 +244,9 @@ select ok(
 create temp table cancel_event as
   select id, body_text from public.game_master_events
   where challenge_id = '00000000-0000-0000-0000-00000000f0c1';
+-- Read below under `authenticated` (Erik / Anna / admin in turn) to build the
+-- RPC calls; a temp table grants no privileges to other roles by default.
+grant select on cancel_event to authenticated;
 
 -- Erik cannot mark Anna's private event seen.
 set local role authenticated;
