@@ -1,5 +1,6 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { requestGameMasterPulse } from '@/features/game-master/game-master-api';
 import { probeImage } from './heic';
 
 /**
@@ -253,6 +254,14 @@ export async function submitTraining(
       input.proofFile,
     );
   }
+
+  // Game Master is an isolated optional subsystem (spec §2). Only now that the
+  // entry (and its proof, if any) has fully succeeded do we fire one
+  // best-effort pulse. It is deliberately NOT awaited, does not touch the
+  // returned SubmitTrainingResult, and its rejection is swallowed here — the
+  // worst a Game Master failure can ever do is make the Game Master quiet; it
+  // can never turn a successful submit into a SubmitTrainingError.
+  void requestGameMasterPulse(input.challengeId).catch(() => undefined);
 
   return { entryId: entry.id };
 }

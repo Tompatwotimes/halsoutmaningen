@@ -9,6 +9,7 @@ import {
   GroupIcon,
   OverviewIcon,
   ShieldIcon,
+  SparkIcon,
 } from '@/components/icons';
 import { ChallengeStatus, challengeDurationDays } from '@/domain/challenge';
 import { formatDayMonth } from '@/domain/format';
@@ -100,6 +101,19 @@ export function AdminPage() {
         </Link>
 
         <EfterregTile challengeId={activeChallengeId} />
+
+        <Link to="/admin/game-master" className={styles.tile}>
+          <span className={styles.tileIcon}>
+            <SparkIcon />
+          </span>
+          <span className={styles.tileBody}>
+            <span className={styles.tileTitle}>Game Master</span>
+            <span className={styles.tileText}>
+              Autonomt överraskningslager, nödbroms och historik.
+            </span>
+          </span>
+          <ChevronRightIcon className={styles.tileChevron} />
+        </Link>
 
         <Link to="/admin/granskningslogg" className={styles.tile}>
           <span className={styles.tileIcon}>
