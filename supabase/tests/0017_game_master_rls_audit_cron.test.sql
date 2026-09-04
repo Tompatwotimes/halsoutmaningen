@@ -101,6 +101,11 @@ values
   ('00000000-0000-0000-0000-00000000f0c5', '00000000-0000-0000-0000-0000000000f2',
    current_date - 30, true, '00000000-0000-0000-0000-0000000000f1'),
   ('00000000-0000-0000-0000-00000000f0c6', '00000000-0000-0000-0000-0000000000f2',
+   current_date - 10, true, '00000000-0000-0000-0000-0000000000f1'),
+  -- so Section H's raw training_entries insert has a real membership to land
+  -- in: training_entries_guard rejects "no membership" unconditionally, even
+  -- for a privileged (no-JWT) actor — that check is unrelated to Game Master.
+  ('00000000-0000-0000-0000-00000000f0c3', '00000000-0000-0000-0000-0000000000f2',
    current_date - 10, true, '00000000-0000-0000-0000-0000000000f1');
 
 -- ---- settings ---------------------------------------------------------
