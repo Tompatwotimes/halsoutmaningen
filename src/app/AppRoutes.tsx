@@ -74,6 +74,11 @@ const RetroactiveRequestsPage = lazy(() =>
     default: m.RetroactiveRequestsPage,
   })),
 );
+const GameMasterPage = lazy(() =>
+  import('@/pages/admin/GameMasterPage').then((m) => ({
+    default: m.GameMasterPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -176,6 +181,14 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <RetroactiveRequestsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/game-master"
+            element={
+              <RequireAdmin>
+                <GameMasterPage />
               </RequireAdmin>
             }
           />

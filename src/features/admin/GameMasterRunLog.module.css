@@ -1,0 +1,91 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+}
+.row + .row {
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.rowHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.rowTitle {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  min-width: 0;
+}
+
+.rowTime {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.rowCounts {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.rowFamily {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-accent-text);
+}
+
+.rowBody {
+  font-size: var(--fs-sm);
+  color: var(--c-text-muted);
+  line-height: var(--lh-snug);
+}
+
+.rowReason {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.field textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  padding: var(--sp-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+}
