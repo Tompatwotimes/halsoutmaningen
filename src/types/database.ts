@@ -315,6 +315,343 @@ export type Database = {
           },
         ]
       }
+      game_master_event_views: {
+        Row: {
+          dismissed_at: string | null
+          event_id: string
+          first_seen_at: string
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string | null
+          event_id: string
+          first_seen_at?: string
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string | null
+          event_id?: string
+          first_seen_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_master_event_views_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "game_master_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_master_event_views_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_master_events: {
+        Row: {
+          archive: boolean
+          body_text: string
+          cancelled_at: string | null
+          cancelled_by: string | null
+          cancelled_reason: string | null
+          challenge_id: string
+          created_at: string
+          expires_at: string | null
+          family: string
+          id: string
+          payload: Json
+          severity: number
+          starts_at: string
+          status: string
+          subject_user_id: string | null
+          template_id: string | null
+          title_text: string
+          visibility: string
+        }
+        Insert: {
+          archive?: boolean
+          body_text: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          challenge_id: string
+          created_at?: string
+          expires_at?: string | null
+          family: string
+          id?: string
+          payload?: Json
+          severity: number
+          starts_at?: string
+          status?: string
+          subject_user_id?: string | null
+          template_id?: string | null
+          title_text: string
+          visibility: string
+        }
+        Update: {
+          archive?: boolean
+          body_text?: string
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          challenge_id?: string
+          created_at?: string
+          expires_at?: string | null
+          family?: string
+          id?: string
+          payload?: Json
+          severity?: number
+          starts_at?: string
+          status?: string
+          subject_user_id?: string | null
+          template_id?: string | null
+          title_text?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_master_events_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_master_events_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_master_events_subject_user_id_fkey"
+            columns: ["subject_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_master_events_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "game_master_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_master_memories: {
+        Row: {
+          callback_count: number
+          challenge_id: string
+          created_at: string
+          earliest_callback_at: string | null
+          expires_at: string | null
+          fingerprint: string
+          id: string
+          importance: number
+          memory_date: string
+          memory_type: string
+          payload: Json
+          subject_user_id: string | null
+        }
+        Insert: {
+          callback_count?: number
+          challenge_id: string
+          created_at?: string
+          earliest_callback_at?: string | null
+          expires_at?: string | null
+          fingerprint: string
+          id?: string
+          importance: number
+          memory_date: string
+          memory_type: string
+          payload?: Json
+          subject_user_id?: string | null
+        }
+        Update: {
+          callback_count?: number
+          challenge_id?: string
+          created_at?: string
+          earliest_callback_at?: string | null
+          expires_at?: string | null
+          fingerprint?: string
+          id?: string
+          importance?: number
+          memory_date?: string
+          memory_type?: string
+          payload?: Json
+          subject_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_master_memories_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_master_memories_subject_user_id_fkey"
+            columns: ["subject_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_master_runs: {
+        Row: {
+          candidate_count: number
+          challenge_id: string
+          completed_at: string | null
+          diagnostics: Json
+          eligible_count: number
+          id: string
+          outcome: string
+          selected_event_id: string | null
+          source: string
+          started_at: string
+        }
+        Insert: {
+          candidate_count?: number
+          challenge_id: string
+          completed_at?: string | null
+          diagnostics?: Json
+          eligible_count?: number
+          id?: string
+          outcome: string
+          selected_event_id?: string | null
+          source: string
+          started_at?: string
+        }
+        Update: {
+          candidate_count?: number
+          challenge_id?: string
+          completed_at?: string | null
+          diagnostics?: Json
+          eligible_count?: number
+          id?: string
+          outcome?: string
+          selected_event_id?: string | null
+          source?: string
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_master_runs_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_master_runs_selected_event_id_fkey"
+            columns: ["selected_event_id"]
+            isOneToOne: false
+            referencedRelation: "game_master_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_master_settings: {
+        Row: {
+          archive_enabled: boolean
+          challenge_id: string
+          created_at: string
+          enabled: boolean
+          intensity: string
+          private_roasts_enabled: boolean
+          public_roasts_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          archive_enabled?: boolean
+          challenge_id: string
+          created_at?: string
+          enabled?: boolean
+          intensity?: string
+          private_roasts_enabled?: boolean
+          public_roasts_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          archive_enabled?: boolean
+          challenge_id?: string
+          created_at?: string
+          enabled?: boolean
+          intensity?: string
+          private_roasts_enabled?: boolean
+          public_roasts_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_master_settings_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: true
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_master_templates: {
+        Row: {
+          archive: boolean
+          body_template: string
+          cooldown_hours: number
+          created_at: string
+          enabled: boolean
+          family: string
+          final_weight: number
+          id: string
+          once_per_subject: boolean
+          severity: number
+          template_key: string
+          title_template: string
+          updated_at: string
+          visibility: string
+          weight: number
+        }
+        Insert: {
+          archive?: boolean
+          body_template: string
+          cooldown_hours?: number
+          created_at?: string
+          enabled?: boolean
+          family: string
+          final_weight?: number
+          id?: string
+          once_per_subject?: boolean
+          severity: number
+          template_key: string
+          title_template: string
+          updated_at?: string
+          visibility: string
+          weight?: number
+        }
+        Update: {
+          archive?: boolean
+          body_template?: string
+          cooldown_hours?: number
+          created_at?: string
+          enabled?: boolean
+          family?: string
+          final_weight?: number
+          id?: string
+          once_per_subject?: boolean
+          severity?: number
+          template_key?: string
+          title_template?: string
+          updated_at?: string
+          visibility?: string
+          weight?: number
+        }
+        Relationships: []
+      }
       penalty_assignments: {
         Row: {
           cancelled_at: string | null
@@ -698,6 +1035,44 @@ export type Database = {
         Args: { p_challenge_id: string; p_new_start_date: string }
         Returns: Json
       }
+      _game_master_candidates: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          family: string
+          fingerprint: string
+          payload: Json
+          score: number
+          subject_user_id: string
+          visibility: string
+        }[]
+      }
+      _game_master_escalation: {
+        Args: { p_challenge_id: string }
+        Returns: number
+      }
+      _game_master_intensity: {
+        Args: { p_challenge_id: string }
+        Returns: number
+      }
+      _game_master_render: {
+        Args: { p_payload: Json; p_template: string }
+        Returns: string
+      }
+      _game_master_score: {
+        Args: {
+          p_attention: number
+          p_base: number
+          p_final: number
+          p_magnitude: number
+          p_novelty: number
+        }
+        Returns: number
+      }
+      _game_master_tick_all: { Args: never; Returns: undefined }
+      _game_master_validate_template: {
+        Args: { p_text: string }
+        Returns: boolean
+      }
       _next_penalty_target_date: {
         Args: { p_challenge_id: string; p_to_user_id: string }
         Returns: string
@@ -714,6 +1089,14 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      _run_game_master_pulse: {
+        Args: {
+          p_challenge_id: string
+          p_forced_roll?: number
+          p_source: string
+        }
+        Returns: string
       }
       add_training_session: {
         Args: {
@@ -779,6 +1162,10 @@ export type Database = {
       assign_penalty: {
         Args: { p_earned_penalty_id: string; p_to_user_id: string }
         Returns: Json
+      }
+      cancel_game_master_event: {
+        Args: { p_event_id: string; p_reason: string }
+        Returns: undefined
       }
       cancel_penalty_assignment: {
         Args: { p_assignment_id: string; p_reason: string }
@@ -1015,6 +1402,10 @@ export type Database = {
         Returns: boolean
       }
       is_valid_timezone: { Args: { p_tz: string }; Returns: boolean }
+      mark_game_master_event_seen: {
+        Args: { p_dismiss?: boolean; p_event_id: string }
+        Returns: undefined
+      }
       preview_challenge_start_date_correction: {
         Args: { p_challenge_id: string; p_new_start_date: string }
         Returns: Json
@@ -1060,6 +1451,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      request_game_master_pulse: {
+        Args: { p_challenge_id: string }
+        Returns: string
       }
       retroactive_requests_for_challenge: {
         Args: { p_challenge_id: string }
@@ -1137,6 +1532,17 @@ export type Database = {
         Returns: Json
       }
       try_cast_uuid: { Args: { p: string }; Returns: string }
+      update_game_master_settings: {
+        Args: {
+          p_archive_enabled: boolean
+          p_challenge_id: string
+          p_enabled: boolean
+          p_intensity: string
+          p_private_roasts_enabled: boolean
+          p_public_roasts_enabled: boolean
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
