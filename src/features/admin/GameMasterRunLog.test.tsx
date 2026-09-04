@@ -122,7 +122,16 @@ describe('GameMasterRunLog', () => {
   });
 
   it('requires a non-empty reason before an event can be hidden', async () => {
-    const user = userEvent.setup();
+    // delay: null — Sheet's open effect schedules a requestAnimationFrame
+    // that autofocuses the panel's first focusable element (the Cancel
+    // button, before this textarea in DOM order); under jsdom that rAF can
+    // land mid-`type()` with the default per-keystroke delay and steal focus
+    // away, truncating the typed reason (root-caused and reproduced against
+    // AdminRetroactiveReview.test.tsx's identical pattern: ~80-93% failure
+    // over 15 isolated reps with the default delay, 0% with delay: null).
+    // Never manifests in a real browser (rAF resolves well before any human
+    // keystroke) — a jsdom/test-timing artifact, not a product bug.
+    const user = userEvent.setup({ delay: null });
     setData([], [makeEvent()]);
     render(<GameMasterRunLog challengeId="c1" />);
 

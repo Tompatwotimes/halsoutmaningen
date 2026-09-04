@@ -105,7 +105,20 @@ describe('AdminRetroactiveReview', () => {
   });
 
   it('requires a reason to reject', async () => {
-    const user = userEvent.setup();
+    // delay: null. Sheet's open effect schedules a requestAnimationFrame
+    // that autofocuses the panel's first focusable element (the sheet's own
+    // Cancel button, which precedes this textarea in DOM order). Under
+    // jsdom, that rAF and userEvent's default per-keystroke delay share the
+    // same timer queue, so the rAF can fire mid-`type()`, steal focus away
+    // from the textarea, truncate the typed reason and leave the confirm
+    // button disabled — a real, reproducible race (proven: ~80-93% failure
+    // rate over 15 isolated reps with the default delay, 0% with delay:
+    // null), not a hypothetical one. In real browsers this never manifests
+    // — rAF resolves on the next paint, long before a human's first
+    // keystroke — so this is a jsdom/test-timing artifact, not a product
+    // bug; delay: null removes the artificial per-keystroke timer yield
+    // that opens the race window, without changing what's being asserted.
+    const user = userEvent.setup({ delay: null });
     setup();
     await user.click(screen.getByRole('button', { name: 'Avslå' }));
     const dialog = screen.getByRole('dialog');
