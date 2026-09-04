@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import {
   AuthContext,
@@ -16,6 +16,9 @@ import type { SelfEntry } from '@/features/challenge/types';
 import { activeChallenge } from '@/fixtures/challenge';
 import { participantFixtures, SELF_USER_ID } from '@/fixtures/participants';
 import { buildEntryMap } from '@/fixtures/entries';
+import { AppShell } from '@/components/layout/AppShell';
+import { RequireAdmin } from '@/features/auth/RequireAdmin';
+import { fetchNextGameMasterEvent } from '@/features/game-master/game-master-api';
 import { HomePage } from './HomePage';
 import { GroupPage } from './GroupPage';
 import { LogPage } from './LogPage';
@@ -23,6 +26,7 @@ import { OverviewPage } from './OverviewPage';
 import { RankingPage } from './RankingPage';
 import { ProfilePage } from './ProfilePage';
 import { GameMasterArchivePage } from './GameMasterArchivePage';
+import { GameMasterPage } from './admin/GameMasterPage';
 
 /**
  * These are integration-ish smoke tests over the real Supabase-backed data
@@ -184,6 +188,85 @@ vi.mock('@/features/game-master/game-master-api', () => ({
   markGameMasterEventSeen: vi.fn(() => Promise.resolve()),
 }));
 
+// `/admin/game-master` (RequireAdmin-gated) needs the active challenge lookup
+// the rest of the admin area shares.
+vi.mock('@/features/admin/challenges-api', () => {
+  const challenges = [activeChallenge];
+  const noopRefetch = vi.fn();
+  return {
+    fetchChallenges: vi.fn(() => Promise.resolve(challenges)),
+    useChallenges: () => ({
+      data: challenges,
+      isLoading: false,
+      isError: false,
+      refetch: noopRefetch,
+    }),
+  };
+});
+
+// Game Master's own admin surface (settings + run/event observability). Stub
+// the hooks directly — the panels only read `.data/.isLoading/.isError/...`
+// and `.mutate`, so no real react-query machinery is needed here. `.data` and
+// `.refetch` must be REFERENTIALLY STABLE across renders: GameMasterSettingsPanel
+// seeds its form from a `useEffect` keyed on `query.data`, so a fresh object/fn
+// on every call would re-fire that effect every render and loop forever.
+vi.mock('@/features/admin/game-master-admin-api', () => {
+  const settings = {
+    challengeId: activeChallenge.id,
+    enabled: true,
+    privateRoastsEnabled: true,
+    publicRoastsEnabled: true,
+    archiveEnabled: true,
+    intensity: 'normal',
+  };
+  const noRuns: unknown[] = [];
+  const noEvents: unknown[] = [];
+  const noopRefetch = vi.fn();
+
+  return {
+    fetchGameMasterSettings: vi.fn(() => Promise.resolve(settings)),
+    fetchGameMasterRuns: vi.fn(() => Promise.resolve(noRuns)),
+    fetchRecentGameMasterEvents: vi.fn(() => Promise.resolve(noEvents)),
+    updateGameMasterSettings: vi.fn(() => Promise.resolve()),
+    cancelGameMasterEvent: vi.fn(() => Promise.resolve()),
+    useGameMasterSettings: () => ({
+      data: settings,
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: noopRefetch,
+    }),
+    useGameMasterRuns: () => ({
+      data: noRuns,
+      isLoading: false,
+      isError: false,
+      refetch: noopRefetch,
+    }),
+    useRecentGameMasterEvents: () => ({
+      data: noEvents,
+      isLoading: false,
+      isError: false,
+      refetch: noopRefetch,
+    }),
+    useUpdateGameMasterSettings: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+      reset: vi.fn(),
+    }),
+    useCancelGameMasterEvent: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+      reset: vi.fn(),
+    }),
+  };
+});
+
 const auth: AuthContextValue = {
   initializing: false,
   session: { user: { id: SELF_USER_ID } } as AuthContextValue['session'],
@@ -194,7 +277,10 @@ const auth: AuthContextValue = {
   updatePassword: () => Promise.resolve({ error: null }),
 };
 
-function wrap(node: ReactNode) {
+function wrap(
+  node: ReactNode,
+  options?: { role?: 'admin' | 'participant'; initialEntries?: string[] },
+) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -202,13 +288,15 @@ function wrap(node: ReactNode) {
     id: SELF_USER_ID,
     displayName: 'Johan Berg',
     avatarPath: null,
-    role: 'admin',
+    role: options?.role ?? 'admin',
     active: true,
   });
   return render(
     <QueryClientProvider client={qc}>
       <AuthContext.Provider value={auth}>
-        <MemoryRouter>{node}</MemoryRouter>
+        <MemoryRouter initialEntries={options?.initialEntries ?? ['/']}>
+          {node}
+        </MemoryRouter>
       </AuthContext.Provider>
     </QueryClientProvider>,
   );
@@ -262,5 +350,80 @@ describe('participant screens render from mocked Supabase data', () => {
     expect(
       screen.queryByRole('button', { name: /gilla|kommentera|svara/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('Game Master GM1 — final integration (Task 10)', () => {
+  function renderShell(page: ReactNode) {
+    return wrap(
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={page} />
+        </Route>
+      </Routes>,
+    );
+  }
+
+  it('the authenticated shell renders a normal page with no Game Master event and no overlay', async () => {
+    renderShell(<HomePage />);
+    expect(await screen.findByText(/har tränat idag/i)).toBeInTheDocument();
+    // No ambush surface mounted anywhere — no dialog (Sheet ambush) and no
+    // "SYSTEMET" micro banner.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Systemmeddelande')).not.toBeInTheDocument();
+  });
+
+  it('a Game Master query failure does not replace the page with an error state', async () => {
+    vi.mocked(fetchNextGameMasterEvent).mockRejectedValueOnce(
+      new Error('boom'),
+    );
+    renderShell(<HomePage />);
+    // The normal page still renders in full …
+    expect(await screen.findByText(/har tränat idag/i)).toBeInTheDocument();
+    // … and the Game Master surface stays silent rather than showing an
+    // error state (GameMasterAmbush uses retry:false + throwOnError:false).
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('/admin/game-master is denied to a participant', async () => {
+    wrap(
+      <Routes>
+        <Route path="/" element={<div>Hem</div>} />
+        <Route
+          path="/admin/game-master"
+          element={
+            <RequireAdmin>
+              <GameMasterPage />
+            </RequireAdmin>
+          }
+        />
+      </Routes>,
+      { role: 'participant', initialEntries: ['/admin/game-master'] },
+    );
+    expect(await screen.findByText('Hem')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Autonomt överraskningslager/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('/admin/game-master renders for an admin', async () => {
+    wrap(
+      <Routes>
+        <Route path="/" element={<div>Hem</div>} />
+        <Route
+          path="/admin/game-master"
+          element={
+            <RequireAdmin>
+              <GameMasterPage />
+            </RequireAdmin>
+          }
+        />
+      </Routes>,
+      { role: 'admin', initialEntries: ['/admin/game-master'] },
+    );
+    expect(
+      await screen.findByText(/Autonomt överraskningslager/i),
+    ).toBeInTheDocument();
   });
 });
