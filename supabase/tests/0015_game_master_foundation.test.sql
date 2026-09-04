@@ -6,6 +6,10 @@
 --     event status active/expired/cancelled, private-event-needs-subject,
 --     cancelled-event coherence, duplicate view PK, memory fingerprint unique
 --   * _game_master_validate_template + the templates validation trigger
+--   * the seeded 96-template roast bank (20260904130200): exact total, exact
+--     per-family distribution, severity spread, the 16 severity-5 rows and
+--     their once/cooldown discipline, per-family placeholder discipline, no
+--     reward-promise copy, unique keys, private+public both present
 --   * widened audit vocabulary (game_master_settings / game_master_event)
 --   * RLS: participants cannot read settings/templates/memories/runs and
 --     cannot write ANY Game Master table; a participant sees only their own
@@ -14,9 +18,125 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(40);
+select plan(55);
 
 set local role postgres;
+
+-- ========================================================================
+-- Section 0 — the seeded roast bank (migration 20260904130200).
+-- Runs BEFORE any fixture template insert, so the table holds exactly the
+-- 96 seeded rows and nothing else.
+-- ========================================================================
+select is(
+  (select count(*)::int from public.game_master_templates where enabled),
+  96, 'exactly 96 enabled Game Master templates are seeded');
+
+select is(
+  (select string_agg(family || '=' || c, ',' order by family)
+   from (select family, count(*)::int c
+         from public.game_master_templates where enabled
+         group by family) s),
+  'comeback=10,debt_leader=10,general_system=8,historic_callback=10,kassan=10,'
+    || 'missed_day=14,ranking_position=8,streak_broken=14,streak_long=12',
+  'each of the nine GM1 families has its exact seeded count');
+
+select is(
+  (select count(distinct severity)::int
+   from public.game_master_templates where enabled),
+  5, 'all five severities (1..5) are represented in the seed');
+select is(
+  (select min(severity)::int from public.game_master_templates where enabled),
+  1, 'the seed contains a severity-1 template');
+select is(
+  (select max(severity)::int from public.game_master_templates where enabled),
+  5, 'the seed contains a severity-5 template');
+
+select is(
+  (select count(*)::int
+   from public.game_master_templates where enabled and severity = 5),
+  16, 'exactly 16 seeded templates are severity 5');
+
+select is(
+  (select count(*)::int
+   from public.game_master_templates
+   where enabled and severity = 5
+     and not (once_per_subject or cooldown_hours >= 336)),
+  0, 'every severity-5 template is once_per_subject OR cooldown_hours >= 336');
+
+select is(
+  (select bool_and(
+     public._game_master_validate_template(title_template)
+     and public._game_master_validate_template(body_template))
+   from public.game_master_templates where enabled)::text,
+  'true', 'no seeded template uses an unapproved {placeholder}');
+
+select is(
+  (select count(*)::int
+   from public.game_master_templates where enabled and visibility = 'private'),
+  16, 'the seed has 16 private templates (missed_day 14 + historic_callback 2)');
+select is(
+  (select count(*)::int
+   from public.game_master_templates where enabled and visibility = 'public'),
+  80, 'the seed has 80 public templates');
+
+-- Per-family placeholder discipline: a template may only use the placeholders
+-- its family's engine payload provides. Catches e.g. a kassan/general_system
+-- template using {name}.
+select is(
+  (select count(*)::int
+   from public.game_master_templates t
+   cross join lateral regexp_matches(
+     t.title_template || ' ' || t.body_template, '\{([a-z_]+)\}', 'g') as m(g)
+   where t.enabled
+     and m.g[1] <> all (
+     case t.family
+       when 'missed_day' then array['name','missed_days','completed_days',
+         'eligible_days','days_until_final','final_date','participant_count']
+       when 'streak_long' then array['name','streak','days_until_final',
+         'final_date','participant_count']
+       when 'streak_broken' then array['name','previous_streak','streak',
+         'days_until_final','final_date','participant_count']
+       when 'debt_leader' then array['name','debt_sek','kassan_sek',
+         'days_until_final','final_date','participant_count']
+       when 'kassan' then array['kassan_sek','days_until_final','final_date',
+         'participant_count']
+       when 'comeback' then array['name','streak','previous_streak',
+         'days_until_final','final_date','participant_count']
+       when 'ranking_position' then array['name','rank','completed_days',
+         'participant_count','days_until_final','final_date']
+       when 'historic_callback' then array['name','previous_streak',
+         'days_until_final','final_date','participant_count']
+       when 'general_system' then array['participant_count','days_until_final',
+         'final_date','kassan_sek']
+       else array[]::text[]
+     end
+   )),
+  0, 'every seeded template only uses placeholders its family payload provides');
+
+select is(
+  (select count(*)::int
+   from public.game_master_templates
+   where enabled
+     and (title_template || ' ' || body_template)
+         ~* 'competition token|tävlingspoll|du vinner|priset är|du får en titel'),
+  0, 'no seeded template promises a competition / token / title / prize (GM1)');
+
+select is(
+  (select count(distinct template_key)::int
+   from public.game_master_templates where enabled),
+  96, 'all 96 seeded template_key values are distinct');
+
+select is(
+  (select body_template from public.game_master_templates
+   where template_key = 'missed_day_001'),
+  'Kravet var 30 minuter. Dygnet innehöll 1 440.',
+  'the SYSTEMET HAR NOTERAT EN AVVIKELSE flagship is seeded verbatim');
+select is(
+  (select body_template from public.game_master_templates
+   where template_key = 'kassan_001'),
+  'Gruppen har nu gemensamt misslyckats ihop till {kassan_sek} kr. '
+    || 'Det börjar likna en finansieringsmodell.',
+  'the KASSAN finansieringsmodell flagship is seeded verbatim');
 
 -- ---- fixtures --------------------------------------------------------------
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -271,7 +391,8 @@ select is(
   (select count(*)::int from public.game_master_settings
    where challenge_id = '00000000-0000-0000-0000-0000000000fa'),
   1, 'an admin can SELECT game_master_settings');
-select is((select count(*)::int from public.game_master_templates), 2,
+-- 96 seeded rows (20260904130200) + the 2 valid templates this test inserts.
+select is((select count(*)::int from public.game_master_templates), 98,
   'an admin can SELECT game_master_templates');
 select is((select count(*)::int from public.game_master_memories), 1,
   'an admin can SELECT game_master_memories');
