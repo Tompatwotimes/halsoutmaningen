@@ -138,6 +138,13 @@ insert into public.game_master_settings (challenge_id, enabled, private_roasts_e
   ('00000000-0000-0000-0000-0000000000c3', true,  true,  'high');
 
 -- ---- templates (one per family so selection is deterministic) ----------
+-- Migration 20260904130200 seeds the real 96-template bank. This suite tests
+-- the ENGINE's selection mechanics, so it needs a template set it fully
+-- controls: drop the seed inside this rolled-back transaction and install one
+-- deterministic template per exercised family. No game_master_events reference
+-- these yet (this test creates them all below).
+delete from public.game_master_templates;
+
 insert into public.game_master_templates
   (template_key, family, visibility, severity, title_template, body_template,
    weight, cooldown_hours, once_per_subject, archive, final_weight)
