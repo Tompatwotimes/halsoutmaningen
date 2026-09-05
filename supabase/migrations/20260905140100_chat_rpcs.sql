@@ -154,4 +154,77 @@ comment on function public.mark_chat_read(uuid, bigint) is
 revoke all on function public.mark_chat_read(uuid, bigint) from public, anon;
 grant execute on function public.mark_chat_read(uuid, bigint) to authenticated;
 
--- hide_chat_message (admin moderation) is added to this file by the next task.
+-- ----------------------------------------------------------------------------
+-- hide_chat_message  (admin moderation — Plan Task 4)
+-- ----------------------------------------------------------------------------
+create or replace function public.hide_chat_message(
+  p_message_id uuid,
+  p_reason     text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid     uuid := (select auth.uid());
+  v_row   public.chat_messages;
+  v_actor uuid;
+begin
+  if not ((uid is null) or public.is_admin()) then
+    raise exception 'Endast administratörer får dölja ett meddelande';
+  end if;
+  if coalesce(btrim(p_reason), '') = '' then
+    raise exception 'Ange en anledning';
+  end if;
+
+  select * into v_row from public.chat_messages where id = p_message_id for update;
+  if v_row.id is null then
+    raise exception 'Meddelandet finns inte';
+  end if;
+  if v_row.sender_type = 'game_master' then
+    raise exception
+      'Game Master-meddelanden döljs genom att avbryta händelsen, inte här';
+  end if;
+  if v_row.status = 'hidden' then
+    raise exception 'Meddelandet är redan dolt';
+  end if;
+
+  -- uid is only null for a no-JWT break-glass backend call; the coherence
+  -- constraint still needs a non-null hidden_by.
+  v_actor := coalesce(
+    uid,
+    (select p.id from public.profiles p
+     where p.role = 'admin' and p.active order by p.created_at limit 1)
+  );
+
+  update public.chat_messages
+    set status = 'hidden',
+        hidden_at = now(),
+        hidden_by = v_actor,
+        hidden_reason = btrim(p_reason)
+  where id = p_message_id;
+
+  -- Audit: no message body in before/after/note (mirrors the
+  -- game_master_event_cancelled "no roast text" guarantee).
+  insert into public.audit_log
+    (actor_user_id, challenge_id, target_user_id, entity_type, entity_id, action,
+     before_data, after_data, note)
+  values (
+    uid, v_row.challenge_id, v_row.sender_user_id, 'chat_message', p_message_id,
+    'chat_message_hidden',
+    jsonb_build_object('status', v_row.status, 'sender_type', v_row.sender_type),
+    jsonb_build_object('status', 'hidden'),
+    btrim(p_reason)
+  );
+end;
+$$;
+
+comment on function public.hide_chat_message(uuid, text) is
+  'Admin: hide a participant message. Mandatory reason, audited, the row and '
+  'its body are retained (only status/hidden_* change; the client renders the '
+  'fixed placeholder). Refuses a game_master-authored row — those are hidden '
+  'via cancel_game_master_event (Plan 3).';
+
+revoke all on function public.hide_chat_message(uuid, text) from public, anon;
+grant execute on function public.hide_chat_message(uuid, text) to authenticated;

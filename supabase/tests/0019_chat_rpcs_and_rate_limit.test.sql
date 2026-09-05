@@ -17,7 +17,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(21);
+select plan(34);
 
 set local role postgres;
 
@@ -230,6 +230,86 @@ select is(
                 where challenge_id = '00000000-0000-0000-0000-00000000df01'
                   and user_id = '00000000-0000-0000-0000-0000000d1002')),
   3, 'the unread count is exactly the messages after the cursor, hidden ones included');
+
+-- ========================================================================
+-- Section E — hide_chat_message (admin moderation)
+-- ========================================================================
+set local role postgres;
+-- a plain participant message and a game_master message to moderate
+insert into public.chat_messages (challenge_id, sender_type, sender_user_id, body)
+values
+  ('00000000-0000-0000-0000-00000000df01', 'participant', '00000000-0000-0000-0000-0000000d1004', 'e-participant-msg'),
+  ('00000000-0000-0000-0000-00000000df01', 'game_master', null, 'e-gm-msg');
+
+-- participant cannot hide
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000d1002","role":"authenticated"}', true);
+select throws_ok(
+  format($$select public.hide_chat_message(%L, 'jag ogillar det')$$,
+    (select id from public.chat_messages where body = 'e-participant-msg')),
+  null, null, 'a participant cannot hide a message');
+
+-- admin: empty reason rejected
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000d1001","role":"authenticated"}', true);
+select throws_ok(
+  format($$select public.hide_chat_message(%L, '   ')$$,
+    (select id from public.chat_messages where body = 'e-participant-msg')),
+  null, null, 'hiding with a whitespace-only reason is rejected');
+
+-- admin: hides a game_master message is refused
+select throws_ok(
+  format($$select public.hide_chat_message(%L, 'fel')$$,
+    (select id from public.chat_messages where body = 'e-gm-msg')),
+  null, null, 'a game_master message cannot be hidden via hide_chat_message');
+
+-- admin: hides the participant message
+select lives_ok(
+  format($$select public.hide_chat_message(%L, 'Bild matchar inte innehållet')$$,
+    (select id from public.chat_messages where body = 'e-participant-msg')),
+  'an admin can hide a participant message with a reason');
+
+set local role postgres;
+select is(
+  (select status from public.chat_messages where body = 'e-participant-msg'),
+  'hidden', 'the message status is now hidden');
+select is(
+  (select hidden_by from public.chat_messages where body = 'e-participant-msg'),
+  '00000000-0000-0000-0000-0000000d1001'::uuid, 'hidden_by records the admin');
+select is(
+  (select hidden_reason from public.chat_messages where body = 'e-participant-msg'),
+  'Bild matchar inte innehållet', 'hidden_reason records the reason');
+select ok(
+  (select hidden_at is not null from public.chat_messages where body = 'e-participant-msg'),
+  'hidden_at is set');
+select is(
+  (select body from public.chat_messages where body = 'e-participant-msg'),
+  'e-participant-msg', 'the original body is retained in storage, not blanked');
+
+select is(
+  (select count(*)::int from public.audit_log
+   where entity_type = 'chat_message' and action = 'chat_message_hidden'
+     and entity_id = (select id from public.chat_messages where body = 'e-participant-msg')),
+  1, 'exactly one audit row is written');
+select is(
+  (select actor_user_id from public.audit_log
+   where entity_type = 'chat_message' and action = 'chat_message_hidden'
+     and entity_id = (select id from public.chat_messages where body = 'e-participant-msg')),
+  '00000000-0000-0000-0000-0000000d1001'::uuid, 'the audit row records the admin as actor');
+select is(
+  (select target_user_id from public.audit_log
+   where entity_type = 'chat_message' and action = 'chat_message_hidden'
+     and entity_id = (select id from public.chat_messages where body = 'e-participant-msg')),
+  '00000000-0000-0000-0000-0000000d1004'::uuid, 'the audit row records the original sender as target');
+select ok(
+  position('e-participant-msg' in (
+    select coalesce(before_data::text, '') || coalesce(after_data::text, '') || coalesce(note, '')
+    from public.audit_log
+    where entity_type = 'chat_message' and action = 'chat_message_hidden'
+      and entity_id = (select id from public.chat_messages where body = 'e-participant-msg'))) = 0,
+  'the audit row carries no message body text');
 
 select * from finish();
 rollback;
