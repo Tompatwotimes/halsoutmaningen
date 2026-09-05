@@ -98,12 +98,10 @@ select lives_ok(
   format($$select public.mark_chat_read('00000000-0000-0000-0000-00000000ef01', %s)$$,
     (select seq from m where n = 2)),
   'a member advances their cursor to m2');
+-- A non-admin member has no direct read of chat_messages — the exact unread
+-- count comes from unread_chat_count (which reads their own cursor server-side).
 select is(
-  (select count(*)::int from public.chat_messages
-   where challenge_id = '00000000-0000-0000-0000-00000000ef01'
-     and seq > (select coalesce(last_read_seq, 0) from public.chat_read_state
-                where challenge_id = '00000000-0000-0000-0000-00000000ef01'
-                  and user_id = '00000000-0000-0000-0000-0000000e2002')),
+  public.unread_chat_count('00000000-0000-0000-0000-00000000ef01'),
   3, 'unread = 3 (m3, hidden m4, m5) — a hidden row still occupies a seq and counts');
 
 -- ---- read state never regresses -------------------------------------

@@ -5,13 +5,14 @@
 --     sender_type / status enums
 --   * seq is unique and strictly increasing across inserts
 --   * widened audit vocabulary accepts 'chat_message'
---   * RLS: a non-member reads nothing; a member reads every row of their
---     challenge (active AND hidden); a viewer sees only their own read cursor;
+--   * RLS: a non-member reads nothing; a member has NO direct read of
+--     chat_messages (admin-only) and reads via list_chat_messages instead
+--     (active AND hidden rows); a viewer sees only their own read cursor;
 --     no role may INSERT / UPDATE / DELETE either table directly
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(26);
+select plan(27);
 
 set local role postgres;
 
@@ -150,13 +151,20 @@ set local role authenticated;
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000c1002","role":"authenticated"}', true);
 
-select ok(
-  (select count(*)::int from public.chat_messages
-   where challenge_id = '00000000-0000-0000-0000-00000000cf01') >= 4,
-  'a member sees every message in their challenge, active and hidden');
+-- A member has NO direct read path to chat_messages any more (admin-only since
+-- 20260905140200) — they read through list_chat_messages, which withholds a
+-- hidden message's body.
 select is(
   (select count(*)::int from public.chat_messages
-   where challenge_id = '00000000-0000-0000-0000-00000000cf01' and status = 'hidden'),
+   where challenge_id = '00000000-0000-0000-0000-00000000cf01'),
+  0, 'a member cannot read chat_messages directly (moderated content isolation, I-1)');
+select ok(
+  (select count(*)::int from public.list_chat_messages(
+     '00000000-0000-0000-0000-00000000cf01')) >= 4,
+  'a member sees every message in their challenge via list_chat_messages, active and hidden');
+select is(
+  (select count(*)::int from public.list_chat_messages(
+     '00000000-0000-0000-0000-00000000cf01') where status = 'hidden'),
   1, 'a member sees the hidden message as a real row (placeholder is display-only)');
 select is(
   (select count(*)::int from public.chat_read_state), 1,

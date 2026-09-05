@@ -74,15 +74,15 @@ select is(
   (select (public.post_chat_message('00000000-0000-0000-0000-00000000df01', '  hej Pia  ')).sender_user_id),
   '00000000-0000-0000-0000-0000000d1002'::uuid,
   'the inserted row''s sender_user_id is always the caller');
+-- Read the written row back through the members' surface (a non-admin has no
+-- direct SELECT on chat_messages since 20260905140200).
 select is(
-  (select sender_type from public.chat_messages
-   where challenge_id = '00000000-0000-0000-0000-00000000df01'
-     and sender_user_id = '00000000-0000-0000-0000-0000000d1002' limit 1),
+  (select sender_type from public.list_chat_messages('00000000-0000-0000-0000-00000000df01')
+   where sender_user_id = '00000000-0000-0000-0000-0000000d1002' limit 1),
   'participant', 'and sender_type is always participant');
 select is(
-  (select body from public.chat_messages
-   where challenge_id = '00000000-0000-0000-0000-00000000df01'
-     and sender_user_id = '00000000-0000-0000-0000-0000000d1002' limit 1),
+  (select body from public.list_chat_messages('00000000-0000-0000-0000-00000000df01')
+   where sender_user_id = '00000000-0000-0000-0000-0000000d1002' limit 1),
   'hej Pia', 'the body is trimmed');
 
 select throws_ok(
@@ -115,7 +115,7 @@ begin
 end $$;
 
 select is(
-  (select count(*)::int from public.chat_messages
+  (select count(*)::int from public.list_chat_messages('00000000-0000-0000-0000-00000000df01')
    where sender_user_id = '00000000-0000-0000-0000-0000000d1004'),
   10, 'the first 10 messages in the window are accepted');
 select throws_ok(
@@ -185,9 +185,12 @@ select is(
      and user_id = '00000000-0000-0000-0000-0000000d1002'),
   (select seq from rp where label = 'a3'),
   'last_read_seq never moves backwards');
+-- Pia (a non-admin member) can no longer SELECT chat_messages directly; check
+-- last_read_message_id points at the right row via list_chat_messages.
 select is(
   (select cm.body from public.chat_read_state crs
-   join public.chat_messages cm on cm.id = crs.last_read_message_id
+   join public.list_chat_messages('00000000-0000-0000-0000-00000000df01') cm
+     on cm.id = crs.last_read_message_id
    where crs.challenge_id = '00000000-0000-0000-0000-00000000df01'
      and crs.user_id = '00000000-0000-0000-0000-0000000d1002'),
   'r-a3', 'last_read_message_id stays consistent with last_read_seq');
@@ -251,7 +254,8 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000d1002","role":"authenticated"}', true);
 select throws_ok(
   format($$select public.hide_chat_message(%L, 'jag ogillar det')$$,
-    (select id from public.chat_messages where body = 'e-participant-msg')),
+    (select id from public.list_chat_messages('00000000-0000-0000-0000-00000000df01')
+     where body = 'e-participant-msg')),
   null, null, 'a participant cannot hide a message');
 
 -- admin: empty reason rejected

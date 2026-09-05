@@ -6,6 +6,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-05-shared-chat-design.md` (authoritative for every schema/RPC/column name below — this plan does not redefine anything the spec already fixed, only sequences its construction).
 
+> **Post-merge security correction (2026-09-05, PR #3 finding I-1):** Tasks 2–7 were built to the original "members SELECT `chat_messages` directly; hide is a client render swap" model. Code review found that exposed a moderated message's original `body` / `hidden_reason` to any member via direct PostgREST or a Realtime `UPDATE` payload. Corrected by an added migration `20260905140200_chat_safe_read.sql` + `supabase/tests/0021_chat_safe_read.test.sql`: `chat_messages` SELECT is admin-only, members read via the `list_chat_messages` / `unread_chat_count` SECURITY DEFINER RPCs (which withhold moderated content and resolve sender display names — also closing finding I-2), and Realtime runs on a new no-secrets `chat_activity` signal table. Spec §4a and `docs/CHAT.md §4/§5` are authoritative for the corrected model.
+
 **Architecture:** Two new tables (`chat_messages`, `chat_read_state`), three SECURITY DEFINER RPCs, RLS-only reads, a `bigint generated always as identity` `seq` column as the sole ordering/pagination/read-state authority (never `created_at`), the project's first Supabase Realtime consumer, and a floating bubble/panel mounted once in the existing `AppShell`.
 
 **Tech stack:** React 19 + TypeScript + Vite, TanStack Query, Supabase Postgres 17 / RLS / RPC / Realtime, Vitest + Testing Library, pgTAP, existing UI primitives (`Sheet`, `Button`, `Badge`).

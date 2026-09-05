@@ -33,6 +33,7 @@ function message(over: Partial<ChatMessage> = {}): ChatMessage {
     challengeId: 'c1',
     senderType: 'participant',
     senderUserId: 'u2',
+    senderDisplayName: 'Anna',
     body: 'något olämpligt',
     status: 'active',
     hiddenReason: null,

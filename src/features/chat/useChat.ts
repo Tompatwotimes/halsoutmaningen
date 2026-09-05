@@ -24,13 +24,15 @@ import type { ChatMessage } from './types';
  * so neither API order nor Realtime arrival order is ever trusted.
  *
  * Realtime (spec §7): `useChatMessages` opens ONE Supabase channel per open
- * challenge id, subscribed to `INSERT` on `chat_messages` filtered to that
- * challenge. The handler never becomes a second source of truth — it only
- * invalidates the message-list and unread query keys, so the displayed list is
- * always what TanStack Query holds, re-sorted by `seq`. An out-of-order or
- * dropped socket delivery is therefore repaired by the next refetch, not
- * trusted as ordering. The channel is torn down on unmount / challenge change.
- * This is the first Realtime consumer in the codebase — new, reviewed plumbing.
+ * challenge id, subscribed to `public.chat_activity` — a no-secrets signal
+ * table (`challenge_id`, `seq`, `at`) maintained by a trigger on
+ * `chat_messages`. Realtime does NOT run on `chat_messages` itself, so a
+ * moderated message's original body can never reach a client over the socket
+ * (PR #3 finding I-1). The handler never becomes a second source of truth — it
+ * only invalidates the message-list and unread query keys, so the displayed
+ * list is always what TanStack Query holds, re-sorted by `seq`. An out-of-order
+ * or dropped socket delivery is repaired by the next refetch, not trusted as
+ * ordering. The channel is torn down on unmount / challenge change.
  */
 
 const MESSAGES_ROOT = ['chat', 'messages'] as const;
@@ -74,14 +76,15 @@ export function useChatMessages(challengeId: string | null) {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
-          table: 'chat_messages',
+          table: 'chat_activity',
           filter: `challenge_id=eq.${challengeId}`,
         },
         () => {
           // Signal only — refetch and re-sort by seq rather than trusting the
-          // payload or its arrival order (spec §2.2 / §7).
+          // payload or its arrival order (spec §2.2 / §7). `chat_activity`
+          // carries no message text, so nothing sensitive rides the socket.
           void queryClient.invalidateQueries({
             queryKey: chatKeys.messages(challengeId),
           });
@@ -105,6 +108,12 @@ export function useChatMessages(challengeId: string | null) {
   return { ...query, messages };
 }
 
+/**
+ * `userId` is kept in the signature and query key so the cached count is
+ * per-signed-in-user (and to gate `enabled` until auth resolves); the count
+ * itself is computed server-side from `auth.uid()`, so it is not passed to the
+ * RPC.
+ */
 export function useUnreadChatCount(
   challengeId: string | null,
   userId: string | null,
@@ -113,10 +122,10 @@ export function useUnreadChatCount(
     queryKey: chatKeys.unread(challengeId ?? '', userId ?? ''),
     enabled: challengeId !== null && userId !== null,
     queryFn: () => {
-      if (challengeId === null || userId === null) {
-        throw new Error('challengeId och userId krävs.');
+      if (challengeId === null) {
+        throw new Error('challengeId krävs.');
       }
-      return fetchUnreadCount(challengeId, userId);
+      return fetchUnreadCount(challengeId);
     },
     staleTime: 15_000,
     retry: false,

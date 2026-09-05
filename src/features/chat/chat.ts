@@ -18,9 +18,12 @@ export const CHAT_RATE_LIMIT_WINDOW_SECONDS = 30;
 
 export function displayBody(message: {
   status: ChatMessageStatus;
-  body: string;
+  body: string | null;
 }): string {
-  return message.status === 'hidden'
+  // A hidden message never shows its text — and the server already withholds
+  // `body` (sends null) for a non-admin viewer, so treat a missing body as
+  // hidden too rather than rendering an empty bubble.
+  return message.status === 'hidden' || message.body === null
     ? HIDDEN_MESSAGE_PLACEHOLDER
     : message.body;
 }

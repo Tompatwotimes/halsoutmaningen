@@ -14,21 +14,24 @@ Implementation plan:
 [`docs/superpowers/plans/2026-09-05-shared-chat-implementation.md`](./superpowers/plans/2026-09-05-shared-chat-implementation.md).
 
 Migrations:
-[`supabase/migrations/20260905140000_chat_schema.sql`](../supabase/migrations/20260905140000_chat_schema.sql),
-[`supabase/migrations/20260905140100_chat_rpcs.sql`](../supabase/migrations/20260905140100_chat_rpcs.sql).
+[`…20260905140000_chat_schema.sql`](../supabase/migrations/20260905140000_chat_schema.sql),
+[`…20260905140100_chat_rpcs.sql`](../supabase/migrations/20260905140100_chat_rpcs.sql),
+[`…20260905140200_chat_safe_read.sql`](../supabase/migrations/20260905140200_chat_safe_read.sql)
+(the moderated-content read isolation — §4).
 pgTAP coverage:
-[`supabase/tests/0018…0020`](../supabase/tests/) (26 + 34 + 9 = 69 assertions).
+[`supabase/tests/0018…0021`](../supabase/tests/) (27 + 34 + 9 + 29 = 99 assertions).
 
 ---
 
 ## 1. Data model
 
-Two tables (`public`):
+Three tables (`public`):
 
-| Table             | Purpose                                                               |
-| ----------------- | --------------------------------------------------------------------- |
-| `chat_messages`   | One row per posted message. Never physically deleted.                 |
-| `chat_read_state` | One row per `(challenge_id, user_id)` — the reader's `last_read_seq`. |
+| Table             | Purpose                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `chat_messages`   | One row per posted message. Never physically deleted. **Admin-only SELECT** (§4).   |
+| `chat_read_state` | One row per `(challenge_id, user_id)` — the reader's `last_read_seq`.               |
+| `chat_activity`   | Realtime signal only: `(challenge_id, seq, at)`, one row per message, no text (§5). |
 
 `chat_messages` columns of note:
 
@@ -68,11 +71,11 @@ Consequences, all implemented:
 
 - The message list is always sorted by `seq` client-side
   (`sortBySeq` in `src/features/chat/chat.ts`), after flattening every loaded
-  page — never by API row order, never by `created_at`.
-- Upward pagination is `seq < <oldest loaded seq>`, ordered `seq desc`,
-  `limit N` (`fetchOlderChatMessages`).
-- Unread count is `count(*) where seq > last_read_seq` (`fetchUnreadCount`),
-  a hidden message still counts.
+  page — never by RPC row order, never by `created_at`.
+- Upward pagination passes `p_before_seq` (a strict `seq <` upper bound) to
+  `list_chat_messages` (`fetchOlderChatMessages`).
+- Unread count is `count(*) where seq > last_read_seq`, computed server-side by
+  `unread_chat_count` (`fetchUnreadCount`); a hidden message still counts.
 - `mark_chat_read` only ever moves `last_read_seq` **forward**
   (`greatest(existing, incoming)`), so a late-arriving "mark read" for an
   older position can never regress the cursor.
@@ -124,17 +127,38 @@ nor a UI affordance.
 
 ---
 
-## 4. Read path & RLS
+## 4. Read path — moderated-content isolation
 
-Reads are plain `select`s constrained by RLS:
+`20260905140100` originally gave members a plain row-level SELECT on
+`chat_messages` and only flipped `status` on a hide, leaving the original
+`body` and `hidden_reason` retrievable via direct PostgREST or a Realtime
+`UPDATE` payload — the placeholder was a client render swap only.
+`20260905140200_chat_safe_read.sql` corrects this (PR #3 finding I-1):
 
-- `chat_messages` SELECT: `is_admin() or is_challenge_member(challenge_id)`.
-- `chat_read_state` SELECT: `user_id = auth.uid()` (your own cursor only).
-- `anon` has no access to either table.
+- **`chat_messages` SELECT is admin-only** (`using (public.is_admin())`).
+  Ordinary members have **no** direct read path — PostgREST or Realtime.
+- **Members read through two `SECURITY DEFINER` RPCs** (`set search_path = ''`,
+  `revoke … from public, anon`, `grant execute … to authenticated`), both
+  membership-checked:
+  - **`list_chat_messages(p_challenge_id, p_before_seq, p_limit)`** — newest
+    `seq` first. Each row carries id, seq, challenge id, sender type + id,
+    `sender_display_name`, `body`, `status`, `created_at`. `body` is `null`
+    for a hidden row shown to a non-admin (an admin caller still gets the real
+    text — moderator context); the moderation trail (`hidden_reason` /
+    `hidden_by` / `hidden_at`) is **never** projected. `sender_display_name`
+    comes from a `LEFT JOIN public.profiles` in the same query — no N+1.
+  - **`unread_chat_count(p_challenge_id)`** → `integer`: `count(*)` of
+    `chat_messages` with `seq >` the caller's own `last_read_seq` (0 if no
+    read-state row); a hidden message still occupies a `seq` and still counts.
+- `chat_read_state` SELECT: `user_id = auth.uid()` (your own cursor only) —
+  unchanged, but nothing reads it directly any more.
+- `chat_activity` SELECT: `is_admin() or is_challenge_member(challenge_id)`.
+- `anon` has no table access and **no EXECUTE on any chat RPC**.
 
-A hidden message is still returned by the select (the row is retained); the
-client renders it as the fixed string `[Borttaget av administratör]` and
-never shows the retained body (`displayBody` in `chat.ts`).
+The original row and body remain stored, readable only by admins and audit.
+The client still renders a hidden row as `[Borttaget av administratör]`
+(`displayBody` in `chat.ts`) — now with `body: null` arriving from the server,
+not a real body it has to suppress.
 
 ---
 
@@ -142,23 +166,28 @@ never shows the retained body (`displayBody` in `chat.ts`).
 
 **First Supabase Realtime consumer in this codebase.**
 
-- `20260905140000_chat_schema.sql` adds `chat_messages` to the
-  `supabase_realtime` publication (guarded `do $$ … $$` so a re-run or a
-  project where it is already present does not error). **This is the first
-  table this project has added to `supabase_realtime` — verify replication is
-  actually enabled on the hosted project during rollout.**
+Realtime runs on `chat_activity`, **not** `chat_messages` — a moderated row's
+`body` must never appear in an `UPDATE` payload.
+
+- `20260905140200_chat_safe_read.sql` removes `chat_messages` from the
+  `supabase_realtime` publication and adds `public.chat_activity` (guarded
+  `do $$ … $$`). `chat_activity` holds only `(challenge_id, seq, at)` — one
+  row per message, upserted by an `AFTER INSERT OR UPDATE OF status` trigger
+  on `chat_messages`. **This is the first table this project has added to
+  `supabase_realtime` — verify replication is actually enabled on the hosted
+  project during rollout.**
 - `useChatMessages` opens **one** channel per open challenge —
   `supabase.channel('chat:' + challengeId)` with a `postgres_changes`
-  listener for `INSERT` on `public.chat_messages` filtered to
-  `challenge_id=eq.<id>` — and removes it (`supabase.removeChannel`) on
-  unmount or challenge change.
-- Realtime enforces the same `chat_messages_select` RLS for the connected
-  JWT, so a non-member's subscription simply receives nothing.
+  listener for `*` on `public.chat_activity` filtered to `challenge_id=eq.<id>`
+  — and removes it (`supabase.removeChannel`) on unmount or challenge change.
+- Realtime enforces `chat_activity`'s own membership SELECT policy for the
+  connected JWT, so a non-member receives nothing — and a member only ever
+  receives `(challenge_id, seq, at)`, never message content.
 - **The handler is a signal only.** It calls `invalidateQueries` on the
   message-list and unread keys and does nothing else — it never reads the
   payload and never trusts arrival order. TanStack Query stays the single
-  canonical cache; the refetch it triggers is re-sorted by `seq`. An
-  out-of-order or dropped delivery is repaired by the next refetch.
+  canonical cache; the refetch (via `list_chat_messages`) is re-sorted by
+  `seq`. An out-of-order or dropped delivery is repaired by the next refetch.
 - A socket disconnect degrades to the existing `staleTime` (15 s) /
   refetch-on-focus polling — chat is never solely dependent on the socket.
 - `chat_read_state` is deliberately **not** Realtime-subscribed in v1.
@@ -175,9 +204,13 @@ never shows the retained body (`displayBody` in `chat.ts`).
 - Tapping it opens `ChatPanel` inside the shared `Sheet` (portal, focus
   trap, Esc) at both breakpoints.
 - `ChatPanel` renders messages in the `seq` order the hook provides, one
-  date separator per challenge-local day, a distinct `GAME MASTER` label for
-  Game Master rows, and a composer that disables send for an
-  empty/whitespace/over-limit body and keeps the draft text if a post fails.
+  date separator per challenge-local day, a composer that disables send for an
+  empty/whitespace/over-limit body and keeps the draft text if a post fails,
+  and a sender label on every message: **"Du"** for the viewer's own,
+  the sender's **`display_name`** for another participant (from
+  `list_chat_messages`, no extra request), **"GAME MASTER"** (`Badge`
+  `tone="neutral"`) for a Game Master row. A hidden message keeps its sender
+  label and shows the placeholder in place of the body.
 - Load/empty/error states stay understated **inside** the panel — a chat
   failure never raises a page-level error.
 - Admin only: a per-message **Dölj** affordance (`ChatModerationSheet`)

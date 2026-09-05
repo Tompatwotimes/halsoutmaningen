@@ -26,6 +26,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     challengeId: 'c1',
     senderType: 'participant',
     senderUserId: 'u2',
+    senderDisplayName: 'Anna',
     body: `body ${seq}`,
     status: 'active',
     hiddenReason: null,
@@ -68,25 +69,66 @@ const BASE_PROPS = {
 };
 
 describe('ChatPanel', () => {
-  it('renders messages in seq order (oldest first) trusting the hook, not its own sort', () => {
-    prime({ messages: [row(9), row(7), row(8)] }); // deliberately unsorted-looking
-    // the hook contract guarantees `messages` is seq-ascending; the panel
-    // renders them in the order given.
-    prime({ messages: [row(7), row(8), row(9)] });
+  it('renders messages in exactly the order the hook provides and imposes no sort of its own', () => {
+    // The hook (`useChatMessages`) owns ordering — it flattens pages and
+    // `sortBySeq`s them (proven in useChat.test.tsx / chat.test.ts). The panel
+    // must be a faithful pass-through: feed it a deliberately NON-ascending
+    // list and assert it renders that exact order, not a re-sorted one.
+    prime({ messages: [row(8), row(7), row(9)] });
     wrap(<ChatPanel {...BASE_PROPS} />);
     const bodies = screen
       .getAllByTestId('chat-message-body')
       .map((n) => n.textContent);
-    expect(bodies).toEqual(['body 7', 'body 8', 'body 9']);
+    expect(bodies).toEqual(['body 8', 'body 7', 'body 9']);
   });
 
   it('renders the fixed placeholder for a hidden message, never its body', () => {
+    // Even if a real body somehow reached the client, the panel must not show
+    // it. (The server also withholds it — body: null — proven in chat-api /
+    // pgTAP tests.)
     prime({ messages: [row(3, { status: 'hidden', body: 'något fult' })] });
     wrap(<ChatPanel {...BASE_PROPS} />);
     expect(
       screen.getByText('[Borttaget av administratör]'),
     ).toBeInTheDocument();
     expect(screen.queryByText('något fult')).not.toBeInTheDocument();
+  });
+
+  it('shows "Du" for the viewer\'s own message', () => {
+    prime({
+      messages: [row(1, { senderUserId: 'u1', senderDisplayName: 'Johan' })],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByText('Du')).toBeInTheDocument();
+    expect(screen.queryByText('Johan')).not.toBeInTheDocument();
+  });
+
+  it("shows another participant's display name as the sender label", () => {
+    prime({
+      messages: [
+        row(1, { senderUserId: 'u9', senderDisplayName: 'Erik Berg' }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByText('Erik Berg')).toBeInTheDocument();
+  });
+
+  it('keeps the sender label on a hidden participant message while withholding the body', () => {
+    prime({
+      messages: [
+        row(1, {
+          senderUserId: 'u9',
+          senderDisplayName: 'Erik Berg',
+          status: 'hidden',
+          body: null,
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByText('Erik Berg')).toBeInTheDocument();
+    expect(
+      screen.getByText('[Borttaget av administratör]'),
+    ).toBeInTheDocument();
   });
 
   it('marks a Game Master message with a distinct GAME MASTER sender label', () => {

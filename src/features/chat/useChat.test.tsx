@@ -99,6 +99,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     challengeId: 'c1',
     senderType: 'participant',
     senderUserId: 'u1',
+    senderDisplayName: 'Pia',
     body: `body ${seq}`,
     status: 'active',
     hiddenReason: null,
@@ -168,7 +169,7 @@ describe('useChatMessages', () => {
 });
 
 describe('useChatMessages — Realtime', () => {
-  it('opens exactly one INSERT channel scoped to the open challenge and tears it down on unmount', async () => {
+  it('subscribes to the no-secrets chat_activity signal table, not chat_messages, and tears it down on unmount', async () => {
     fetchRecentChatMessages.mockResolvedValue([row(1)]);
     const { result, unmount } = renderHook(() => useChatMessages('c1'), {
       wrapper,
@@ -179,12 +180,16 @@ describe('useChatMessages — Realtime', () => {
     expect(channelSpy).toHaveBeenCalledWith('chat:c1');
     expect(lastChannel().filters).toEqual([
       {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
-        table: 'chat_messages',
+        table: 'chat_activity',
         filter: 'challenge_id=eq.c1',
       },
     ]);
+    // Never chat_messages — a moderated body must not ride the socket (I-1).
+    expect(lastChannel().filters.some((f) => f.table === 'chat_messages')).toBe(
+      false,
+    );
 
     unmount();
     expect(removeChannelSpy).toHaveBeenCalledTimes(1);
@@ -226,12 +231,15 @@ describe('useChatMessages — Realtime', () => {
 });
 
 describe('useUnreadChatCount', () => {
-  it('returns the count and is disabled without both ids', async () => {
+  it('returns the count, is disabled without both ids, and passes only the challenge id', async () => {
     fetchUnreadCount.mockResolvedValue(4);
     const { result } = renderHook(() => useUnreadChatCount('c1', 'u1'), {
       wrapper,
     });
     await waitFor(() => expect(result.current.data).toBe(4));
+    // The count is computed server-side from auth.uid(); userId is a cache-key
+    // concern only and must not be sent to the RPC layer.
+    expect(fetchUnreadCount).toHaveBeenCalledWith('c1');
 
     fetchUnreadCount.mockClear();
     renderHook(() => useUnreadChatCount('c1', null), { wrapper });

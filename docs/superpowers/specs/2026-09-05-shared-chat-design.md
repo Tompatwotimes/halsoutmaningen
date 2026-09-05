@@ -146,14 +146,24 @@ All SECURITY DEFINER, `language plpgsql`, `set search_path = ''`, schema-qualifi
 - Writes one `audit_log` row: `entity_type='chat_message'` (**new** value — widens `audit_log_entity_type_valid`, same zero-risk pattern used for every prior domain addition), `entity_id=p_message_id`, `action='chat_message_hidden'`, `target_user_id=<the message's sender_user_id>`, `note=btrim(p_reason)`. No message body in the audit row's `before_data`/`after_data`/`note` (mirrors the existing "no roast body text in the cancellation audit row" guarantee — `supabase/tests/0017_game_master_rls_audit_cron.test.sql`).
 - Does **not** delete or blank `body` — "original database row remains" is satisfied by construction; only `status`/`hidden_*` change.
 
-### 3.4 Read models (plain `select`, no RPC needed, RLS does the work)
+### 3.4 Read models
 
-- Message list: `select * from chat_messages where challenge_id=$1 order by seq desc limit $2` (newest page), then `where seq < :oldest_loaded_seq order by seq desc limit $2` for upward pagination.
-- Unread count: `select count(*) from chat_messages where challenge_id=$1 and seq > (select coalesce(last_read_seq,0) from chat_read_state where challenge_id=$1 and user_id=$2)`. No additional exclusion is needed beyond challenge membership (already RLS-scoped): **v1 chat has no per-message visibility subset** — every member sees every row (moderated ones render as the placeholder, but the row, and its `seq`, still count), unlike Game Master's private/public split. This is stated explicitly so it is not re-litigated per read-path: a hidden/moderated message still occupies a `seq` and still counts as "a new thing since you last read," it just displays as `[Borttaget av administratör]` instead of its real body.
+> **Corrected per §4a.** These are **not** plain `select`s any more — members have no direct SELECT on `chat_messages`. They are two SECURITY DEFINER RPCs.
+
+- Message list: `list_chat_messages(p_challenge_id, p_before_seq default null, p_limit default 50)` — newest `seq` first; `p_before_seq` is the strict upper bound for upward pagination. Withholds `body` (→ null) and the whole moderation trail for a hidden row shown to a non-admin; resolves `sender_display_name` in the same query.
+- Unread count: `unread_chat_count(p_challenge_id)` → `count(*)` of `chat_messages` with `seq >` the caller's own `last_read_seq` (0 if no read-state row). **v1 chat has no per-message visibility subset in the "which rows" sense** — every member's list contains every message row of their challenge, including moderated ones (the row and its `seq` still count as unread); the *content* of a moderated row is what is withheld, not the row itself. A hidden/moderated message still occupies a `seq` and still counts as "a new thing since you last read," it just has no readable body and displays as `[Borttaget av administratör]`.
 
 ---
 
 ## 4. RLS
+
+> **Security correction (2026-09-05, PR #3 finding I-1) — see §4a.** The block
+> below is the *original* design. It was corrected before merge: ordinary
+> members no longer have **any** direct SELECT on `chat_messages` (it is
+> admin-only), and Realtime no longer runs on `chat_messages`. Members read
+> through the `list_chat_messages` / `unread_chat_count` SECURITY DEFINER RPCs,
+> which withhold a moderated message's body and moderation trail server-side.
+> Migration `20260905140200_chat_safe_read.sql`.
 
 ```sql
 alter table public.chat_messages   enable row level security;
@@ -163,13 +173,14 @@ revoke all on public.chat_messages, public.chat_read_state from anon, authentica
 grant select on public.chat_messages   to authenticated;
 grant select on public.chat_read_state to authenticated;
 
-create policy chat_messages_select on public.chat_messages
-  for select to authenticated
-  using (public.is_admin() or public.is_challenge_member(challenge_id));
-
 create policy chat_read_state_select on public.chat_read_state
   for select to authenticated
   using (user_id = (select auth.uid()));
+
+-- chat_messages SELECT is ADMIN-ONLY (corrected — see §4a):
+create policy chat_messages_select on public.chat_messages
+  for select to authenticated
+  using (public.is_admin());
 
 -- No INSERT/UPDATE/DELETE policy on either table. post_chat_message,
 -- mark_chat_read, hide_chat_message, and Game Master's internal chat-delivery
@@ -178,6 +189,25 @@ create policy chat_read_state_select on public.chat_read_state
 ```
 
 A client cannot submit another `sender_user_id` or `sender_type='game_master'` — not because a policy blocks it, but because **no INSERT policy exists at all**; the only path to a new row is `post_chat_message`, whose body hard-codes `sender_type='participant'` and `sender_user_id=auth.uid()`. This is the same structural (not merely policy-level) guarantee `game_master_events` already relies on for its own writes.
+
+---
+
+## 4a. Security correction (2026-09-05) — moderated-content read isolation
+
+**This supersedes the "row retained, client substitutes" model in §3.3 / §3.4 / §4 / §7.** It is an intentional security correction, not a design drift.
+
+**Problem.** The original design gave members a plain row-level SELECT on `chat_messages` and only flipped `status` on a hide — the original `body` and the `hidden_reason` stayed in the row and were retrievable by any challenge member via direct PostgREST, a crafted request, or a Realtime `UPDATE` payload. The `[Borttaget av administratör]` placeholder was a client render swap only. That violates CLAUDE.md §10 / §17 (authorization must be enforced in the database, not by hiding frontend controls).
+
+**Corrected model** (migration `20260905140200_chat_safe_read.sql`):
+
+- **`chat_messages` base-table SELECT is admin-only** (`using (public.is_admin())`). Ordinary members have no direct read path — through PostgREST or Realtime.
+- **Members read via two SECURITY DEFINER RPCs** (`set search_path = ''`, `revoke … from public, anon`, `grant execute … to authenticated`), both membership-checked:
+  - `list_chat_messages(p_challenge_id uuid, p_before_seq bigint default null, p_limit int default 50)` → `setof (id, seq, challenge_id, sender_type, sender_user_id, sender_display_name, body, status, created_at)`, newest `seq` first, `seq < p_before_seq` for upward pagination. `body` is `NULL` for a `status='hidden'` row **unless the caller is an admin** (a moderator scrolling the room keeps context). `hidden_reason` / `hidden_by` / `hidden_at` are **never** projected. `sender_display_name` is resolved by a `LEFT JOIN public.profiles` in the same query — no N+1 (this also completes finding I-2: participant messages are attributed, not anonymous).
+  - `unread_chat_count(p_challenge_id uuid) → integer` — `count(*)` of `chat_messages` with `seq >` the caller's own `last_read_seq` (read server-side via `auth.uid()`); a hidden message still occupies a `seq` and still counts. Non-member → 0.
+- **The original row and body remain stored, untouched**, readable only by admins (base table) and by `list_chat_messages`'s admin carve-out, and by audit/history.
+- **Realtime moves off `chat_messages`.** A new no-secrets signal table `public.chat_activity (challenge_id, seq, at)` — RLS `is_admin() or is_challenge_member(challenge_id)` — is maintained by an `AFTER INSERT OR UPDATE OF status` trigger on `chat_messages` (upsert, one row per message). `chat_messages` is removed from the `supabase_realtime` publication; `chat_activity` is added. The client subscribes to `chat_activity` and, as before, treats the event as a pure invalidation signal — TanStack Query stays canonical, the refetch goes through `list_chat_messages`, and the socket never carries message text.
+
+pgTAP: `supabase/tests/0021_chat_safe_read.test.sql` (29 assertions) — member sees the hidden row but not its body/`hidden_reason`; direct base-table access as a member returns nothing; admin still reads the retained original body + reason; sender names resolved (null for GM, preserved on a hidden row); non-member gets nothing; `p_before_seq`/`p_limit` bounds; `chat_activity` leaks no content and is membership-scoped; `anon`/`public` have no EXECUTE on any chat RPC.
 
 ---
 
@@ -195,8 +225,8 @@ A client cannot submit another `sender_user_id` or `sender_type='game_master'` �
 - New component tree under `src/features/chat/`: `ChatBubble.tsx` (the floating trigger + unread badge), `ChatPanel.tsx` (message list + composer, rendered via the existing `Sheet`/portal pattern on mobile, a smaller anchored floating panel on desktop — reusing `src/components/ui/Sheet.tsx` conventions, not inventing a second overlay primitive).
 - Mounted once in `src/components/layout/AppShell.tsx`, as a sibling of `<GameMasterAmbush/>` inside `<main>` — same place, same reasoning (never on `/logga-in` or `/aktivera`, since `AppShell` only renders inside `<RequireAuth>`).
 - Date separators computed client-side from `created_at` (display only, per §2.2), grouped by challenge-local calendar day using the existing `src/domain/dates.ts`/`src/domain/time.ts` helpers (`currentPlainDateInTimeZone`-style conventions) rather than the browser's local date — consistent with how every other date-sensitive surface in this app already avoids the midnight/timezone bug class (CLAUDE.md §8).
-- A GM-authored message (`sender_type='game_master'`) renders with a visibly distinct sender label ("GAME MASTER" via the existing `Badge` component, `tone="neutral"`) — same visual vocabulary already used in `GameMasterArchive`/`GameMasterRunLog`, not a new tone.
-- A `status='hidden'` message renders its `hidden_reason`-independent, fixed placeholder text `[Borttaget av administratör]` in place of `body`, still positioned at its normal chronological `seq`.
+- Every message shows its sender label: the viewer's own messages as **"Du"**, another participant's as their **`profiles.display_name`** (resolved by `list_chat_messages` in the same query — no per-message request; finding I-2), and a GM-authored message (`sender_type='game_master'`) as **"GAME MASTER"** via the existing `Badge` component, `tone="neutral"` — same visual vocabulary as `GameMasterArchive`/`GameMasterRunLog`, not a new tone.
+- A `status='hidden'` message renders the fixed placeholder text `[Borttaget av administratör]` in place of `body` (the server already sends `body: null` to a non-admin — §4a), while **keeping its sender label**, still positioned at its normal chronological `seq`.
 - Mobile keyboard stability: the composer must not be covered when the on-screen keyboard opens — implemented with the same `visualViewport`-aware technique already required for stable Sheet-based forms in this app (no existing component does this yet since chat is the first near-fullscreen text-input surface; call this out explicitly as new UI-plumbing work, not a copy of an existing pattern).
 - Unread badge on `ChatBubble` shows the exact count from §3.4, capped for display only (e.g. "99+") without altering the underlying exact count used for read-state math.
 
@@ -206,8 +236,10 @@ A client cannot submit another `sender_user_id` or `sender_type='game_master'` �
 
 **First Supabase Realtime consumer in this codebase** (confirmed by inspection — zero existing usage of `supabase.channel`/`postgres_changes` anywhere in `src/` or `supabase/`).
 
-- Migration adds `chat_messages` to the realtime publication: `alter publication supabase_realtime add table public.chat_messages;`.
-- Client subscribes only to `INSERT` events on `chat_messages`, filtered to the open challenge: `supabase.channel('chat:'+challengeId).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: \`challenge_id=eq.${challengeId}\` }, handler).subscribe()`. Realtime enforces the same `chat_messages_select` RLS policy for the connected client's JWT, so a non-member's subscription simply receives nothing for that filter — no separate authorization layer needed.
+> **Corrected per §4a.** Realtime does **not** run on `chat_messages` (that would expose a moderated row's `body` in an `UPDATE` payload). It runs on the no-secrets `chat_activity` signal table instead. The bullets below are updated to match what shipped.
+
+- Migration `20260905140200_chat_safe_read.sql` removes `chat_messages` from the realtime publication and adds `public.chat_activity` (`challenge_id`, `seq`, `at` — no message text), maintained by an `AFTER INSERT OR UPDATE OF status` trigger on `chat_messages`.
+- Client subscribes to all events on `chat_activity`, filtered to the open challenge: `supabase.channel('chat:'+challengeId).on('postgres_changes', { event: '*', schema: 'public', table: 'chat_activity', filter: \`challenge_id=eq.${challengeId}\` }, handler).subscribe()`. Realtime enforces `chat_activity`'s own `is_admin() or is_challenge_member(challenge_id)` SELECT policy for the connected client's JWT, so a non-member's subscription receives nothing — and even a member only ever receives `(challenge_id, seq, at)`, never message content.
 - **TanStack Query remains the canonical client cache.** A Realtime INSERT event never becomes a second source of truth: the handler either (a) invalidates the message-list query (simple, always correct, one extra round trip) or (b) optimistically appends the row to the cached list *and* still reconciles by `seq` against the next natural refetch — either way, the displayed list is always what TanStack Query holds, sorted by `seq`, never a hand-maintained socket-driven array.
 - Subscription lifecycle: created in a `useEffect` inside the chat feature's hook (`useChatMessages`, mirroring `useGameMaster.ts`'s shape) keyed on the open challenge id, torn down (`supabase.removeChannel(channel)`) on unmount or challenge-id change — this repo has no existing cleanup pattern to copy (first consumer), so this is new, reviewed plumbing, called out explicitly rather than presented as "following an existing convention."
 - No Realtime is enabled on any other table. `chat_read_state` is deliberately **not** realtime-subscribed in v1 (unread counts refresh on normal query invalidation/focus, not live-pushed) — kept out of scope to enable "only what is needed."

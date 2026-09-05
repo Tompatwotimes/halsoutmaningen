@@ -214,11 +214,13 @@ function MessageRow({
     >
       <div className={styles.messageHead}>
         {isGameMaster ? (
-          <Badge tone="missed" size="sm">
+          <Badge tone="neutral" size="sm">
             GAME MASTER
           </Badge>
         ) : (
-          <span className={styles.sender}>{isSelf ? 'Du' : ''}</span>
+          <span className={styles.sender}>
+            {isSelf ? 'Du' : (message.senderDisplayName ?? 'Deltagare')}
+          </span>
         )}
         <time className={styles.time}>{formatTime(message.createdAt)}</time>
       </div>

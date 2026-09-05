@@ -22,8 +22,23 @@ export interface ChatMessage {
   senderType: ChatSenderType;
   /** Always set for a participant message; always null for a Game Master one. */
   senderUserId: string | null;
-  body: string;
+  /**
+   * Display name of the participant sender (from `profiles`), resolved
+   * server-side by `list_chat_messages` in the same query — no per-message
+   * lookup. Null for a Game Master message (rendered as "GAME MASTER" instead).
+   */
+  senderDisplayName: string | null;
+  /**
+   * The message text — `null` for a moderated ("hidden") message seen by a
+   * non-admin: the server withholds the original body, and the client renders
+   * the fixed placeholder. Also `null`-safe defensively.
+   */
+  body: string | null;
   status: ChatMessageStatus;
+  /**
+   * Admin-only. Never populated for a non-admin viewer (the `list_chat_messages`
+   * read surface does not project it). Kept on the type for admin tooling.
+   */
   hiddenReason: string | null;
   /**
    * Set only for a Game Master message that materialises a frozen

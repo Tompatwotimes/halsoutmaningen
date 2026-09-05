@@ -5,15 +5,19 @@ import type { ChatMessage, ChatMessageStatus, ChatSenderType } from './types';
 /**
  * Shared chat — Supabase adapter boundary.
  *
- * Same deliberately-untyped boundary as `game-master-api.ts`: `chat_messages` /
- * `chat_read_state` are absent from the generated `Database` type until this
+ * Same deliberately-untyped boundary as `game-master-api.ts`: `chat_messages`
+ * and the chat RPCs are absent from the generated `Database` type until this
  * plan's migrations are applied and `npm run db:types` is re-run. Until then
  * every result is narrowed to `ChatMessage` here.
  *
- * All writes go through RPCs (`post_chat_message` / `mark_chat_read` /
- * `hide_chat_message` — the last one lives in `chat-admin-api.ts`). Reads are
- * plain RLS-scoped selects. `seq` is the only ordering / pagination / cursor
- * key; `created_at` is never used for anything but display grouping.
+ * **All reads and writes go through RPCs.** Ordinary members have NO direct
+ * SELECT on `public.chat_messages` (admin-only since migration
+ * `20260905140200_chat_safe_read.sql`, PR #3 finding I-1). `list_chat_messages`
+ * / `unread_chat_count` are the members' read surface — they withhold the body
+ * and moderation trail of a hidden message server-side, so a moderated
+ * message's original text can never reach a non-admin client through PostgREST
+ * or Realtime. `seq` is the only ordering / pagination / cursor key;
+ * `created_at` is display grouping only.
  */
 
 // TODO(chat-types): remove the cast once the chat migrations are applied and
@@ -27,22 +31,18 @@ export class ChatError extends Error {
   }
 }
 
-interface QueryResult {
+interface RpcResult {
   data: unknown;
   error: { message: string } | null;
-  count?: number | null;
 }
 
 async function chatRpc(
   fn: string,
   args: Record<string, unknown>,
-): Promise<QueryResult> {
-  const res = (await chatdb.rpc(fn, args)) as unknown as QueryResult;
+): Promise<RpcResult> {
+  const res = (await chatdb.rpc(fn, args)) as unknown as RpcResult;
   return { data: res.data, error: res.error };
 }
-
-const MESSAGE_COLUMNS =
-  'id, seq, challenge_id, sender_type, sender_user_id, body, status, hidden_reason, created_at';
 
 // ---------------------------------------------------------------------------
 // Narrowing (pattern mirrors retroactive-api.ts / game-master-api.ts)
@@ -79,7 +79,10 @@ export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
     challengeId: jstr(raw.challenge_id),
     senderType: narrowSenderType(raw.sender_type),
     senderUserId: jstrOrNull(raw.sender_user_id),
-    body: jstr(raw.body),
+    senderDisplayName: jstrOrNull(raw.sender_display_name),
+    // `body` is null for a hidden message seen by a non-admin — the server
+    // withholds it; `displayBody` renders the placeholder regardless.
+    body: jstrOrNull(raw.body),
     status: narrowStatus(raw.status),
     hiddenReason: jstrOrNull(raw.hidden_reason),
     gameMasterEventId: jstrOrNull(raw.game_master_event_id),
@@ -138,20 +141,19 @@ function chatMessageError(serverMessage: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Reads (RLS-scoped selects, seq-ordered)
+// Reads (SECURITY DEFINER RPCs, seq-ordered, moderated content withheld)
 // ---------------------------------------------------------------------------
 
-/** The newest page of messages, `seq` descending. */
+/** The newest page of messages, `seq` descending (via `list_chat_messages`). */
 export async function fetchRecentChatMessages(
   challengeId: string,
   limit = 50,
 ): Promise<ChatMessage[]> {
-  const { data, error }: QueryResult = await chatdb
-    .from('chat_messages')
-    .select(MESSAGE_COLUMNS)
-    .eq('challenge_id', challengeId)
-    .order('seq', { ascending: false })
-    .limit(limit);
+  const { data, error } = await chatRpc('list_chat_messages', {
+    p_challenge_id: challengeId,
+    p_before_seq: null,
+    p_limit: limit,
+  });
   if (error) {
     throw new ChatError('Meddelandena kunde inte hämtas.');
   }
@@ -164,13 +166,11 @@ export async function fetchOlderChatMessages(
   beforeSeq: number,
   limit = 50,
 ): Promise<ChatMessage[]> {
-  const { data, error }: QueryResult = await chatdb
-    .from('chat_messages')
-    .select(MESSAGE_COLUMNS)
-    .eq('challenge_id', challengeId)
-    .lt('seq', beforeSeq)
-    .order('seq', { ascending: false })
-    .limit(limit);
+  const { data, error } = await chatRpc('list_chat_messages', {
+    p_challenge_id: challengeId,
+    p_before_seq: beforeSeq,
+    p_limit: limit,
+  });
   if (error) {
     throw new ChatError('Äldre meddelanden kunde inte hämtas.');
   }
@@ -179,31 +179,17 @@ export async function fetchOlderChatMessages(
 
 /**
  * Exact unread count (spec §3.4): messages with `seq` greater than the caller's
- * `last_read_seq`. Two round-trips — read the cursor, then count — because
- * PostgREST has no subquery. A missing read-state row means a cursor of 0.
+ * `last_read_seq`. Computed entirely server-side by `unread_chat_count` (which
+ * reads the caller's own read cursor via `auth.uid()`), so the client never
+ * needs a direct read of `chat_messages` or another user's `chat_read_state`.
+ * A hidden message still occupies a `seq` and still counts.
  */
-export async function fetchUnreadCount(
-  challengeId: string,
-  userId: string,
-): Promise<number> {
-  const cursorRes: QueryResult = await chatdb
-    .from('chat_read_state')
-    .select('last_read_seq')
-    .eq('challenge_id', challengeId)
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (cursorRes.error) {
+export async function fetchUnreadCount(challengeId: string): Promise<number> {
+  const { data, error } = await chatRpc('unread_chat_count', {
+    p_challenge_id: challengeId,
+  });
+  if (error) {
     throw new ChatError('Antal olästa kunde inte hämtas.');
   }
-  const lastReadSeq = jnum(asRecord(cursorRes.data).last_read_seq);
-
-  const countRes: QueryResult = await chatdb
-    .from('chat_messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('challenge_id', challengeId)
-    .gt('seq', lastReadSeq);
-  if (countRes.error) {
-    throw new ChatError('Antal olästa kunde inte hämtas.');
-  }
-  return jnum(countRes.count);
+  return jnum(data);
 }

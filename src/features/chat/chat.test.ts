@@ -14,6 +14,7 @@ function msg(overrides: Partial<ChatMessage>): ChatMessage {
     challengeId: 'c1',
     senderType: 'participant',
     senderUserId: 'u1',
+    senderDisplayName: 'Pia',
     body: 'hej',
     status: 'active',
     hiddenReason: null,
@@ -31,6 +32,16 @@ describe('displayBody', () => {
   });
   it('returns the real body for an active message', () => {
     expect(displayBody({ status: 'active', body: 'Hej!' })).toBe('Hej!');
+  });
+  it('renders the placeholder when the server withheld the body (null)', () => {
+    // list_chat_messages sends body: null for a hidden message to a non-admin.
+    expect(displayBody({ status: 'hidden', body: null })).toBe(
+      '[Borttaget av administratör]',
+    );
+    // defensive: a null body on an "active" row still never renders as empty
+    expect(displayBody({ status: 'active', body: null })).toBe(
+      '[Borttaget av administratör]',
+    );
   });
 });
 
