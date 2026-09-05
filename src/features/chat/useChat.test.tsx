@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ChatMessage } from './types';
@@ -26,6 +26,63 @@ vi.mock('./chat-api', () => ({
   postChatMessage,
   markChatRead,
 }));
+
+/**
+ * A minimal fake of the Supabase Realtime surface `useChatMessages` touches:
+ * `supabase.channel(name).on(event, filter, handler).subscribe()` and
+ * `supabase.removeChannel(channel)`. Each `.on()` call's filter + handler are
+ * captured so a test can fire a synthetic INSERT.
+ */
+interface FakeChannel {
+  name: string;
+  filters: Record<string, unknown>[];
+  handlers: (() => void)[];
+  on: (
+    event: string,
+    filter: Record<string, unknown>,
+    handler: () => void,
+  ) => FakeChannel;
+  subscribe: () => FakeChannel;
+}
+
+const { channelSpy, removeChannelSpy, channels } = vi.hoisted(() => ({
+  channelSpy: vi.fn(),
+  removeChannelSpy: vi.fn(),
+  channels: [] as unknown[],
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    channel: (name: string): FakeChannel => {
+      const ch: FakeChannel = {
+        name,
+        filters: [],
+        handlers: [],
+        on: (_event, filter, handler) => {
+          ch.filters.push(filter);
+          ch.handlers.push(handler);
+          return ch;
+        },
+        subscribe: () => ch,
+      };
+      channelSpy(name);
+      channels.push(ch);
+      return ch;
+    },
+    removeChannel: (ch: unknown) => {
+      removeChannelSpy(ch);
+      return Promise.resolve('ok');
+    },
+  },
+}));
+
+function lastChannel(): FakeChannel {
+  return channels[channels.length - 1] as FakeChannel;
+}
+
+function emitInsert(ch: FakeChannel): void {
+  for (const handler of ch.handlers) handler();
+}
 
 import {
   chatKeys,
@@ -58,7 +115,14 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-afterEach(() => vi.clearAllMocks());
+// `beforeEach`, not `afterEach`: Testing Library's auto-`cleanup()` unmounts the
+// previous test's hook during the afterEach phase — after a file-local
+// `afterEach` would already have run — and that unmount calls `removeChannel`.
+// Clearing here, before the next test, keeps the Realtime spy counts honest.
+beforeEach(() => {
+  vi.clearAllMocks();
+  channels.length = 0;
+});
 
 describe('useChatMessages', () => {
   it('flattens pages and presents them sorted ascending by seq (not API order)', async () => {
@@ -100,6 +164,64 @@ describe('useChatMessages', () => {
     await waitFor(() => expect(result.current.messages.length).toBe(2));
     await result.current.fetchNextPage();
     await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+  });
+});
+
+describe('useChatMessages — Realtime', () => {
+  it('opens exactly one INSERT channel scoped to the open challenge and tears it down on unmount', async () => {
+    fetchRecentChatMessages.mockResolvedValue([row(1)]);
+    const { result, unmount } = renderHook(() => useChatMessages('c1'), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.messages.length).toBe(1));
+
+    expect(channelSpy).toHaveBeenCalledTimes(1);
+    expect(channelSpy).toHaveBeenCalledWith('chat:c1');
+    expect(lastChannel().filters).toEqual([
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: 'challenge_id=eq.c1',
+      },
+    ]);
+
+    unmount();
+    expect(removeChannelSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not open a channel when challengeId is null', () => {
+    renderHook(() => useChatMessages(null), { wrapper });
+    expect(channelSpy).not.toHaveBeenCalled();
+  });
+
+  it('reflects a message delivered over Realtime after invalidation', async () => {
+    fetchRecentChatMessages.mockResolvedValue([row(1)]);
+    const { result } = renderHook(() => useChatMessages('c1'), { wrapper });
+    await waitFor(() => expect(result.current.messages.length).toBe(1));
+
+    // A new row is now visible to a refetch; the socket only nudges the cache.
+    fetchRecentChatMessages.mockResolvedValue([row(2), row(1)]);
+    emitInsert(lastChannel());
+
+    await waitFor(() => expect(result.current.messages.length).toBe(2));
+    expect(result.current.messages.map((m) => m.seq)).toEqual([1, 2]);
+  });
+
+  it('keeps the list seq-ascending regardless of Realtime arrival order', async () => {
+    fetchRecentChatMessages.mockResolvedValue([row(7)]);
+    const { result } = renderHook(() => useChatMessages('c1'), { wrapper });
+    await waitFor(() => expect(result.current.messages.length).toBe(1));
+
+    // Two INSERT events fire; the higher-seq row's event arrives first. The
+    // handler ignores the payload entirely and refetches — the refetch result
+    // (in any order) is re-sorted by seq.
+    fetchRecentChatMessages.mockResolvedValue([row(9), row(7), row(8)]);
+    emitInsert(lastChannel()); // "seq 9 arrived"
+    emitInsert(lastChannel()); // "seq 8 arrived"
+
+    await waitFor(() => expect(result.current.messages.length).toBe(3));
+    expect(result.current.messages.map((m) => m.seq)).toEqual([7, 8, 9]);
   });
 });
 

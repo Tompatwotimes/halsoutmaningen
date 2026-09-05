@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { sortBySeq } from './chat';
 import {
   fetchOlderChatMessages,
@@ -20,10 +21,16 @@ import type { ChatMessage } from './types';
  *
  * TanStack Query is the canonical client cache. `seq` is the only display
  * order — `useChatMessages` flattens every loaded page and re-sorts by `seq`,
- * so neither API order nor (later) Realtime arrival order is ever trusted.
- * Realtime is added in a later task as a subscription that only ever
- * invalidates/updates these same query keys; it does not change this hook's
- * public shape.
+ * so neither API order nor Realtime arrival order is ever trusted.
+ *
+ * Realtime (spec §7): `useChatMessages` opens ONE Supabase channel per open
+ * challenge id, subscribed to `INSERT` on `chat_messages` filtered to that
+ * challenge. The handler never becomes a second source of truth — it only
+ * invalidates the message-list and unread query keys, so the displayed list is
+ * always what TanStack Query holds, re-sorted by `seq`. An out-of-order or
+ * dropped socket delivery is therefore repaired by the next refetch, not
+ * trusted as ordering. The channel is torn down on unmount / challenge change.
+ * This is the first Realtime consumer in the codebase — new, reviewed plumbing.
  */
 
 const MESSAGES_ROOT = ['chat', 'messages'] as const;
@@ -39,6 +46,8 @@ export const chatKeys = {
 const PAGE_SIZE = 50;
 
 export function useChatMessages(challengeId: string | null) {
+  const queryClient = useQueryClient();
+
   const query = useInfiniteQuery({
     queryKey: chatKeys.messages(challengeId ?? ''),
     enabled: challengeId !== null,
@@ -57,6 +66,36 @@ export function useChatMessages(challengeId: string | null) {
     retry: false,
     throwOnError: false,
   });
+
+  useEffect(() => {
+    if (challengeId === null) return;
+    const channel = supabase
+      .channel(`chat:${challengeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `challenge_id=eq.${challengeId}`,
+        },
+        () => {
+          // Signal only — refetch and re-sort by seq rather than trusting the
+          // payload or its arrival order (spec §2.2 / §7).
+          void queryClient.invalidateQueries({
+            queryKey: chatKeys.messages(challengeId),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: chatKeys.unreadRoot(challengeId),
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [challengeId, queryClient]);
 
   const messages = useMemo(
     () => sortBySeq(query.data?.pages.flat() ?? []),
