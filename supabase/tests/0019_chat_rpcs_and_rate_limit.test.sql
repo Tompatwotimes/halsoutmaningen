@@ -141,8 +141,12 @@ select lives_ok(
 -- Section C — mark_chat_read
 -- ========================================================================
 set local role postgres;
--- capture three real seq values in Chat-RPC-A and one in Chat-RPC-B
+-- capture three real seq values in Chat-RPC-A and one in Chat-RPC-B.
+-- The temp table is read back later under `role authenticated` (inside the
+-- format() subqueries), so it needs an explicit grant — same pattern as
+-- 0017's `cancel_event` temp table.
 create temp table rp (label text primary key, seq bigint not null);
+grant select on rp to authenticated;
 with i as (insert into public.chat_messages (challenge_id, sender_type, sender_user_id, body)
   values ('00000000-0000-0000-0000-00000000df01', 'participant', '00000000-0000-0000-0000-0000000d1002', 'r-a1') returning seq)
 insert into rp select 'a1', seq from i;

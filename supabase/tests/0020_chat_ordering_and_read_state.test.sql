@@ -29,7 +29,11 @@ values ('00000000-0000-0000-0000-00000000ef01', '00000000-0000-0000-0000-0000000
   current_date - 10, true, '00000000-0000-0000-0000-0000000e2001');
 
 -- ---- 5 messages, capture each seq in insertion order --------------------
+-- Read back later under `role authenticated` (inside format() subqueries),
+-- so the temp table needs an explicit grant — same pattern as 0017's
+-- `cancel_event` temp table.
 create temp table m (n int primary key, seq bigint not null, id uuid not null);
+grant select on m to authenticated;
 
 with i as (insert into public.chat_messages (challenge_id, sender_type, sender_user_id, body)
   values ('00000000-0000-0000-0000-00000000ef01', 'participant', '00000000-0000-0000-0000-0000000e2002', 'm1')

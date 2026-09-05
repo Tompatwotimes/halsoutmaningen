@@ -66,8 +66,8 @@ begin
   end if;
 
   -- Rate limit: at most 10 participant messages per rolling 30 seconds per
-  -- user. Self-query against chat_messages, no separate table — same shape as
-  -- request_game_master_pulse's 90-second throttle.
+  -- user. Self-query against chat_messages, no separate table — the same shape
+  -- as the autonomous pulse RPC's 90-second throttle.
   if (
     select count(*)
     from public.chat_messages c
@@ -205,8 +205,8 @@ begin
         hidden_reason = btrim(p_reason)
   where id = p_message_id;
 
-  -- Audit: no message body in before/after/note (mirrors the
-  -- game_master_event_cancelled "no roast text" guarantee).
+  -- Audit: no message body in before/after/note (mirrors the event-cancel
+  -- audit's "no roast text" guarantee).
   insert into public.audit_log
     (actor_user_id, challenge_id, target_user_id, entity_type, entity_id, action,
      before_data, after_data, note)
