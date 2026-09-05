@@ -399,6 +399,21 @@ select is(
 -- byte-identical before/after both a real emission and an induced error.
 -- ========================================================================
 
+-- Section F's `_game_master_tick_all()` also ticks f0c5 / f0c6 (both enabled)
+-- when this suite happens to run during Stockholm local hour 08 or 20 —
+-- leaving a `source='scheduled'` run (and possibly an event, which would then
+-- trip _run_game_master_pulse's 4 h cooldown). Section G is about a *manual*
+-- pulse in isolation, so clear any dispatcher artefacts for these two
+-- challenges first; the manual pulses below are unaffected. (Pre-existing
+-- time-of-day flake, unrelated to shared chat — surfaced by PR #3's CI run
+-- landing at 20:xx local.)
+delete from public.game_master_events
+  where challenge_id in ('00000000-0000-0000-0000-00000000f0c5',
+                         '00000000-0000-0000-0000-00000000f0c6');
+delete from public.game_master_runs
+  where challenge_id in ('00000000-0000-0000-0000-00000000f0c5',
+                         '00000000-0000-0000-0000-00000000f0c6');
+
 -- ---- G1: forced emission must not touch day state / liability / streak ---
 create temp table iso_before as
   select
@@ -412,7 +427,8 @@ select ok(
   'the isolation challenge emits a real streak_long event (forced roll)');
 select is(
   (select outcome from public.game_master_runs
-   where challenge_id = '00000000-0000-0000-0000-00000000f0c5'),
+   where challenge_id = '00000000-0000-0000-0000-00000000f0c5'
+     and source = 'event'),
   'event', 'the isolation-emit pulse is recorded as outcome = event');
 
 select is(
@@ -450,7 +466,8 @@ select ok(
   'a render-time failure is swallowed: the pulse returns NULL, never raises');
 select is(
   (select outcome from public.game_master_runs
-   where challenge_id = '00000000-0000-0000-0000-00000000f0c6'),
+   where challenge_id = '00000000-0000-0000-0000-00000000f0c6'
+     and source = 'event'),
   'error', 'the induced failure is recorded as outcome = error');
 select is(
   (select count(*)::int from public.game_master_events
