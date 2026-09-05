@@ -98,6 +98,10 @@ begin
 end;
 $$;
 
+-- Trigger-only function; a direct call raises before the body runs, but keep
+-- the project's SECURITY DEFINER convention (no PUBLIC/anon EXECUTE).
+revoke all on function public.tg_chat_activity_fanout() from public, anon, authenticated;
+
 create trigger chat_messages_activity_fanout
   after insert or update of status on public.chat_messages
   for each row execute function public.tg_chat_activity_fanout();
