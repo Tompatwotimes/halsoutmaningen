@@ -374,6 +374,17 @@ set local role postgres;
 -- returns to `postgres` (see 0013/0016 house style).
 select set_config('request.jwt.claims', '', true);
 
+-- f0c5 / f0c6 are Section G's isolation challenges. The dispatcher would tick
+-- them here during Stockholm local hour 08/20 (leaving a scheduled run, and a
+-- randomly-rolled event that then trips _run_game_master_pulse's 4 h cooldown
+-- and the game_master_runs.selected_event_id FK). Section F only asserts on
+-- f0c3 / f0c4, so disable f0c5 / f0c6 for the dispatcher window; Section G
+-- re-enables them for its own manual pulses. (Pre-existing time-of-day flake,
+-- unrelated to shared chat — surfaced by PR #3 CI landing at 20:xx local.)
+update public.game_master_settings set enabled = false
+  where challenge_id in ('00000000-0000-0000-0000-00000000f0c5',
+                         '00000000-0000-0000-0000-00000000f0c6');
+
 select lives_ok($$select public._game_master_tick_all()$$, 'first dispatcher tick runs without error');
 select lives_ok($$select public._game_master_tick_all()$$, 'second dispatcher tick (same call) runs without error');
 
@@ -399,18 +410,13 @@ select is(
 -- byte-identical before/after both a real emission and an induced error.
 -- ========================================================================
 
--- Section F's `_game_master_tick_all()` also ticks f0c5 / f0c6 (both enabled)
--- when this suite happens to run during Stockholm local hour 08 or 20 —
--- leaving a `source='scheduled'` run (and possibly an event, which would then
--- trip _run_game_master_pulse's 4 h cooldown). Section G is about a *manual*
--- pulse in isolation, so clear any dispatcher artefacts for these two
--- challenges first; the manual pulses below are unaffected. (Pre-existing
--- time-of-day flake, unrelated to shared chat — surfaced by PR #3's CI run
--- landing at 20:xx local.)
-delete from public.game_master_events
-  where challenge_id in ('00000000-0000-0000-0000-00000000f0c5',
-                         '00000000-0000-0000-0000-00000000f0c6');
-delete from public.game_master_runs
+-- Re-enable Section G's isolation challenges (disabled for Section F's
+-- dispatcher window above) — _run_game_master_pulse consults
+-- game_master_settings.enabled, and the manual pulses below need them on.
+-- With the dispatcher having skipped them entirely, f0c5 / f0c6 now have no
+-- prior runs or events, so Section G's assertions are deterministic
+-- regardless of wall-clock hour or the dispatcher's random roll.
+update public.game_master_settings set enabled = true
   where challenge_id in ('00000000-0000-0000-0000-00000000f0c5',
                          '00000000-0000-0000-0000-00000000f0c6');
 
