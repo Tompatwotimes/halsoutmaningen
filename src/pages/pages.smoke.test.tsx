@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -19,6 +20,10 @@ import { buildEntryMap } from '@/fixtures/entries';
 import { AppShell } from '@/components/layout/AppShell';
 import { RequireAdmin } from '@/features/auth/RequireAdmin';
 import { fetchNextGameMasterEvent } from '@/features/game-master/game-master-api';
+import {
+  fetchRecentChatMessages,
+  fetchUnreadCount,
+} from '@/features/chat/chat-api';
 import { HomePage } from './HomePage';
 import { GroupPage } from './GroupPage';
 import { LogPage } from './LogPage';
@@ -186,6 +191,18 @@ vi.mock('@/features/game-master/game-master-api', () => ({
   fetchNextGameMasterEvent: vi.fn(() => Promise.resolve(null)),
   requestGameMasterPulse: vi.fn(() => Promise.resolve(null)),
   markGameMasterEventSeen: vi.fn(() => Promise.resolve()),
+}));
+
+// Shared chat — the AppShell mounts a floating <ChatBubble/>. Stub the
+// transport the same way: the bubble reads the unread count on mount, the
+// panel loads messages only once opened.
+vi.mock('@/features/chat/chat-api', () => ({
+  ChatError: class ChatError extends Error {},
+  fetchUnreadCount: vi.fn(() => Promise.resolve(0)),
+  fetchRecentChatMessages: vi.fn(() => Promise.resolve([])),
+  fetchOlderChatMessages: vi.fn(() => Promise.resolve([])),
+  postChatMessage: vi.fn(() => Promise.resolve(null)),
+  markChatRead: vi.fn(() => Promise.resolve()),
 }));
 
 // `/admin/game-master` (RequireAdmin-gated) needs the active challenge lookup
@@ -425,5 +442,41 @@ describe('Game Master GM1 — final integration (Task 10)', () => {
     expect(
       await screen.findByText(/Autonomt överraskningslager/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe('Shared chat — AppShell integration (Task 9)', () => {
+  function renderShell(page: ReactNode) {
+    return wrap(
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={page} />
+        </Route>
+      </Routes>,
+    );
+  }
+
+  it('mounts the floating chat bubble on the authenticated shell with no panel open', async () => {
+    renderShell(<HomePage />);
+    expect(await screen.findByText(/har tränat idag/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /chatt/i })).toBeInTheDocument();
+    // Closed by default — no dialog, no composer.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a chat load failure never replaces the host page with an error state', async () => {
+    vi.mocked(fetchUnreadCount).mockRejectedValueOnce(new Error('boom'));
+    vi.mocked(fetchRecentChatMessages).mockRejectedValueOnce(new Error('boom'));
+    renderShell(<HomePage />);
+    expect(await screen.findByText(/har tränat idag/i)).toBeInTheDocument();
+
+    // Opening the panel while its query is failing shows an understated
+    // in-panel notice, never a page-level alert.
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: /chatt/i }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/har tränat idag/i)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

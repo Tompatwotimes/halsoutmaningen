@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 const {
   useChallengeDataMock,
   useAuthMock,
+  useProfileMock,
   useUnreadChatCountMock,
   useChatMessagesMock,
   useMarkChatReadMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   useChallengeDataMock: vi.fn<() => Record<string, unknown>>(),
   useAuthMock: vi.fn<() => Record<string, unknown>>(),
+  useProfileMock: vi.fn<() => Record<string, unknown>>(),
   useUnreadChatCountMock: vi.fn<() => Record<string, unknown>>(),
   useChatMessagesMock: vi.fn<() => Record<string, unknown>>(),
   useMarkChatReadMock: vi.fn<() => Record<string, unknown>>(),
@@ -23,6 +25,12 @@ vi.mock('@/features/challenge/useChallengeData', () => ({
   useChallengeData: () => useChallengeDataMock(),
 }));
 vi.mock('@/features/auth/useAuth', () => ({ useAuth: () => useAuthMock() }));
+vi.mock('@/features/profile/useProfile', () => ({
+  useProfile: () => useProfileMock(),
+}));
+vi.mock('@/features/admin/ChatModerationSheet', () => ({
+  ChatModerationSheet: () => null,
+}));
 vi.mock('./useChat', () => ({
   chatKeys: {
     messages: (c: string) => ['chat', 'messages', c],
@@ -53,6 +61,7 @@ const okQueryData = {
 function primeHooks(unread: number) {
   useChallengeDataMock.mockReturnValue(okQueryData);
   useAuthMock.mockReturnValue({ user: { id: 'u1' } });
+  useProfileMock.mockReturnValue({ isAdmin: false });
   useUnreadChatCountMock.mockReturnValue({ data: unread });
   useChatMessagesMock.mockReturnValue({
     messages: [],
@@ -69,6 +78,7 @@ describe('ChatBubble', () => {
   it('renders nothing when there is no challenge / user', () => {
     useChallengeDataMock.mockReturnValue({ data: null });
     useAuthMock.mockReturnValue({ user: null });
+    useProfileMock.mockReturnValue({ isAdmin: false });
     useUnreadChatCountMock.mockReturnValue({ data: 0 });
     useChatMessagesMock.mockReturnValue({
       messages: [],

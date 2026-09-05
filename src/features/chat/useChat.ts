@@ -55,6 +55,7 @@ export function useChatMessages(challengeId: string | null) {
         : Math.min(...lastPage.map((m) => m.seq)),
     staleTime: 15_000,
     retry: false,
+    throwOnError: false,
   });
 
   const messages = useMemo(
@@ -80,6 +81,7 @@ export function useUnreadChatCount(
     },
     staleTime: 15_000,
     retry: false,
+    throwOnError: false,
   });
 }
 

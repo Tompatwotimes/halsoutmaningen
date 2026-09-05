@@ -1,0 +1,33 @@
+.trigger {
+  align-self: flex-start;
+  padding: 0;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+  background: none;
+  border: none;
+}
+
+.trigger:hover {
+  color: var(--c-danger-text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+
+.field textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  padding: var(--sp-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+}

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ChatIcon } from '@/components/icons';
 import { useAuth } from '@/features/auth/useAuth';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
+import { useProfile } from '@/features/profile/useProfile';
+import { ChatModerationSheet } from '@/features/admin/ChatModerationSheet';
 import { ChatPanel } from './ChatPanel';
 import { useUnreadChatCount } from './useChat';
 import styles from './ChatBubble.module.css';
@@ -17,6 +19,7 @@ import styles from './ChatBubble.module.css';
 export function ChatBubble() {
   const { user } = useAuth();
   const challengeQuery = useChallengeData();
+  const { isAdmin } = useProfile();
   const [open, setOpen] = useState(false);
 
   const challenge = challengeQuery.data?.challenge ?? null;
@@ -54,7 +57,14 @@ export function ChatBubble() {
         challengeId={challengeId}
         userId={userId}
         timeZone={challenge.timeZone}
-        isAdmin={false}
+        isAdmin={isAdmin}
+        renderModeration={(message) => (
+          <ChatModerationSheet
+            message={message}
+            challengeId={challengeId}
+            isAdmin={isAdmin}
+          />
+        )}
       />
     </>
   );
