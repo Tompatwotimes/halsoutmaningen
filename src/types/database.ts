@@ -248,6 +248,142 @@ export type Database = {
           },
         ]
       }
+      chat_activity: {
+        Row: {
+          at: string
+          challenge_id: string
+          seq: number
+        }
+        Insert: {
+          at?: string
+          challenge_id: string
+          seq: number
+        }
+        Update: {
+          at?: string
+          challenge_id?: string
+          seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_activity_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          body: string
+          challenge_id: string
+          created_at: string
+          hidden_at: string | null
+          hidden_by: string | null
+          hidden_reason: string | null
+          id: string
+          sender_type: string
+          sender_user_id: string | null
+          seq: number
+          status: string
+        }
+        Insert: {
+          body: string
+          challenge_id: string
+          created_at?: string
+          hidden_at?: string | null
+          hidden_by?: string | null
+          hidden_reason?: string | null
+          id?: string
+          sender_type: string
+          sender_user_id?: string | null
+          seq?: never
+          status?: string
+        }
+        Update: {
+          body?: string
+          challenge_id?: string
+          created_at?: string
+          hidden_at?: string | null
+          hidden_by?: string | null
+          hidden_reason?: string | null
+          id?: string
+          sender_type?: string
+          sender_user_id?: string | null
+          seq?: never
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_hidden_by_fkey"
+            columns: ["hidden_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_sender_user_id_fkey"
+            columns: ["sender_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_read_state: {
+        Row: {
+          challenge_id: string
+          last_read_message_id: string | null
+          last_read_seq: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          challenge_id: string
+          last_read_message_id?: string | null
+          last_read_seq?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          challenge_id?: string
+          last_read_message_id?: string | null
+          last_read_seq?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_read_state_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_read_state_last_read_message_id_fkey"
+            columns: ["last_read_message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_read_state_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       earned_penalties: {
         Row: {
           challenge_id: string
@@ -1370,6 +1506,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      hide_chat_message: {
+        Args: { p_message_id: string; p_reason: string }
+        Returns: undefined
+      }
       invalidate_training_session: {
         Args: { p_entry_id: string; p_reason: string; p_reason_code?: string }
         Returns: {
@@ -1402,9 +1542,53 @@ export type Database = {
         Returns: boolean
       }
       is_valid_timezone: { Args: { p_tz: string }; Returns: boolean }
+      list_chat_messages: {
+        Args: {
+          p_before_seq?: number
+          p_challenge_id: string
+          p_limit?: number
+        }
+        Returns: {
+          body: string
+          challenge_id: string
+          created_at: string
+          id: string
+          sender_display_name: string
+          sender_type: string
+          sender_user_id: string
+          seq: number
+          status: string
+        }[]
+      }
+      mark_chat_read: {
+        Args: { p_challenge_id: string; p_seq: number }
+        Returns: undefined
+      }
       mark_game_master_event_seen: {
         Args: { p_dismiss?: boolean; p_event_id: string }
         Returns: undefined
+      }
+      post_chat_message: {
+        Args: { p_body: string; p_challenge_id: string }
+        Returns: {
+          body: string
+          challenge_id: string
+          created_at: string
+          hidden_at: string | null
+          hidden_by: string | null
+          hidden_reason: string | null
+          id: string
+          sender_type: string
+          sender_user_id: string | null
+          seq: number
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "chat_messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       preview_challenge_start_date_correction: {
         Args: { p_challenge_id: string; p_new_start_date: string }
@@ -1532,6 +1716,7 @@ export type Database = {
         Returns: Json
       }
       try_cast_uuid: { Args: { p: string }; Returns: string }
+      unread_chat_count: { Args: { p_challenge_id: string }; Returns: number }
       update_game_master_settings: {
         Args: {
           p_archive_enabled: boolean
