@@ -139,6 +139,12 @@ export const ArrowUpRightIcon = (p: IconProps) => (
   </Base>
 );
 
+export const ChatIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 5h16v11H8l-4 4V5z" />
+  </Base>
+);
+
 export const FlagIcon = (p: IconProps) => (
   <Base {...p}>
     <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
