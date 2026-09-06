@@ -1,0 +1,112 @@
+.list {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--c-border-faint);
+}
+
+.row:first-child {
+  border-top: none;
+}
+
+.name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.hidden {
+  font-weight: var(--fw-regular);
+  color: var(--c-text-faint);
+}
+
+.meta {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+}
+
+.entry {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--sp-2);
+  align-items: stretch;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  min-height: 2.5rem;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.finalizeRow {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: var(--sp-2);
+}
+
+.winner {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-md);
+  background: var(--c-accent-quiet);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  align-items: flex-start;
+}
+
+.winnerLabel {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--c-accent-text);
+}
+
+.winnerName {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  color: var(--c-text);
+}
+
+.winnerPct {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  color: var(--c-completed-text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+
+.field textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  padding: var(--sp-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+}

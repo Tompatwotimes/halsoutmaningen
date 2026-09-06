@@ -84,6 +84,11 @@ const GameMasterPage = lazy(() =>
     default: m.GameMasterPage,
   })),
 );
+const WeightFinalPage = lazy(() =>
+  import('@/pages/admin/WeightFinalPage').then((m) => ({
+    default: m.WeightFinalPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -196,6 +201,14 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <GameMasterPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/viktkampen"
+            element={
+              <RequireAdmin>
+                <WeightFinalPage />
               </RequireAdmin>
             }
           />

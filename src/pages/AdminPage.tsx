@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import {
   ChevronRightIcon,
   ClockIcon,
+  FlagIcon,
   GroupIcon,
   OverviewIcon,
   ShieldIcon,
@@ -110,6 +111,19 @@ export function AdminPage() {
             <span className={styles.tileTitle}>Game Master</span>
             <span className={styles.tileText}>
               Autonomt överraskningslager, nödbroms och historik.
+            </span>
+          </span>
+          <ChevronRightIcon className={styles.tileChevron} />
+        </Link>
+
+        <Link to="/admin/viktkampen" className={styles.tile}>
+          <span className={styles.tileIcon}>
+            <FlagIcon />
+          </span>
+          <span className={styles.tileBody}>
+            <span className={styles.tileTitle}>Viktkampen — final</span>
+            <span className={styles.tileText}>
+              Officiell slutvägning, fastställ och publicera vinnaren.
             </span>
           </span>
           <ChevronRightIcon className={styles.tileChevron} />
