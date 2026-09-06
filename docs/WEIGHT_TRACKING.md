@@ -94,8 +94,11 @@ passes through the _same_ policies:
 - `weight_profiles_select`: `user_id = auth.uid()` **or** `is_admin()` **or**
   `(not is_weight_hidden and is_challenge_member(challenge_id))`.
 - `weight_entries_select`: same owner/admin clauses **or**
-  `is_challenge_member(challenge_id) and not exists (hidden weight_profiles row
-for this (challenge,user))`.
+  `is_challenge_member(challenge_id) and not _weight_is_hidden(challenge_id,
+user_id)` — a **SECURITY DEFINER** predicate (same shape as
+  `is_challenge_member`): an inline `not exists (... weight_profiles ...)`
+  subquery here would itself be RLS-filtered by `weight_profiles`' own policy
+  and so could not see the hidden row it is meant to detect.
 
 **Retroactive by construction**: visibility is computed live from the current
 `is_weight_hidden` on every read — never snapshotted — so flipping it

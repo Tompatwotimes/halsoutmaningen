@@ -170,6 +170,32 @@ comment on table public.weight_competition_results is
 -- three-way policy shape (owner / admin / not-hidden-and-member) is the single
 -- point every reader passes through (spec §4).
 -- ============================================================================
+-- Is a given participant's weight hidden in a given challenge? SECURITY DEFINER
+-- with the same shape/rationale as public.is_challenge_member — an inline
+-- subquery on weight_profiles inside the weight_entries policy would itself be
+-- RLS-filtered by weight_profiles' OWN policy (so it could not see the hidden
+-- row it is meant to detect); this definer helper bypasses that. Returns one
+-- boolean, never a weight value.
+create or replace function public._weight_is_hidden(
+  p_challenge_id uuid,
+  p_user_id      uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((
+    select wp.is_weight_hidden
+    from public.weight_profiles wp
+    where wp.challenge_id = p_challenge_id and wp.user_id = p_user_id
+  ), false);
+$$;
+
+revoke all on function public._weight_is_hidden(uuid, uuid) from public, anon;
+grant execute on function public._weight_is_hidden(uuid, uuid) to authenticated;
+
 alter table public.weight_profiles            enable row level security;
 alter table public.weight_entries             enable row level security;
 alter table public.weight_competition_results enable row level security;
@@ -192,8 +218,9 @@ create policy weight_profiles_select on public.weight_profiles
   );
 
 -- Same three-way shape; the hide flag lives on weight_profiles, so a co-member
--- read is gated by "no hidden weight_profiles row exists for this (challenge,
--- user)". Owner / admin clauses first, always true regardless of hiding.
+-- read is gated by _weight_is_hidden (a SECURITY DEFINER predicate — an inline
+-- subquery here would be RLS-filtered and could not see the hidden row).
+-- Owner / admin clauses first, always true regardless of hiding.
 create policy weight_entries_select on public.weight_entries
   for select to authenticated
   using (
@@ -201,12 +228,7 @@ create policy weight_entries_select on public.weight_entries
     or public.is_admin()
     or (
       public.is_challenge_member(challenge_id)
-      and not exists (
-        select 1 from public.weight_profiles wp
-        where wp.challenge_id = weight_entries.challenge_id
-          and wp.user_id = weight_entries.user_id
-          and wp.is_weight_hidden
-      )
+      and not public._weight_is_hidden(challenge_id, user_id)
     )
   );
 
