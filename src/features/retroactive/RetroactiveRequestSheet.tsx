@@ -95,12 +95,15 @@ export function RetroactiveRequestSheet({
       const payload: ProposedSessionInput[] = [];
       for (const s of sessions) {
         let proof = null;
-        if (s.proofFile) {
+        // Efterregistrering keeps one proof image per session (design B2) — the
+        // two-image change is for the live "Logga träning" flow only.
+        const proofFile = s.proofFiles[0] ?? null;
+        if (proofFile) {
           const meta = await uploadRetroactiveProof(
             challenge.id,
             userId,
             challengeDate,
-            s.proofFile,
+            proofFile,
           );
           uploaded.push(meta.storagePath);
           proof = meta;
@@ -178,7 +181,7 @@ export function RetroactiveRequestSheet({
                   <span className={styles.itemMeta}>
                     {formatMinutes(s.durationMinutes)}
                     {challenge.proofRequired
-                      ? s.proofFile
+                      ? s.proofFiles.length > 0
                         ? ' · bild ✓'
                         : ' · bild saknas'
                       : ''}

@@ -1,7 +1,7 @@
 import { useState, type SyntheticEvent } from 'react';
 import { formatMinutes } from '@/domain/format';
 import { Button } from '@/components/ui/Button';
-import { ProofImagePicker } from '@/components/proof/ProofImagePicker';
+import { ProofSlots } from '@/components/proof/ProofSlots';
 import styles from './SessionForm.module.css';
 
 const QUICK_MINUTES = [30, 40, 45, 60];
@@ -10,7 +10,8 @@ export interface SessionFormValue {
   durationMinutes: number;
   activity: string | null;
   note: string | null;
-  proofFile: File | null;
+  /** 0, 1 or 2 files — `[0]` is the primary proof slot, `[1]` the optional one. */
+  proofFiles: File[];
 }
 
 interface Props {
@@ -35,11 +36,12 @@ export function SessionForm({
   const [duration, setDuration] = useState(Math.max(minMinutes, 30));
   const [activity, setActivity] = useState('');
   const [note, setNote] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [image1, setImage1] = useState<File | null>(null);
+  const [image2, setImage2] = useState<File | null>(null);
   const [tried, setTried] = useState(false);
 
   const durationValid = duration >= minMinutes;
-  const proofValid = !proofRequired || imageFile !== null;
+  const proofValid = !proofRequired || image1 !== null;
   const canSubmit = durationValid && proofValid;
 
   function submit(e: SyntheticEvent) {
@@ -50,7 +52,7 @@ export function SessionForm({
       durationMinutes: duration,
       activity: activity.trim() || null,
       note: note.trim() || null,
-      proofFile: imageFile,
+      proofFiles: [image1, image2].filter((f): f is File => f !== null),
     });
   }
 
@@ -115,13 +117,13 @@ export function SessionForm({
         maxLength={2000}
       />
 
-      <ProofImagePicker
-        file={imageFile}
-        onChange={setImageFile}
+      <ProofSlots
+        image1={image1}
+        image2={image2}
+        onChange1={setImage1}
+        onChange2={setImage2}
         idPrefix="session-proof"
-        promptTitle={
-          proofRequired ? 'Bildbevis för passet' : 'Bildbevis (valfritt)'
-        }
+        proofRequired={proofRequired}
       />
       {tried && !proofValid && (
         <p className={styles.err}>Bildbevis krävs för det här passet.</p>

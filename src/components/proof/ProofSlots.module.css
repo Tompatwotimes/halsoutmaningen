@@ -1,0 +1,44 @@
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.slotDisabled {
+  opacity: 0.65;
+}
+
+.slotHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.slotTitle {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.slotTag {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.slotLocked {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+  line-height: var(--lh-snug);
+  padding: var(--sp-3);
+  border: 1.5px dashed var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+}

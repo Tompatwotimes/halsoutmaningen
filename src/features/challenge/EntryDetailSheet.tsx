@@ -254,7 +254,8 @@ function SessionBlock({
             <Badge tone="missed" size="sm">
               Ogiltigförklarat
             </Badge>
-          ) : meetsMinutes && (!proofRequired || s.proofSignedUrl) ? (
+          ) : meetsMinutes &&
+            (!proofRequired || s.proofSignedUrls.length > 0) ? (
             <Badge tone="completed" size="sm" icon={<CheckIcon />}>
               Räknas
             </Badge>
@@ -278,8 +279,24 @@ function SessionBlock({
       )}
       {s.note && !invalid && <p className={styles.note}>”{s.note}”</p>}
 
-      {s.proofSignedUrl ? (
-        <SignedProofImage src={s.proofSignedUrl} alt="Bildbevis" />
+      {s.proofSignedUrls.length > 0 ? (
+        <div
+          className={
+            s.proofSignedUrls.length > 1 ? styles.proofGrid : undefined
+          }
+        >
+          {s.proofSignedUrls.map((url, i) => (
+            <SignedProofImage
+              key={url}
+              src={url}
+              alt={
+                s.proofSignedUrls.length > 1
+                  ? `Bildbevis ${i + 1}`
+                  : 'Bildbevis'
+              }
+            />
+          ))}
+        </div>
       ) : (
         <EmptyState
           icon={<ImageOffIcon />}
