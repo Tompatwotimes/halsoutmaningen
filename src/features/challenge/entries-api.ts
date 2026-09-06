@@ -64,7 +64,8 @@ export interface EntryDetail {
   submittedAt: string;
   status: EntryStatus;
   invalidatedReason: string | null;
-  proofPath: string | null;
+  /** 0, 1 or 2 storage paths, ordered by slot (position 1 first). */
+  proofPaths: string[];
 }
 
 /**
@@ -96,20 +97,29 @@ export async function fetchDaySessions(
     return [];
   }
 
+  // `position` is added by 20260906120000_training_proof_two_images.sql;
+  // src/types/database.ts is regenerated on rollout (plan Task 11).
   const { data: proofs, error: proofError } = await supabase
     .from('training_proofs')
-    .select('training_entry_id, storage_path')
+    .select('training_entry_id, storage_path, position')
     .in(
       'training_entry_id',
       entries.map((e) => e.id),
-    );
+    )
+    .overrideTypes<
+      { training_entry_id: string; storage_path: string; position: number }[],
+      { merge: false }
+    >();
 
   if (proofError) {
     throw new Error(proofError.message);
   }
-  const pathByEntry = new Map(
-    proofs.map((p) => [p.training_entry_id, p.storage_path]),
-  );
+  const pathsByEntry = new Map<string, string[]>();
+  for (const p of [...proofs].sort((a, b) => a.position - b.position)) {
+    const list = pathsByEntry.get(p.training_entry_id) ?? [];
+    list.push(p.storage_path);
+    pathsByEntry.set(p.training_entry_id, list);
+  }
 
   return entries.map((e) => ({
     entryId: e.id,
@@ -121,7 +131,7 @@ export async function fetchDaySessions(
     submittedAt: e.created_at,
     status: e.status as EntryStatus,
     invalidatedReason: e.invalidated_reason,
-    proofPath: pathByEntry.get(e.id) ?? null,
+    proofPaths: pathsByEntry.get(e.id) ?? [],
   }));
 }
 
