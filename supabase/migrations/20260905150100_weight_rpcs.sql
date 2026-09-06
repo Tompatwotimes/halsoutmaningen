@@ -239,3 +239,109 @@ comment on function public.log_weight_entry(uuid, numeric) is
 
 revoke all on function public.log_weight_entry(uuid, numeric) from public, anon;
 grant execute on function public.log_weight_entry(uuid, numeric) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- set_weight_hidden  (participant — the privacy toggle, works before any weight)
+-- ----------------------------------------------------------------------------
+create or replace function public.set_weight_hidden(
+  p_challenge_id uuid,
+  p_hidden       boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := (select auth.uid());
+begin
+  if uid is null then
+    raise exception 'Du måste vara inloggad';
+  end if;
+  if not exists (
+    select 1 from public.challenge_memberships m
+    where m.challenge_id = p_challenge_id and m.user_id = uid and m.active
+  ) then
+    raise exception 'Du är inte aktiv deltagare i den här utmaningen';
+  end if;
+
+  -- Creates the weight_profiles row on the first toggle if nothing else has —
+  -- every other column stays null. This is how "the toggle must work even
+  -- before a start weight exists" is satisfied (spec §2.4 / §4).
+  insert into public.weight_profiles (challenge_id, user_id, is_weight_hidden)
+  values (p_challenge_id, uid, coalesce(p_hidden, false))
+  on conflict (challenge_id, user_id) do update
+    set is_weight_hidden = excluded.is_weight_hidden;
+end;
+$$;
+
+comment on function public.set_weight_hidden(uuid, boolean) is
+  '"Dölj min vikt" toggle. Retroactive by construction — visibility is computed '
+  'live from is_weight_hidden on every read (the RLS policies in the schema '
+  'migration are the single enforcement point), so flipping it immediately '
+  'changes what every co-member query returns, and flipping it back restores '
+  'the same historical rows with no data migration.';
+
+revoke all on function public.set_weight_hidden(uuid, boolean) from public, anon;
+grant execute on function public.set_weight_hidden(uuid, boolean) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- weight_public_ranking  (read model — SECURITY INVOKER, RLS does the hiding)
+-- ----------------------------------------------------------------------------
+-- Mirrors public.challenge_results' shape: security INVOKER, set search_path='',
+-- a plain query. Because it runs as the caller, a hidden participant's
+-- weight_profiles / weight_entries rows are simply invisible to it via RLS
+-- (spec §4) — there is NO `where not is_weight_hidden` here on purpose; adding
+-- one would be a second enforcement point to keep in sync. Eligibility:
+-- a locked start weight exists AND at least one weight_entries row exists.
+create or replace function public.weight_public_ranking(p_challenge_id uuid)
+returns table (
+  user_id           uuid,
+  display_name      text,
+  start_weight_kg   numeric,
+  latest_weight_kg  numeric,
+  latest_entry_date date,
+  kg_change         numeric,
+  percentage_change numeric
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  with latest as (
+    select distinct on (we.user_id)
+      we.user_id,
+      we.weight_kg  as latest_weight_kg,
+      we.entry_date as latest_entry_date
+    from public.weight_entries we
+    where we.challenge_id = p_challenge_id
+    order by we.user_id, we.entry_date desc, we.created_at desc
+  )
+  select
+    wp.user_id,
+    p.display_name,
+    wp.start_weight_kg,
+    l.latest_weight_kg,
+    l.latest_entry_date,
+    round(l.latest_weight_kg - wp.start_weight_kg, 2)                                 as kg_change,
+    round((l.latest_weight_kg - wp.start_weight_kg) / wp.start_weight_kg * 100, 2)    as percentage_change
+  from public.weight_profiles wp
+  join latest         l on l.user_id = wp.user_id
+  join public.profiles p on p.id = wp.user_id
+  where wp.challenge_id = p_challenge_id
+    and wp.start_weight_locked_at is not null
+  -- most weight lost first; unrounded for a precise order, ties by name.
+  order by (l.latest_weight_kg - wp.start_weight_kg) / wp.start_weight_kg asc,
+           p.display_name asc;
+$$;
+
+comment on function public.weight_public_ranking(uuid) is
+  'Public live Viktkampen ranking. SECURITY INVOKER — a hidden participant is '
+  'absent because RLS hides their rows from the caller, not because of any '
+  'filter in this function. Rows: locked start weight present + >=1 weight '
+  'entry. percentage_change = (latest - start)/start*100 (spec §7), rounded to '
+  '2 dp for display; ordering uses full precision.';
+
+revoke all on function public.weight_public_ranking(uuid) from public, anon;
+grant execute on function public.weight_public_ranking(uuid) to authenticated;
