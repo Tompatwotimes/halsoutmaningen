@@ -19,7 +19,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(23);
+select plan(30);
 
 set local role postgres;
 
@@ -206,6 +206,59 @@ select ok(
   (select start_weight_first_saved_at is not null and start_weight_locked_at is not null
    from public.weight_profiles where user_id = '00000000-0000-0000-0000-0000000b1005'),
   'the upserted row has coherent lock timestamps');
+
+-- ========================================================================
+-- Section F — log_weight_entry: today only, no backdating, same-day edit
+-- ========================================================================
+select is(
+  pg_get_function_arguments('public.log_weight_entry(uuid, numeric)'::regprocedure),
+  'p_challenge_id uuid, p_weight_kg numeric',
+  'log_weight_entry takes only a challenge id and a weight — no date parameter');
+
+-- A directly-inserted "yesterday" row that log_weight_entry must never reach.
+set local role postgres;
+insert into public.weight_entries (challenge_id, user_id, entry_date, weight_kg)
+values ('00000000-0000-0000-0000-0000000bcf01', '00000000-0000-0000-0000-0000000b1004',
+        current_date - 1, 91.0);
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000b1004","role":"authenticated"}', true);
+
+select lives_ok(
+  $$select public.log_weight_entry('00000000-0000-0000-0000-0000000bcf01'::uuid, 89.5)$$,
+  'a first log_weight_entry call today is accepted');
+select is(
+  (select entry_date from public.weight_entries
+   where challenge_id = '00000000-0000-0000-0000-0000000bcf01'
+     and user_id = '00000000-0000-0000-0000-0000000b1004'
+     and entry_date <> current_date - 1),
+  public.challenge_current_date('00000000-0000-0000-0000-0000000bcf01'),
+  'log_weight_entry writes entry_date = challenge_current_date');
+
+select lives_ok(
+  $$select public.log_weight_entry('00000000-0000-0000-0000-0000000bcf01'::uuid, 88.9)$$,
+  'a second call the same day is accepted (edit in place)');
+select is(
+  (select count(*)::int from public.weight_entries
+   where challenge_id = '00000000-0000-0000-0000-0000000bcf01'
+     and user_id = '00000000-0000-0000-0000-0000000b1004'),
+  2, 'still exactly two rows (today edited in place + the fixture yesterday), not three');
+
+set local role postgres;
+select is(
+  (select weight_kg from public.weight_entries
+   where challenge_id = '00000000-0000-0000-0000-0000000bcf01'
+     and user_id = '00000000-0000-0000-0000-0000000b1004' and entry_date = current_date - 1),
+  91.0::numeric,
+  'yesterday''s entry is byte-identical — unreachable by log_weight_entry');
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000b1003","role":"authenticated"}', true);
+select throws_ok(
+  $$select public.log_weight_entry('00000000-0000-0000-0000-0000000bcf01'::uuid, 80.0)$$,
+  null, null, 'a non-member cannot log a weight entry');
 
 select * from finish();
 rollback;

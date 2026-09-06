@@ -179,3 +179,63 @@ comment on function public.correct_start_weight(uuid, uuid, numeric, text) is
 
 revoke all on function public.correct_start_weight(uuid, uuid, numeric, text) from public, anon;
 grant execute on function public.correct_start_weight(uuid, uuid, numeric, text) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- log_weight_entry  (participant — today only, no date parameter to backdate)
+-- ----------------------------------------------------------------------------
+create or replace function public.log_weight_entry(
+  p_challenge_id uuid,
+  p_weight_kg    numeric
+)
+returns public.weight_entries
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid    uuid := (select auth.uid());
+  v_date date;
+  v_row  public.weight_entries;
+begin
+  if uid is null then
+    raise exception 'Du måste vara inloggad';
+  end if;
+
+  if not exists (
+    select 1 from public.challenge_memberships m
+    where m.challenge_id = p_challenge_id and m.user_id = uid and m.active
+  ) then
+    raise exception 'Du är inte aktiv deltagare i den här utmaningen';
+  end if;
+
+  if p_weight_kg is null or p_weight_kg <= 0 or p_weight_kg > 400 then
+    raise exception 'Ogiltig vikt';
+  end if;
+
+  -- The ONLY date this RPC can ever write is the challenge-local current date.
+  -- There is no parameter for a caller to supply another one — backdating is
+  -- structurally impossible, not merely checked (spec §2.3).
+  v_date := public.challenge_current_date(p_challenge_id);
+  if v_date is null then
+    raise exception 'Utmaningen finns inte';
+  end if;
+
+  insert into public.weight_entries (challenge_id, user_id, entry_date, weight_kg)
+  values (p_challenge_id, uid, v_date, p_weight_kg)
+  on conflict (challenge_id, user_id, entry_date) do update
+    set weight_kg = excluded.weight_kg
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.log_weight_entry(uuid, numeric) is
+  'Participant logs today''s regular weight. Optional, no proof, no training '
+  'dependency. Always targets challenge_current_date(challenge_id) — there is '
+  'no date parameter, so backdating is impossible. One row per '
+  '(challenge, user, day), editable in place while it is still that day; once '
+  'the challenge day rolls over the row is unreachable by this RPC.';
+
+revoke all on function public.log_weight_entry(uuid, numeric) from public, anon;
+grant execute on function public.log_weight_entry(uuid, numeric) to authenticated;
