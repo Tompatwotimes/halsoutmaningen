@@ -222,16 +222,25 @@ Realtime runs on `chat_activity`, **not** `chat_messages` — a moderated row's
   for display; `last_read_seq` remains the authority).
 - Tapping it opens `ChatPanel` inside the shared `Sheet` (portal, focus
   trap, Esc) at both breakpoints.
-- `ChatPanel` **opens anchored to the newest message** and keeps the viewport
-  in place when older history is paged in above (B1); a new message while the
-  reader is scrolled up shows a discreet **"Nya meddelanden"** button instead
-  of yanking them down.
+- `ChatPanel` **opens anchored to the newest message** and _stays_ there
+  while the first page's layout settles — a `stickToBottom` latch (armed on
+  open, cleared the moment the user scrolls up, re-armed at the bottom) plus a
+  `ResizeObserver` on the message list re-pin to the bottom as image
+  thumbnails load and grow the list. A programmatic pin records its target
+  `scrollTop` so its own scroll event is not misread as a user gesture. Older
+  history paged in above keeps the viewport in place (B1); a new message while
+  the reader is scrolled up shows a discreet **"Nya meddelanden"** button
+  instead of yanking them down.
 - `ChatPanel` renders messages in the `seq` order the hook provides, one
   date separator per challenge-local day, a composer with an **image button
-  (up to 4 previews, individually removable; "Laddar upp…" + disabled send
-  while a send is in flight)** that disables send only when there is neither
-  text nor an image, an over-limit body, or a send in flight — and keeps the
-  draft text if a post fails. Image bubbles use `ChatImageGrid` +
+  (up to 4 previews, individually removable; "Förbereder bild…" while the
+  images compress, then "Laddar upp…" + disabled send while a send is in
+  flight)** that disables send only when there is neither text nor an image,
+  an over-limit body, or a send in flight — and keeps the draft text if a
+  post fails. Each picked image is resized + re-compressed in the browser
+  (`src/lib/media/image-processing.ts`, ~1600 px long side, WebP where the
+  canvas supports it, else JPEG) before upload; the server MIME/size limits
+  still apply and remain authoritative. Image bubbles use `ChatImageGrid` +
   `ChatLightbox` (§8). A sender label on every message: **"Du"** for the
   viewer's own,
   the sender's **`display_name`** for another participant (from

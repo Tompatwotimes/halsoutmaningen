@@ -162,7 +162,10 @@ describe('submitTraining', () => {
         ...BASE_INPUT,
         proofFiles: [makeFile('IMG.heic', 'image/heic')],
       }),
-    ).rejects.toMatchObject({ entrySaved: true });
+    ).rejects.toMatchObject({
+      entrySaved: true,
+      message: expect.stringMatching(/HEIC/i),
+    });
     expect(mocks.upload).not.toHaveBeenCalled();
   });
 

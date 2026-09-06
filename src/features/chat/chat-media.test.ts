@@ -111,14 +111,29 @@ describe('uploadChatImages', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it('surfaces a processing failure as a ChatError and uploads nothing', async () => {
+  it('surfaces an undecodable HEIC as a ChatError with the HEIC message, uploads nothing', async () => {
     processImageForUpload.mockRejectedValue(
       new ImageProcessingError('undecodable', 'trasig', true),
     );
     await expect(
       uploadChatImages('ch1', 'u1', 'm', [jpeg('IMG.heic')]),
-    ).rejects.toMatchObject({ name: 'ChatError' });
+    ).rejects.toMatchObject({
+      name: 'ChatError',
+      message: expect.stringMatching(/HEIC/i),
+    });
     expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a non-HEIC processing failure with the generic message', async () => {
+    processImageForUpload.mockRejectedValue(
+      new ImageProcessingError('undecodable', 'trasig', false),
+    );
+    await expect(
+      uploadChatImages('ch1', 'u1', 'm', [jpeg('weird.jpg')]),
+    ).rejects.toMatchObject({
+      name: 'ChatError',
+      message: expect.stringMatching(/JPEG.*PNG.*WEBP/i),
+    });
   });
 
   it('removes already-uploaded objects when a later upload fails', async () => {
