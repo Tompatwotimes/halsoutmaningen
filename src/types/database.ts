@@ -274,9 +274,63 @@ export type Database = {
           },
         ]
       }
+      chat_message_attachments: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          height: number | null
+          id: string
+          message_id: string
+          mime_type: string
+          position: number
+          size_bytes: number
+          storage_path: string
+          width: number | null
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          height?: number | null
+          id?: string
+          message_id: string
+          mime_type: string
+          position: number
+          size_bytes: number
+          storage_path: string
+          width?: number | null
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          height?: number | null
+          id?: string
+          message_id?: string
+          mime_type?: string
+          position?: number
+          size_bytes?: number
+          storage_path?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_message_attachments_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_message_attachments_message_fk"
+            columns: ["message_id", "challenge_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id", "challenge_id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
-          body: string
+          body: string | null
           challenge_id: string
           created_at: string
           hidden_at: string | null
@@ -289,7 +343,7 @@ export type Database = {
           status: string
         }
         Insert: {
-          body: string
+          body?: string | null
           challenge_id: string
           created_at?: string
           hidden_at?: string | null
@@ -302,7 +356,7 @@ export type Database = {
           status?: string
         }
         Update: {
-          body?: string
+          body?: string | null
           challenge_id?: string
           created_at?: string
           hidden_at?: string | null
@@ -1108,6 +1162,7 @@ export type Database = {
           height: number | null
           id: string
           mime_type: string
+          position: number
           size_bytes: number
           storage_path: string
           training_entry_id: string
@@ -1120,6 +1175,7 @@ export type Database = {
           height?: number | null
           id?: string
           mime_type: string
+          position?: number
           size_bytes: number
           storage_path: string
           training_entry_id: string
@@ -1132,6 +1188,7 @@ export type Database = {
           height?: number | null
           id?: string
           mime_type?: string
+          position?: number
           size_bytes?: number
           storage_path?: string
           training_entry_id?: string
@@ -1149,7 +1206,7 @@ export type Database = {
           {
             foreignKeyName: "training_proofs_training_entry_id_fkey"
             columns: ["training_entry_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "training_entries"
             referencedColumns: ["id"]
           },
@@ -1339,6 +1396,7 @@ export type Database = {
         Args: { p_challenge_id: string; p_new_start_date: string }
         Returns: Json
       }
+      _chat_attachment_readable: { Args: { p_path: string }; Returns: boolean }
       _game_master_candidates: {
         Args: { p_challenge_id: string }
         Returns: {
@@ -1756,6 +1814,7 @@ export type Database = {
           p_limit?: number
         }
         Returns: {
+          attachments: Json
           body: string
           challenge_id: string
           created_at: string
@@ -1794,9 +1853,14 @@ export type Database = {
         Returns: undefined
       }
       post_chat_message: {
-        Args: { p_body: string; p_challenge_id: string }
+        Args: {
+          p_attachments?: Json
+          p_body?: string
+          p_challenge_id: string
+          p_message_id?: string
+        }
         Returns: {
-          body: string
+          body: string | null
           challenge_id: string
           created_at: string
           hidden_at: string | null
