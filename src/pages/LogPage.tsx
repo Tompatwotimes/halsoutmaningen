@@ -1,5 +1,6 @@
 import { useMemo, useState, type SyntheticEvent } from 'react';
 import { Link } from 'react-router-dom';
+import type { UploadPhase } from '@/lib/media/image-processing';
 import { ChallengeStatus } from '@/domain/challenge';
 import { compareDates } from '@/domain/dates';
 import { DayState, isQualifyingEntry } from '@/domain/dayState';
@@ -107,6 +108,7 @@ function LogForm({
   const [image1, setImage1] = useState<File | null>(null);
   const [image2, setImage2] = useState<File | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
+  const [proofPhase, setProofPhase] = useState<UploadPhase | null>(null);
 
   const proofFiles = [image1, image2].filter((f): f is File => f !== null);
   const pickedAnyImage = proofFiles.length > 0;
@@ -148,10 +150,13 @@ function LogForm({
         activity: activity.trim() || null,
         note: note.trim() || null,
         proofFiles,
+        onProofPhase: setProofPhase,
       });
       setPhase('success');
     } catch {
       setPhase('error');
+    } finally {
+      setProofPhase(null);
     }
   }
 
@@ -421,11 +426,13 @@ function LogForm({
             loading={submitMutation.isPending}
             disabled={triedSubmit && !canSubmit}
           >
-            {submitMutation.isPending
-              ? 'Sparar passet…'
-              : editing
-                ? 'Spara ändringar'
-                : 'Registrera passet'}
+            {proofPhase === 'processing'
+              ? 'Förbereder bild…'
+              : submitMutation.isPending
+                ? 'Sparar passet…'
+                : editing
+                  ? 'Spara ändringar'
+                  : 'Registrera passet'}
           </Button>
           {editing && (
             <Button
