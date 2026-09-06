@@ -46,8 +46,14 @@ describe('WeightRankingList', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 
-  it('renders an empty state for zero rows', () => {
+  it('explains the lock + weigh-in requirement in the zero-row state', () => {
+    // The old copy ("Ingen är med i Viktkampen än") read as "nobody has logged
+    // anything", which is misleading during the 24h start-weight lock window.
     render(<WeightRankingList rows={[]} />);
-    expect(screen.getByText(/ingen.*viktkampen än/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ingen är kvalificerad för rankingen ännu/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/låst i 24 timmar/i)).toBeInTheDocument();
+    expect(screen.getByText(/minst en vanlig invägning/i)).toBeInTheDocument();
   });
 });
