@@ -280,7 +280,7 @@ public.weight_public_ranking(p_challenge_id uuid) returns table (
   kg_change numeric, percentage_change numeric
 )
 ```
-Exact bodies per spec §2.4/§2.8 — `weight_public_ranking` is `security invoker`.
+Exact bodies per spec §2.4/§2.8 — `weight_public_ranking` is `security invoker` **and** carries an explicit `not is_weight_hidden` `where` predicate (spec §2.8 correction 2026-09-06): the public ranking's output must be identical for a participant caller and an admin caller.
 
 - [ ] **Step 1: Write failing pgTAP**
 
@@ -289,7 +289,8 @@ Exact bodies per spec §2.4/§2.8 — `weight_public_ranking` is `security invok
 - `weight_public_ranking` excludes: a hidden participant entirely; a participant with `start_weight_locked_at is null`; a participant with zero `weight_entries` rows.
 - `weight_public_ranking` includes a valid participant with the exact formula from spec §7 (fixture: start 82.0, latest 78.7, assert `percentage_change` ≈ −4.02).
 - `weight_public_ranking` uses the **latest by `entry_date`** row regardless of age — fixture with an entry from 30 days ago and no others still appears with that value.
-- Call `weight_public_ranking` **as** a hidden participant's co-member and assert the hidden participant's row is absent from the returned set (not just excluded by a `where not is_weight_hidden` the function forgot — this is enforced by RLS since the function is `security invoker`, so this test is really proving that invoker-security choice holds, not re-testing Task 2's RLS).
+- Call `weight_public_ranking` **as** a hidden participant's co-member and assert the hidden participant's row is absent from the returned set.
+- Call `weight_public_ranking` **as an admin** for the same fixture and assert the hidden participant is still absent (the explicit `not is_weight_hidden` predicate — the public ranking is not an admin-inspection surface), while the admin can still read that participant's `weight_profiles`/`weight_entries` directly (oversight preserved). Spec §2.8 correction 2026-09-06.
 
 - [ ] **Step 2: Push, run, confirm failure**
 

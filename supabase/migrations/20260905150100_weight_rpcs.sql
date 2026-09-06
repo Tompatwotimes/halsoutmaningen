@@ -9,8 +9,11 @@
 -- EXECUTE revoked from public/anon and granted to authenticated — the same
 -- convention as 20260905140100_chat_rpcs.sql /
 -- 20260904100100_retroactive_registration_rpcs.sql. The two read models
--- (weight_public_ranking, weight_final_result) are SECURITY INVOKER so they
--- cannot bypass the hide-my-weight RLS (spec §2.8 / §3 / §4).
+-- (weight_public_ranking, weight_final_result) are SECURITY INVOKER so RLS
+-- still applies for whoever calls them (spec §2.8 / §3 / §4). weight_public_
+-- ranking ALSO carries an explicit `not is_weight_hidden` domain predicate so
+-- its output is identical for a participant and an admin — the public ranking
+-- is never an admin-inspection surface.
 --
 --   set_start_weight(challenge, kg)                participant, once + 24h window
 --   correct_start_weight(challenge, user, kg, reason)  admin, value only, audited
@@ -286,14 +289,21 @@ revoke all on function public.set_weight_hidden(uuid, boolean) from public, anon
 grant execute on function public.set_weight_hidden(uuid, boolean) to authenticated;
 
 -- ----------------------------------------------------------------------------
--- weight_public_ranking  (read model — SECURITY INVOKER, RLS does the hiding)
+-- weight_public_ranking  (read model — the PUBLIC live Viktkampen ranking)
 -- ----------------------------------------------------------------------------
 -- Mirrors public.challenge_results' shape: security INVOKER, set search_path='',
--- a plain query. Because it runs as the caller, a hidden participant's
--- weight_profiles / weight_entries rows are simply invisible to it via RLS
--- (spec §4) — there is NO `where not is_weight_hidden` here on purpose; adding
--- one would be a second enforcement point to keep in sync. Eligibility:
--- a locked start weight exists AND at least one weight_entries row exists.
+-- a plain query. Eligibility to appear is a DOMAIN RULE that must hold
+-- identically for every caller — participant OR admin:
+--   1. a valid LOCKED start weight (start_weight_locked_at is not null)
+--   2. at least one weight_entries row
+--   3. is_weight_hidden = false   <-- explicit, NOT left to caller RLS
+-- `not wp.is_weight_hidden` is written into the WHERE clause on purpose: this
+-- is the public ranking, its output must not change with the caller's role.
+-- RLS still applies on top (invoker), so an ordinary peer also cannot see a
+-- hidden row — but the explicit predicate is what guarantees an ADMIN caller
+-- gets the same hidden-free ranking. Admins inspect hidden participants'
+-- weight through weight_profiles / weight_entries directly (admin RLS clause),
+-- never by overloading this read model.
 create or replace function public.weight_public_ranking(p_challenge_id uuid)
 returns table (
   user_id           uuid,
@@ -331,17 +341,21 @@ as $$
   join public.profiles p on p.id = wp.user_id
   where wp.challenge_id = p_challenge_id
     and wp.start_weight_locked_at is not null
+    and not wp.is_weight_hidden
   -- most weight lost first; unrounded for a precise order, ties by name.
   order by (l.latest_weight_kg - wp.start_weight_kg) / wp.start_weight_kg asc,
            p.display_name asc;
 $$;
 
 comment on function public.weight_public_ranking(uuid) is
-  'Public live Viktkampen ranking. SECURITY INVOKER — a hidden participant is '
-  'absent because RLS hides their rows from the caller, not because of any '
-  'filter in this function. Rows: locked start weight present + >=1 weight '
-  'entry. percentage_change = (latest - start)/start*100 (spec §7), rounded to '
-  '2 dp for display; ordering uses full precision.';
+  'Public live Viktkampen ranking. Its output is identical for every caller. '
+  'A participant appears iff: locked start weight present AND >=1 weight entry '
+  'AND is_weight_hidden = false — the hidden exclusion is an explicit domain '
+  'predicate (not left to caller RLS), so an ADMIN caller gets the same '
+  'hidden-free ranking as a participant. percentage_change = (latest - start)/'
+  'start*100 (spec §7), rounded to 2 dp for display; ordering uses full '
+  'precision, ties by display_name. Admins inspect hidden data via '
+  'weight_profiles / weight_entries directly, never through this function.';
 
 revoke all on function public.weight_public_ranking(uuid) from public, anon;
 grant execute on function public.weight_public_ranking(uuid) to authenticated;

@@ -7,17 +7,21 @@
 --     * toggling true -> false restores a co-member's visibility of prior
 --       weight_entries with identical values, no data migration
 --   weight_public_ranking (SECURITY INVOKER)
---     * excludes a hidden participant entirely (via RLS, not a filter in the
---       function — proving the invoker-security choice holds)
+--     * excludes a hidden participant entirely — the `not is_weight_hidden`
+--       eligibility rule is an EXPLICIT domain predicate in the function, so
+--       the exclusion is identical for a co-member and for an admin caller
+--       (Section C); the public ranking is never an admin-inspection surface
 --     * excludes a participant with no locked start weight
 --     * excludes a participant with zero weight_entries
 --     * formula: 82.0 -> 78.7 => percentage_change = -4.02 (spec §7 example)
 --     * uses the latest entry by entry_date regardless of its age
 --     * order: most weight lost first
+--     * an admin still reads a hidden participant's weight_profiles /
+--       weight_entries directly — oversight is not reduced (Section C)
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(17);
+select plan(21);
 
 set local role postgres;
 
@@ -137,7 +141,7 @@ select is(
 select ok(
   not exists (select 1 from public.weight_public_ranking('00000000-0000-0000-0000-0000000ccf01')
               where user_id = '00000000-0000-0000-0000-0000000c1003'),
-  'a HIDDEN participant is absent — enforced by RLS since the function is SECURITY INVOKER');
+  'a HIDDEN participant is absent from the public ranking for a co-member');
 select ok(
   not exists (select 1 from public.weight_public_ranking('00000000-0000-0000-0000-0000000ccf01')
               where user_id = '00000000-0000-0000-0000-0000000c1004'),
@@ -172,6 +176,39 @@ select is(
   (select user_id from public.weight_public_ranking('00000000-0000-0000-0000-0000000ccf01') limit 1),
   '00000000-0000-0000-0000-0000000c1002'::uuid,
   'ordering: most weight lost first — Pia (-4.02) ranks above Lena (-3.33)');
+
+-- ========================================================================
+-- Section C — the PUBLIC ranking is caller-role-independent: an ADMIN sees
+-- the SAME hidden-free ranking (the `not is_weight_hidden` predicate is a
+-- domain rule, not left to caller RLS). Admin oversight of hidden data is
+-- unchanged — it happens through weight_profiles / weight_entries directly.
+-- ========================================================================
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000c1001","role":"authenticated"}', true);
+
+select is(
+  (select count(*)::int from public.weight_public_ranking('00000000-0000-0000-0000-0000000ccf01')),
+  2, 'an ADMIN caller gets the same 2-row ranking — the hidden participant is NOT added back');
+select ok(
+  not exists (select 1 from public.weight_public_ranking('00000000-0000-0000-0000-0000000ccf01')
+              where user_id = '00000000-0000-0000-0000-0000000c1003'),
+  'the HIDDEN participant is absent from weight_public_ranking even for an admin');
+
+-- ...but the admin CAN still inspect that participant's hidden weight data
+-- through the intended admin-authorized path (the is_admin() RLS clause).
+select is(
+  (select start_weight_kg from public.weight_profiles
+   where challenge_id = '00000000-0000-0000-0000-0000000ccf01'
+     and user_id = '00000000-0000-0000-0000-0000000c1003'),
+  100.0::numeric,
+  'an admin still reads the hidden participant''s start_weight_kg directly from weight_profiles');
+select is(
+  (select weight_kg from public.weight_entries
+   where challenge_id = '00000000-0000-0000-0000-0000000ccf01'
+     and user_id = '00000000-0000-0000-0000-0000000c1003'),
+  95.0::numeric,
+  'an admin still reads the hidden participant''s weight_entries directly — oversight is unchanged');
 
 select * from finish();
 rollback;

@@ -173,7 +173,13 @@ All SECURITY DEFINER, `set search_path = ''`, schema-qualified, `revoke ... from
 
 ### 2.8 `weight_public_ranking(p_challenge_id uuid) returns table(...)` — read model, SECURITY INVOKER
 
-Mirrors `public.challenge_results(p_challenge_id)`'s existing pattern exactly (`security invoker`, `set search_path=''`, a plain query over data RLS already scopes) — **not** SECURITY DEFINER, so it inherently respects `weight_profiles`/`weight_entries` RLS for whoever calls it; no separate privacy logic is duplicated in the function body.
+Mirrors `public.challenge_results(p_challenge_id)`'s existing pattern (`security invoker`, `set search_path=''`, a plain query) so RLS still applies for whoever calls it. **Correction (2026-09-06):** hidden-exclusion for the ranking is **not** left to caller RLS. This is the *public* live Viktkampen ranking; its output must be identical regardless of caller role. So eligibility is an explicit domain rule written into the function's `where` clause and holding for a participant caller **and** an admin caller alike:
+
+1. `start_weight_locked_at is not null`,
+2. at least one `weight_entries` row,
+3. `not is_weight_hidden` — an **explicit** `where` predicate, not an RLS side effect.
+
+An admin calling this function gets the same hidden-free ranking an ordinary participant does. Admin oversight of a hidden participant's weight is unchanged and happens elsewhere: a direct `select` on `weight_profiles` / `weight_entries` (the `is_admin()` RLS clause in §3). The public ranking read model is never an admin-inspection surface.
 
 ```sql
 returns table (
@@ -182,7 +188,7 @@ returns table (
   kg_change numeric, percentage_change numeric
 )
 ```
-filtered to rows where `start_weight_locked_at is not null` (a valid locked start weight exists), at least one `weight_entries` row exists, and — because it runs as invoker — a hidden participant's rows are simply invisible to it already via RLS (§4), so the function needs no explicit `is_weight_hidden` filter of its own; it only ever sees what its RLS-scoped queries return.
+filtered to rows where `start_weight_locked_at is not null` (a valid locked start weight exists), at least one `weight_entries` row exists, **and `not wp.is_weight_hidden` as an explicit `where` predicate** — so the exclusion is guaranteed for every caller, not just those whom RLS happens to filter. RLS still applies on top (invoker), which is belt-and-braces for the ordinary-participant caller.
 
 ---
 
@@ -254,7 +260,7 @@ So: add `weight_final_result(p_challenge_id uuid) returns table(winner_user_id u
 
 ## 4. Hide-my-weight — enforcement is centralized, not per-consumer
 
-Default is public (`is_weight_hidden default false`). The RLS policies in §3 are the single enforcement point: every reader of `weight_profiles`/`weight_entries` — the public ranking, a participant's own view of someone else, an admin view — goes through the *same* two policies. There is no second, separate "hide from the ranking" mechanism to keep in sync; `weight_public_ranking` (§2.8) is `security invoker` specifically so it cannot accidentally bypass these policies the way a `security definer` function could if written carelessly.
+Default is public (`is_weight_hidden default false`). The RLS policies in §3 are the enforcement point for **direct** reads of `weight_profiles`/`weight_entries` — a participant's own view of someone else, and an admin view — both going through the *same* two policies. `weight_public_ranking` (§2.8) is `security invoker` so those policies still apply to it, **and** it additionally carries an explicit `not is_weight_hidden` `where` predicate (see §2.8 correction) so its output is a hidden-free public ranking for *every* caller, admin included — the ranking is never an admin-inspection surface.
 
 **Retroactive**: because visibility is computed live from the current `is_weight_hidden` value on every read (never a snapshot, never a "as of the time it was posted" flag), flipping it immediately changes what every subsequent query returns — there is nothing to "re-hide," and turning it back off makes the same historical rows visible again automatically, since the rows themselves were never deleted or altered.
 
@@ -297,7 +303,7 @@ Admin-only UI (new card in the admin area, e.g. under a new `src/pages/admin/Wei
 ```
 percentage_change = (latest_weight_kg - start_weight_kg) / start_weight_kg * 100
 ```
-More negative = more weight lost. Uses `weight_entries`'s **latest row by `entry_date`** regardless of how old it is (no "must be recent" requirement) — the participant's most recent registered value remains their ranking value until they log a new one. Eligibility for the **live public ranking** (§2.8): `start_weight_locked_at is not null` (a valid locked start weight — corrected or not, doesn't matter, just present and no longer editable) AND at least one `weight_entries` row exists AND `not is_weight_hidden`. This is distinct from the **official final result** (§2.6), which uses `official_final_weight_kg` instead of the latest regular entry and does **not** exclude hidden participants (only the *disclosure* of a hidden winner is separately gated, §2.7/§3).
+More negative = more weight lost. Uses `weight_entries`'s **latest row by `entry_date`** regardless of how old it is (no "must be recent" requirement) — the participant's most recent registered value remains their ranking value until they log a new one. Eligibility for the **live public ranking** (§2.8): `start_weight_locked_at is not null` (a valid locked start weight — corrected or not, doesn't matter, just present and no longer editable) AND at least one `weight_entries` row exists AND `not is_weight_hidden` — this last one is an **explicit `where` predicate in the function**, so it holds identically for an ordinary participant caller and an admin caller (the public ranking is never an admin-inspection surface; admins inspect hidden weight directly via `weight_profiles`/`weight_entries`). This is distinct from the **official final result** (§2.6), which uses `official_final_weight_kg` instead of the latest regular entry and does **not** exclude hidden participants (only the *disclosure* of a hidden winner is separately gated, §2.7/§3).
 
 ---
 
@@ -341,7 +347,7 @@ More negative = more weight lost. Uses `weight_entries`'s **latest row by `entry
 - `log_weight_entry`: always writes to `challenge_current_date`; a second call the same day updates in place (one row, not two); calling on a later challenge-local day creates a new row and leaves yesterday's untouched and immutable (no update path can reach a non-today row — assert by trying and expecting either a no-op or a rejection).
 - `set_weight_hidden`: works with no prior `weight_profiles` row (creates one, every other column null); toggling twice restores original visibility with all historical rows intact (nothing was deleted in between).
 - RLS: a co-member cannot see a hidden participant's `weight_profiles` or `weight_entries` rows at all (not just masked — absent from the result set); the owner and an admin always can; turning hiding off makes prior rows visible to co-members again without any data migration.
-- `weight_public_ranking`: excludes a hidden participant entirely; excludes a participant with no locked start weight; excludes a participant with zero entries; uses the latest entry regardless of its age; percentage formula matches §7 exactly for a known fixture (e.g. 82.0 → 78.7 ≈ −4.02%).
+- `weight_public_ranking`: excludes a hidden participant entirely — for an ordinary co-member caller **and** for an admin caller (the explicit `not is_weight_hidden` predicate, proven for both roles); an admin can still read that same hidden participant's `weight_profiles`/`weight_entries` directly (oversight unchanged); excludes a participant with no locked start weight; excludes a participant with zero entries; uses the latest entry regardless of its age; percentage formula matches §7 exactly for a known fixture (e.g. 82.0 → 78.7 ≈ −4.02%).
 - `finalize_weight_competition`: includes a hidden participant in the winner computation (assert a hidden participant CAN be computed as the winner); re-running after a `correct_start_weight`/`set_official_final_weight` change updates the stored winner.
 - `disclose_weight_winner`: before disclosure, `weight_final_result` returns null winner fields to an ordinary co-member for a hidden winner; after disclosure, it returns `winner_user_id`/`winner_percentage_change` but the co-member still cannot read the winner's `start_weight_kg`/`official_final_weight_kg`/history via `weight_profiles`/`weight_entries` (still hidden) — the two are proven independent in the same test.
 - Isolation: a `training_entries` insert/read and `challenge_results()` output are byte-identical before/after every weight RPC in this spec runs (mirrors the Game Master isolation-proof pattern in `supabase/tests/0017_game_master_rls_audit_cron.test.sql`).

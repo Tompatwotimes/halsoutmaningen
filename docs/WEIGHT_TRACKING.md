@@ -16,7 +16,7 @@ Migrations:
 [`…20260905150000_weight_schema.sql`](../supabase/migrations/20260905150000_weight_schema.sql),
 [`…20260905150100_weight_rpcs.sql`](../supabase/migrations/20260905150100_weight_rpcs.sql).
 pgTAP coverage:
-[`supabase/tests/0022…0025`](../supabase/tests/) (32 + 30 + 17 + 27 = **106 assertions**).
+[`supabase/tests/0022…0025`](../supabase/tests/) (32 + 30 + 21 + 27 = **110 assertions**).
 
 ---
 
@@ -108,18 +108,28 @@ hidden participant's rows are **absent** from a co-member's result set (not
 present-but-masked, and no "someone is hidden here" placeholder in the ranking).
 
 `weight_public_ranking` is **SECURITY INVOKER** (mirrors `challenge_results`)
-specifically so it cannot bypass these policies — it has **no**
-`where not is_weight_hidden` of its own; a hidden participant is absent because
-RLS hid their rows from the caller. Eligibility for the live ranking:
-`start_weight_locked_at is not null` **and** ≥ 1 `weight_entries` row **and**
-(implicitly) not hidden. `percentage_change = (latest − start) / start × 100`
-using the **latest entry by `entry_date` regardless of age**; rounded to 2 dp
-for display, ordering uses full precision, ties broken by `display_name`.
+so RLS still applies on top — but hidden-exclusion for the ranking is **not**
+left to caller RLS. Eligibility to appear is a **domain rule** that must hold
+identically for every caller, participant **or** admin:
 
-> An **admin** calling `weight_public_ranking` sees hidden participants too
-> (RLS gives admins full read) — consistent with "admins always see all weight
-> data". The public ranking shown to ordinary participants is correctly
-> hidden-free.
+1. `start_weight_locked_at is not null` (a valid locked start weight),
+2. ≥ 1 `weight_entries` row,
+3. `is_weight_hidden = false` — written **explicitly** into the function's
+   `where` clause (`and not wp.is_weight_hidden`), not inferred from RLS.
+
+`percentage_change = (latest − start) / start × 100` using the **latest entry
+by `entry_date` regardless of age**; rounded to 2 dp for display, ordering uses
+full precision, ties broken by `display_name`.
+
+> The public ranking is **never an admin-inspection surface**. An **admin**
+> calling `weight_public_ranking` gets exactly the same hidden-free list an
+> ordinary participant does — the explicit `not is_weight_hidden` predicate
+> guarantees it. Admin oversight of a hidden participant's weight is unchanged:
+> it happens through a direct `select` on `weight_profiles` / `weight_entries`
+> (the `is_admin()` RLS clause), never by overloading this read model.
+> pgTAP `0024` Section C proves both halves — the admin sees 2 rows (not 3),
+> and the admin can still read the hidden participant's `start_weight_kg` /
+> `weight_kg` directly.
 
 **Game Master's internal access** (future, not built here) is not via these
 policies — it runs as the definer of its own SECURITY DEFINER context and reads
