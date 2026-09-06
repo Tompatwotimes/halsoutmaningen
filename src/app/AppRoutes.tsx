@@ -38,6 +38,11 @@ const StraffbankenPage = lazy(() =>
     default: m.StraffbankenPage,
   })),
 );
+const WeightRankingPage = lazy(() =>
+  import('@/pages/WeightRankingPage').then((m) => ({
+    default: m.WeightRankingPage,
+  })),
+);
 const GameMasterArchivePage = lazy(() =>
   import('@/pages/GameMasterArchivePage').then((m) => ({
     default: m.GameMasterArchivePage,
@@ -79,6 +84,11 @@ const GameMasterPage = lazy(() =>
     default: m.GameMasterPage,
   })),
 );
+const WeightFinalPage = lazy(() =>
+  import('@/pages/admin/WeightFinalPage').then((m) => ({
+    default: m.WeightFinalPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -105,6 +115,7 @@ export function AppRoutes() {
             <Route path="ranking" element={<RankingPage />} />
             <Route path="straffbanken" element={<StraffbankenPage />} />
             <Route path="arkivet" element={<GameMasterArchivePage />} />
+            <Route path="viktkampen" element={<WeightRankingPage />} />
             <Route path="profil" element={<ProfilePage />} />
             <Route path="admin" element={<AdminPage />} />
             <Route path="admin-utmaningar" element={<AdminChallengesPage />} />
@@ -127,6 +138,7 @@ export function AppRoutes() {
           <Route path="ranking" element={<RankingPage />} />
           <Route path="straffbanken" element={<StraffbankenPage />} />
           <Route path="arkivet" element={<GameMasterArchivePage />} />
+          <Route path="viktkampen" element={<WeightRankingPage />} />
           <Route path="profil" element={<ProfilePage />} />
           <Route
             path="admin"
@@ -189,6 +201,14 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <GameMasterPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/viktkampen"
+            element={
+              <RequireAdmin>
+                <WeightFinalPage />
               </RequireAdmin>
             }
           />

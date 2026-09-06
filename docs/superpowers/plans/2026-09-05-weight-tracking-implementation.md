@@ -6,7 +6,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-05-weight-tracking-design.md` (authoritative for every schema/RPC/column name — this plan sequences construction, it does not redefine anything).
 
-**Architecture:** Three new tables (`weight_profiles`, `weight_entries`, `weight_competition_results`), seven SECURITY DEFINER RPCs, two SECURITY INVOKER read-model functions (`weight_public_ranking`, `weight_final_result`), RLS-only reads with a three-way (owner / admin / not-hidden-and-member) policy shape, and a Profile-page UI.
+**Architecture:** Three new tables (`weight_profiles`, `weight_entries`, `weight_competition_results`), seven SECURITY DEFINER RPCs, `weight_public_ranking` (SECURITY INVOKER read model + explicit `not is_weight_hidden` predicate), `weight_final_result` (SECURITY DEFINER read model, membership re-checked in-body — see the §3 correction 2026-09-06), RLS reads with owner / admin / not-hidden-and-member policy shapes, and a Profile-page UI.
 
 **Tech stack:** React 19 + TypeScript + Vite, TanStack Query, Supabase Postgres 17 / RLS / RPC, Vitest + Testing Library, pgTAP, existing UI primitives (`Card`, `Toggle`-shaped switch from `GameMasterSettingsPanel`, `StatTile`).
 
@@ -16,7 +16,7 @@
 - No weight proof image, no `training_proofs`-style bucket, no `ProofImagePicker` reuse.
 - `log_weight_entry` never accepts a date parameter — backdating is structurally impossible, not merely rejected by a check.
 - `start_weight_first_saved_at`/`start_weight_locked_at` are set exactly once, by `set_start_weight`'s first call, and are never written by any other RPC (including `correct_start_weight`) for the rest of the row's life.
-- RLS is the only enforcement point for hide-my-weight — no read model may be `SECURITY DEFINER` in a way that bypasses it (`weight_public_ranking`/`weight_final_result` are `SECURITY INVOKER`, per spec §2.8/§3).
+- Hide-my-weight is enforced in RLS + explicit function predicates, never only in React. `weight_public_ranking` is `SECURITY INVOKER` with an explicit `not is_weight_hidden` `where` predicate (§2.8 correction). `weight_final_result` is `SECURITY DEFINER` **because** the `weight_competition_results` SELECT policy hides the whole row from a co-member pre-disclosure (§3 correction 2026-09-06); it re-checks `is_admin() or is_challenge_member` in-body and applies the winner-field gate itself, returning only name + percentage.
 - Full local gates before every `src/`-touching commit: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, `npm run format:check`.
 - Full migration chain + pgTAP must pass in GitHub Actions before this plan's final task is done.
 - Do not `supabase db push`, merge, or deploy — gated by explicit approval (§ Rollout).
@@ -168,7 +168,7 @@ git commit -m "feat(weight): add pure weight domain types and helpers"
 - `weight_competition_results_disclosure_coherent`: `disclosed_at` set without `disclosed_by` (or vice versa) throws.
 - `audit_log_entity_type_valid` now accepts `'weight_profile'`.
 - RLS `weight_profiles_select`/`weight_entries_select`: a hidden participant's rows are **absent** (not present-but-masked) from a co-member's query result set; the owner and an admin always see them; a **non-hidden** participant's rows are visible to a co-member.
-- RLS `weight_competition_results_select`: any challenge member (not just admin) can see that a row exists (per spec §3's explicit design note — the row itself isn't hidden, only specific field disclosure is gated at the read-model layer, which doesn't exist until Task 6).
+- RLS `weight_competition_results_select` (corrected 2026-09-06): admin always; the winner themselves always; a co-member only when `disclosed_at is not null` **or** `not _weight_winner_is_hidden(challenge_id)`. While the winner is hidden and undisclosed the row is **absent** to a co-member — `winner_user_id`/`winner_percentage_change` are directly-selectable columns, so an "any member" policy would leak the identity + percentage `disclose_weight_winner` exists to protect. "Has a winner been determined / disclosed" stays visible via `weight_final_result`. (`_weight_winner_is_hidden` moves into this schema migration since the policy needs it.)
 - Direct-write rejection: no role can `insert`/`update`/`delete` any of the three tables directly.
 
 - [ ] **Step 2: Push, run, confirm failure**
@@ -280,7 +280,7 @@ public.weight_public_ranking(p_challenge_id uuid) returns table (
   kg_change numeric, percentage_change numeric
 )
 ```
-Exact bodies per spec §2.4/§2.8 — `weight_public_ranking` is `security invoker`.
+Exact bodies per spec §2.4/§2.8 — `weight_public_ranking` is `security invoker` **and** carries an explicit `not is_weight_hidden` `where` predicate (spec §2.8 correction 2026-09-06): the public ranking's output must be identical for a participant caller and an admin caller.
 
 - [ ] **Step 1: Write failing pgTAP**
 
@@ -289,7 +289,8 @@ Exact bodies per spec §2.4/§2.8 — `weight_public_ranking` is `security invok
 - `weight_public_ranking` excludes: a hidden participant entirely; a participant with `start_weight_locked_at is null`; a participant with zero `weight_entries` rows.
 - `weight_public_ranking` includes a valid participant with the exact formula from spec §7 (fixture: start 82.0, latest 78.7, assert `percentage_change` ≈ −4.02).
 - `weight_public_ranking` uses the **latest by `entry_date`** row regardless of age — fixture with an entry from 30 days ago and no others still appears with that value.
-- Call `weight_public_ranking` **as** a hidden participant's co-member and assert the hidden participant's row is absent from the returned set (not just excluded by a `where not is_weight_hidden` the function forgot — this is enforced by RLS since the function is `security invoker`, so this test is really proving that invoker-security choice holds, not re-testing Task 2's RLS).
+- Call `weight_public_ranking` **as** a hidden participant's co-member and assert the hidden participant's row is absent from the returned set.
+- Call `weight_public_ranking` **as an admin** for the same fixture and assert the hidden participant is still absent (the explicit `not is_weight_hidden` predicate — the public ranking is not an admin-inspection surface), while the admin can still read that participant's `weight_profiles`/`weight_entries` directly (oversight preserved). Spec §2.8 correction 2026-09-06.
 
 - [ ] **Step 2: Push, run, confirm failure**
 
@@ -320,7 +321,7 @@ public.weight_final_result(p_challenge_id uuid) returns table (
   winner_user_id uuid, winner_display_name text, winner_percentage_change numeric, disclosed boolean
 )
 ```
-Exact bodies per spec §2.5–§2.7 and §3's `weight_final_result` addition. `weight_final_result` is `security invoker`.
+Exact bodies per spec §2.5–§2.7 and §3's `weight_final_result` addition. `weight_final_result` is `security definer` with an in-body `is_admin() or is_challenge_member` re-check (spec §3 correction 2026-09-06) — the `weight_competition_results` SELECT policy hides the row from a co-member pre-disclosure, so an invoker read model could not return the `disclosed=false` signal.
 
 This is the most product-sensitive surface in this plan — write every pgTAP case below, do not summarize or skip any.
 
@@ -335,6 +336,7 @@ This is the most product-sensitive surface in this plan — write every pgTAP ca
 - **Before disclosure**, `weight_final_result` called by an ordinary co-member of a **hidden** winner returns `winner_user_id`/`winner_display_name`/`winner_percentage_change` all `null`, `disclosed=false`.
 - **After disclosure**, the same call returns the real `winner_user_id`/`winner_display_name`/`winner_percentage_change`, `disclosed=true`.
 - **In both cases**, that same co-member's direct `select` on `weight_profiles`/`weight_entries` for the winner still returns **zero rows** (RLS unaffected by disclosure — the two mechanisms are proven independent in the same test, per spec §3's explicit design note).
+- **Before disclosure**, that co-member's direct `select` on `weight_competition_results` also returns **zero rows** (the row gate, spec §3 correction 2026-09-06) — the winner-self and an admin can always read it; **after disclosure** the co-member can read the now-public row. Also assert a co-member's direct read for a **non-hidden** winner works.
 - A **non-hidden** winner's result is visible via `weight_final_result` regardless of `disclosed_at` (disclosure only matters for a hidden subject) — assert `weight_final_result` returns real values immediately after `finalize_weight_competition` for a non-hidden winner, with no `disclose_weight_winner` call needed.
 - The winner's own call to `weight_final_result` (or direct table access) always sees their own real data regardless of hiding or disclosure — owner-sees-own-data is unconditional.
 - An admin sees the real winner data via `weight_final_result` at any time, disclosed or not.

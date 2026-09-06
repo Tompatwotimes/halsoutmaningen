@@ -29,7 +29,12 @@ import { GroupPage } from './GroupPage';
 import { LogPage } from './LogPage';
 import { OverviewPage } from './OverviewPage';
 import { RankingPage } from './RankingPage';
+import {
+  fetchMyWeightEntries,
+  fetchMyWeightProfile,
+} from '@/features/weight/weight-api';
 import { ProfilePage } from './ProfilePage';
+import { WeightRankingPage } from './WeightRankingPage';
 import { GameMasterArchivePage } from './GameMasterArchivePage';
 import { GameMasterPage } from './admin/GameMasterPage';
 
@@ -205,6 +210,26 @@ vi.mock('@/features/chat/chat-api', () => ({
   markChatRead: vi.fn(() => Promise.resolve()),
 }));
 
+// Weight Tracking — mounted under Profile. Stub the transport; ProfilePage
+// must stay fully rendered whether these resolve or reject.
+vi.mock('@/features/weight/weight-api', () => ({
+  WeightError: class WeightError extends Error {},
+  fetchMyWeightProfile: vi.fn(() => Promise.resolve(null)),
+  fetchMyWeightEntries: vi.fn(() => Promise.resolve([])),
+  fetchWeightPublicRanking: vi.fn(() => Promise.resolve([])),
+  fetchWeightFinalResult: vi.fn(() =>
+    Promise.resolve({
+      winnerUserId: null,
+      winnerDisplayName: null,
+      winnerPercentageChange: null,
+      disclosed: false,
+    }),
+  ),
+  setStartWeight: vi.fn(() => Promise.resolve({})),
+  logWeightEntry: vi.fn(() => Promise.resolve({})),
+  setWeightHidden: vi.fn(() => Promise.resolve()),
+}));
+
 // `/admin/game-master` (RequireAdmin-gated) needs the active challenge lookup
 // the rest of the admin area shares.
 vi.mock('@/features/admin/challenges-api', () => {
@@ -358,6 +383,30 @@ describe('participant screens render from mocked Supabase data', () => {
     );
   });
 
+  it('Profil renders the weight section alongside the existing streak/liability content', async () => {
+    wrap(<ProfilePage />);
+    await waitFor(() =>
+      expect(screen.getByText(/Nuvarande streak/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Vikt & Viktkampen/i)).toBeInTheDocument();
+    expect(screen.getByText('Startvikt')).toBeInTheDocument();
+    expect(
+      screen.getByRole('switch', { name: /dölj min vikt/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('Profil stays fully rendered when weight data fails to load', async () => {
+    vi.mocked(fetchMyWeightProfile).mockRejectedValueOnce(new Error('boom'));
+    vi.mocked(fetchMyWeightEntries).mockRejectedValueOnce(new Error('boom'));
+    wrap(<ProfilePage />);
+    await waitFor(() =>
+      expect(screen.getByText(/Nuvarande streak/i)).toBeInTheDocument(),
+    );
+    // the existing content is untouched; the weight failure stays inline
+    expect(screen.getByText(/Din kalender/i)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('Arkivet renders the chronicle', async () => {
     wrap(<GameMasterArchivePage />);
     expect(await screen.findByText('KASSAN VÄXER')).toBeInTheDocument();
@@ -367,6 +416,14 @@ describe('participant screens render from mocked Supabase data', () => {
     expect(
       screen.queryByRole('button', { name: /gilla|kommentera|svara/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it('Viktkampen renders for an authenticated participant (not admin-gated)', async () => {
+    wrap(<WeightRankingPage />);
+    expect(
+      await screen.findByRole('heading', { name: /viktkampen/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Live-ställning/i)).toBeInTheDocument();
   });
 });
 
