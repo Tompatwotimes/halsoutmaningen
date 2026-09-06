@@ -25,13 +25,14 @@ pgTAP coverage:
 
 ## 1. Data model
 
-Three tables (`public`):
+Tables (`public`):
 
-| Table             | Purpose                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `chat_messages`   | One row per posted message. Never physically deleted. **Admin-only SELECT** (§4).   |
-| `chat_read_state` | One row per `(challenge_id, user_id)` — the reader's `last_read_seq`.               |
-| `chat_activity`   | Realtime signal only: `(challenge_id, seq, at)`, one row per message, no text (§5). |
+| Table                      | Purpose                                                                             |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| `chat_messages`            | One row per posted message. Never physically deleted. **Admin-only SELECT** (§4).   |
+| `chat_message_attachments` | 0–4 image rows per message (`20260906120100`). **Admin-only SELECT** — see §8.      |
+| `chat_read_state`          | One row per `(challenge_id, user_id)` — the reader's `last_read_seq`.               |
+| `chat_activity`            | Realtime signal only: `(challenge_id, seq, at)`, one row per message, no text (§5). |
 
 `chat_messages` columns of note:
 
@@ -40,8 +41,12 @@ Three tables (`public`):
 - `sender_type` — `'participant'` or `'game_master'`. A participant row must
   have a `sender_user_id`; a Game Master row must not
   (`chat_messages_sender_coherent`).
-- `body text` — `1..1000` characters, enforced by `chat_messages_body_len`.
-  The client trims before counting; the RPC trims and re-checks.
+- `body text` — **nullable** since `20260906120100` (an image-only message has
+  no text). `chat_messages_body_len` now checks `body is null or
+char_length(body) between 1 and 1000`. The "text OR ≥ 1 image" rule lives in
+  `post_chat_message` (the only writer), not a CHECK.
+- `chat_messages_id_challenge_uniq unique (id, challenge_id)` — the target of
+  the attachment table's composite FK (§8).
 - `status` — `'active'` or `'hidden'`. A hidden row keeps its original `body`
   in storage and gains `hidden_by` / `hidden_at` / `hidden_reason`
   (`chat_messages_hidden_coherent`).
@@ -91,14 +96,27 @@ All writes go through `SECURITY DEFINER` functions
 **no INSERT/UPDATE/DELETE RLS policies**, so a client cannot write a row
 directly.
 
-### `post_chat_message(p_challenge_id uuid, p_body text) returns chat_messages`
+### `post_chat_message(p_challenge_id uuid, p_body text default null, p_message_id uuid default null, p_attachments jsonb default null) returns chat_messages`
+
+Signature widened by `20260906120200_chat_attachments_rpcs.sql` (the old
+2-arg call still resolves — the new params default to NULL).
 
 - Caller must have an **active** membership in the challenge.
 - The server sets `sender_user_id` to `auth.uid()` and `sender_type` to
-  `'participant'` itself — the client passes only the challenge id and the
-  body, so it **cannot impersonate another user and cannot post as Game
-  Master**.
-- Body is trimmed and must be `1..1000` characters.
+  `'participant'` itself — the client passes only the challenge id, the body,
+  an optional client-generated message id and the attachment list, so it
+  **cannot impersonate another user and cannot post as Game Master**.
+- Body is trimmed; `null` or `1..1000` characters.
+- `p_attachments` is `[{path, mime_type, size_bytes, width?, height?}]`, **0–4
+  entries**. **At least one of** a non-empty body / ≥ 1 attachment — an
+  entirely empty message is rejected.
+- Each attachment `path` must start with
+  `{challenge}/{caller uid}/{message id}/` **and** name a real object in the
+  `chat-media` bucket — a client cannot link someone else's upload, a
+  cross-challenge object or a phantom path.
+- The message row and its `chat_message_attachments` rows are inserted in **one
+  transaction** (client generates `p_message_id` so the uploads can target its
+  folder first; on RPC failure the client removes the uploaded objects).
 - **Rate limit: 10 messages per rolling 30 seconds per user.** Checked as a
   `count(*)` of the caller's own participant messages with
   `created_at > now() - interval '30 seconds'`. The 11th within the window is
@@ -142,11 +160,12 @@ nor a UI affordance.
   membership-checked:
   - **`list_chat_messages(p_challenge_id, p_before_seq, p_limit)`** — newest
     `seq` first. Each row carries id, seq, challenge id, sender type + id,
-    `sender_display_name`, `body`, `status`, `created_at`. `body` is `null`
-    for a hidden row shown to a non-admin (an admin caller still gets the real
-    text — moderator context); the moderation trail (`hidden_reason` /
-    `hidden_by` / `hidden_at`) is **never** projected. `sender_display_name`
-    comes from a `LEFT JOIN public.profiles` in the same query — no N+1.
+    `sender_display_name`, `body`, `status`, `attachments`, `created_at`.
+    `body` is `null` and `attachments` is `'[]'` for a hidden row shown to a
+    non-admin (an admin caller still gets both — moderator context); the
+    moderation trail (`hidden_reason` / `hidden_by` / `hidden_at`) is **never**
+    projected. `sender_display_name` comes from a `LEFT JOIN public.profiles`
+    in the same query — no N+1. `attachments` (§8) is `[{position, path}]`.
   - **`unread_chat_count(p_challenge_id)`** → `integer`: `count(*)` of
     `chat_messages` with `seq >` the caller's own `last_read_seq` (0 if no
     read-state row); a hidden message still occupies a `seq` and still counts.
@@ -203,10 +222,18 @@ Realtime runs on `chat_activity`, **not** `chat_messages` — a moderated row's
   for display; `last_read_seq` remains the authority).
 - Tapping it opens `ChatPanel` inside the shared `Sheet` (portal, focus
   trap, Esc) at both breakpoints.
+- `ChatPanel` **opens anchored to the newest message** and keeps the viewport
+  in place when older history is paged in above (B1); a new message while the
+  reader is scrolled up shows a discreet **"Nya meddelanden"** button instead
+  of yanking them down.
 - `ChatPanel` renders messages in the `seq` order the hook provides, one
-  date separator per challenge-local day, a composer that disables send for an
-  empty/whitespace/over-limit body and keeps the draft text if a post fails,
-  and a sender label on every message: **"Du"** for the viewer's own,
+  date separator per challenge-local day, a composer with an **image button
+  (up to 4 previews, individually removable; "Laddar upp…" + disabled send
+  while a send is in flight)** that disables send only when there is neither
+  text nor an image, an over-limit body, or a send in flight — and keeps the
+  draft text if a post fails. Image bubbles use `ChatImageGrid` +
+  `ChatLightbox` (§8). A sender label on every message: **"Du"** for the
+  viewer's own,
   the sender's **`display_name`** for another participant (from
   `list_chat_messages`, no extra request), **"GAME MASTER"** (`Badge`
   `tone="neutral"`) for a Game Master row. A hidden message keeps its sender
@@ -222,9 +249,6 @@ Realtime runs on `chat_activity`, **not** `chat_messages` — a moderated row's
 
 ## 7. Non-goals (v1)
 
-Explicitly out of scope, by spec §16:
-
-- images, file attachments
 - reactions / likes
 - threads / replies
 - direct messages, multiple rooms
@@ -234,4 +258,58 @@ Explicitly out of scope, by spec §16:
 - per-message read receipts beyond the single `last_read_seq` cursor
 - keyword / phrase / name auto-triggers for Game Master (only a literal
   `@gm`, defined in the Game Master spec — not built here)
-- Realtime on `chat_read_state`
+- Realtime on `chat_read_state` / `chat_message_attachments`
+- non-image attachments; more than 4 images per message
+
+---
+
+## 8. Chat images (`20260906120100` / `20260906120200`)
+
+Up to **4 private images per message**; text-only, image-only and text+image
+are all allowed. Design:
+`docs/superpowers/specs/2026-09-06-chat-proof-media-polish-design.md` §B3.
+
+**`chat_message_attachments`** — `id`, `message_id`, `challenge_id`,
+`position 1..4`, `storage_path` (unique), `mime_type`, `size_bytes` (≤ 15 MiB),
+`width`/`height`, `created_at`. `check (position between 1 and 4)` +
+`unique (message_id, position)` ⇒ max 4, deterministic order. A composite FK
+`(message_id, challenge_id) → chat_messages (id, challenge_id)` ⇒ an attachment
+can never belong to a different challenge than its message.
+
+**RLS** — base SELECT is **admin-only** (`using (public.is_admin())`), exactly
+like `chat_messages`. No INSERT/UPDATE/DELETE policy (`post_chat_message` is the
+only writer). Members get attachment info only through `list_chat_messages`,
+which now returns an `attachments jsonb` column: `[{position, path}]` for an
+active message (or any message to an admin), **`'[]'` for a hidden message seen
+by a non-admin** — the same gate as `body`. Not added to `supabase_realtime`.
+
+**Storage** — private bucket **`chat-media`**, path
+`{challenge_id}/{user_id}/{message_id}/{position}-{uuid}.{ext}`.
+
+- upload policy: `foldername[2] = auth.uid()` **and**
+  `is_challenge_member(foldername[1])`.
+- read policy: `is_admin()` **or** `public._chat_attachment_readable(name)` — a
+  `SECURITY DEFINER` one-boolean predicate (same shape as `_weight_is_hidden`;
+  an inline sub-select would be RLS-filtered by the admin-only tables) that is
+  true **only while the backing message is `status='active'`** and the caller
+  is a challenge member. **Hiding a message immediately makes its images
+  unfetchable to members — a previously obtained path returns no signed URL.**
+  Admin keeps moderation access.
+
+**Client** — the client generates the message id, uploads the files to
+`chat-media/{challenge}/{uid}/{msgId}/…`, then calls `post_chat_message` with
+`p_message_id` + `p_attachments`; the message row and attachment rows are one
+transaction. On RPC failure the uploaded objects are removed (best-effort;
+typed text is not cleared). `ChatImageGrid` resolves a short-lived signed URL
+per rendered bubble (`chat-media`, 120 s) and lays 1 / 2 / 3–4 images out
+responsively; `ChatLightbox` is a dependency-free full-screen viewer
+(`contain` aspect, Esc / backdrop / button close, arrow + chevron nav). A
+denied or broken image shows a fallback and never breaks the bubble.
+
+**pgTAP** — `supabase/tests/0027_chat_attachments.test.sql` (`plan(33)`):
+admin-only base read · member reads active-message attachments via
+`list_chat_messages`, `'[]'` once hidden · `_chat_attachment_readable` true
+while active / false once hidden / false for a non-member, and the storage
+object follows · `> 4` rejected · position + unique CHECKs · path-prefix check ·
+composite FK · anon EXECUTE denial · no direct member writes · publication
+membership. `0019` / `0021` updated for the new `post_chat_message` arity.
