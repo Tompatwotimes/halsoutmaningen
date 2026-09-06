@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { SubmitTrainingError, attachProof } from './submit-training';
+import { SubmitTrainingError, attachProofs } from './submit-training';
 import { invalidateChallengeData } from './useChallengeData';
 
 /**
@@ -17,7 +17,8 @@ export interface AddSessionInput {
   durationMinutes: number;
   activity: string | null;
   note: string | null;
-  proofFile?: File | null;
+  /** 0, 1 or 2 files. `[0]` = slot 1 (primary), `[1]` = slot 2 (optional). */
+  proofFiles?: File[];
 }
 
 function translate(message: string): string {
@@ -48,13 +49,14 @@ export async function addTrainingSession(
     throw new SubmitTrainingError('Passet kunde inte sparas.', false);
   }
 
-  if (input.proofFile) {
-    await attachProof(
+  const files = input.proofFiles ?? [];
+  if (files.length > 0) {
+    await attachProofs(
       input.challengeId,
       input.userId,
       input.date,
       entryId,
-      input.proofFile,
+      files,
     );
   }
 

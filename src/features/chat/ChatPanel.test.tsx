@@ -1,20 +1,39 @@
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatMessage } from './types';
 
-const { useChatMessagesMock, useMarkChatReadMock, usePostChatMessageMock } =
-  vi.hoisted(() => ({
-    useChatMessagesMock: vi.fn<() => Record<string, unknown>>(),
-    useMarkChatReadMock: vi.fn<() => Record<string, unknown>>(),
-    usePostChatMessageMock: vi.fn<() => Record<string, unknown>>(),
-  }));
+// jsdom has no scrollIntoView / createObjectURL — stub them.
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+  if (!('createObjectURL' in URL)) {
+    Object.defineProperty(URL, 'createObjectURL', { value: () => 'blob:x' });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: () => undefined });
+  }
+});
+
+const {
+  useChatMessagesMock,
+  useMarkChatReadMock,
+  usePostChatMessageMock,
+  probeImageMock,
+} = vi.hoisted(() => ({
+  useChatMessagesMock: vi.fn<() => Record<string, unknown>>(),
+  useMarkChatReadMock: vi.fn<() => Record<string, unknown>>(),
+  usePostChatMessageMock: vi.fn<() => Record<string, unknown>>(),
+  probeImageMock: vi.fn(),
+}));
 
 vi.mock('./useChat', () => ({
   useChatMessages: () => useChatMessagesMock(),
   useMarkChatRead: () => useMarkChatReadMock(),
   usePostChatMessage: () => usePostChatMessageMock(),
+  useChatImageUrls: () => ({ data: [], isLoading: false }),
+}));
+
+vi.mock('@/features/challenge/heic', () => ({
+  probeImage: probeImageMock,
 }));
 
 import { ChatPanel } from './ChatPanel';
@@ -29,6 +48,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     senderDisplayName: 'Anna',
     body: `body ${seq}`,
     status: 'active',
+    attachments: [],
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -40,16 +60,35 @@ function wrap(node: ReactNode) {
   return render(<>{node}</>);
 }
 
-function prime(over: Partial<ReturnType<typeof buildQuery>> = {}): void {
+let markReadMutate = vi.fn();
+let fetchNextPage = vi.fn();
+
+let postMutate = vi.fn();
+
+function prime(
+  over: Partial<ReturnType<typeof buildQuery>> = {},
+  post: Record<string, unknown> = {},
+): void {
   useChatMessagesMock.mockReturnValue({ ...buildQuery(), ...over });
-  useMarkChatReadMock.mockReturnValue({ mutate: vi.fn() });
-  usePostChatMessageMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  useMarkChatReadMock.mockReturnValue({ mutate: markReadMutate });
+  usePostChatMessageMock.mockReturnValue({
+    mutate: postMutate,
+    isPending: false,
+    isError: false,
+    ...post,
+  });
+  probeImageMock.mockResolvedValue({
+    decodable: true,
+    width: 10,
+    height: 10,
+    likelyHeic: false,
+  });
 }
 
 function buildQuery() {
   return {
     messages: [] as ChatMessage[],
-    fetchNextPage: vi.fn(),
+    fetchNextPage,
     hasNextPage: false,
     isFetchingNextPage: false,
     isLoading: false,
@@ -57,7 +96,53 @@ function buildQuery() {
   };
 }
 
-afterEach(() => vi.clearAllMocks());
+/**
+ * jsdom reports 0 for every layout metric and no-ops `scrollIntoView`. Give one
+ * element real, mutable scroll geometry so the B1 positioning logic can be
+ * driven and asserted.
+ */
+function mockScroller(
+  el: HTMLElement,
+  metrics: { scrollHeight: number; clientHeight: number; scrollTop?: number },
+) {
+  let top = metrics.scrollTop ?? 0;
+  Object.defineProperty(el, 'scrollHeight', {
+    configurable: true,
+    get: () => metrics.scrollHeight,
+  });
+  Object.defineProperty(el, 'clientHeight', {
+    configurable: true,
+    get: () => metrics.clientHeight,
+  });
+  Object.defineProperty(el, 'scrollTop', {
+    configurable: true,
+    get: () => top,
+    set: (v: number) => {
+      top = v;
+    },
+  });
+  return {
+    get scrollTop() {
+      return top;
+    },
+    set scrollTop(v: number) {
+      top = v;
+    },
+    grow(to: number) {
+      metrics.scrollHeight = to;
+    },
+    fireScroll() {
+      el.dispatchEvent(new Event('scroll'));
+    },
+  };
+}
+
+afterEach(() => {
+  vi.clearAllMocks();
+  markReadMutate = vi.fn();
+  fetchNextPage = vi.fn();
+  postMutate = vi.fn();
+});
 
 const BASE_PROPS = {
   open: true,
@@ -188,5 +273,230 @@ describe('ChatPanel', () => {
     prime({ messages: [row(1)] });
     const { container } = wrap(<ChatPanel {...BASE_PROPS} open={false} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('ChatPanel scroll behaviour (B1)', () => {
+  function openWithMessages(
+    initial: ChatMessage[],
+    metrics: { scrollHeight: number; clientHeight: number; scrollTop?: number },
+  ) {
+    // Open → brief loading → messages arrive, mirroring the real lifecycle so
+    // the container ref is mounted before the first positioning pass.
+    prime({ isLoading: true });
+    const view = wrap(<ChatPanel {...BASE_PROPS} />);
+    const el = screen.getByRole('log').parentElement!;
+    const ctl = mockScroller(el, metrics);
+    prime({ isLoading: false, messages: initial });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+    return { view, el, ctl };
+  }
+
+  it('opens pinned to the newest message', () => {
+    const { ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 800,
+      clientHeight: 300,
+      scrollTop: 0,
+    });
+    expect(ctl.scrollTop).toBe(800);
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 3 });
+  });
+
+  it('keeps the same message in view when older history is prepended', () => {
+    const { view, ctl } = openWithMessages([row(10), row(11), row(12)], {
+      scrollHeight: 800,
+      clientHeight: 300,
+    });
+    // reader scrolls up to the top
+    ctl.scrollTop = 0;
+    ctl.fireScroll();
+    prime({
+      isLoading: false,
+      messages: [row(10), row(11), row(12)],
+      hasNextPage: true,
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /ladda äldre meddelanden/i }),
+    );
+    expect(fetchNextPage).toHaveBeenCalled();
+
+    // older page renders — list grows by 600px
+    ctl.grow(1400);
+    prime({
+      isLoading: false,
+      messages: [row(7), row(8), row(9), row(10), row(11), row(12)],
+      hasNextPage: true,
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    // scrollTop shifted by exactly the height delta → viewport did not jump
+    expect(ctl.scrollTop).toBe(600);
+  });
+
+  it('follows an incoming message when the reader is near the bottom', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    const { view, ctl } = openWithMessages([row(1), row(2)], {
+      scrollHeight: 500,
+      clientHeight: 400,
+      scrollTop: 100, // 500-100-400 = 0 → at the bottom
+    });
+    ctl.fireScroll();
+    markReadMutate.mockClear();
+
+    prime({ isLoading: false, messages: [row(1), row(2), row(3)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' }),
+    );
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 3 });
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it('does not yank the reader down while they read history — shows "Nya meddelanden"', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    const { view, ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 900,
+      clientHeight: 300,
+    });
+    // reader scrolls well up
+    ctl.scrollTop = 100; // 900-100-300 = 500 > 96 → not near bottom
+    ctl.fireScroll();
+    scrollIntoView.mockClear();
+    markReadMutate.mockClear();
+
+    prime({ isLoading: false, messages: [row(1), row(2), row(3), row(4)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    // viewport untouched, read cursor not advanced, indicator shown
+    expect(ctl.scrollTop).toBe(100);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(markReadMutate).not.toHaveBeenCalled();
+    const pill = screen.getByRole('button', { name: /nya meddelanden/i });
+
+    // tapping it jumps to the latest and clears itself
+    ctl.grow(1100);
+    fireEvent.click(pill);
+    expect(ctl.scrollTop).toBe(1100);
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 4 });
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it("always follows the viewer's own outgoing message even if scrolled up", () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    const { view, ctl } = openWithMessages([row(1), row(2)], {
+      scrollHeight: 900,
+      clientHeight: 300,
+    });
+    ctl.scrollTop = 50;
+    ctl.fireScroll();
+    scrollIntoView.mockClear();
+
+    // own message arrives (senderUserId === BASE_PROPS.userId)
+    prime({
+      isLoading: false,
+      messages: [row(1), row(2), row(3, { senderUserId: 'u1' })],
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it('does not advance the read cursor while only scrolling through old history', () => {
+    const { ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 900,
+      clientHeight: 300,
+    });
+    markReadMutate.mockClear();
+    ctl.scrollTop = 0;
+    ctl.fireScroll();
+    ctl.scrollTop = 120;
+    ctl.fireScroll();
+    expect(markReadMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatPanel image composer (B3)', () => {
+  function jpeg(name = 'a.jpg') {
+    return new File(['x'], name, { type: 'image/jpeg' });
+  }
+
+  it('shows a preview thumbnail after picking an image and can remove it', async () => {
+    const user = userEvent.setup();
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    const input = screen.getByLabelText('Välj bilder');
+    await user.upload(input, jpeg());
+
+    const strip = await screen.findByTestId('chat-compose-images');
+    expect(strip.querySelectorAll('img')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Ta bort bild 1' }));
+    expect(screen.queryByTestId('chat-compose-images')).not.toBeInTheDocument();
+  });
+
+  it('sends the picked files with the message and clears them on success', async () => {
+    const user = userEvent.setup();
+    postMutate = vi.fn((_vars, opts?: { onSuccess?: () => void }) =>
+      opts?.onSuccess?.(),
+    );
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    await user.upload(screen.getByLabelText('Välj bilder'), jpeg());
+    await screen.findByTestId('chat-compose-images');
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+
+    expect(postMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ challengeId: 'c1', userId: 'u1' }),
+      expect.anything(),
+    );
+    const [vars] = postMutate.mock.calls[0] as [{ files: File[] }];
+    expect(vars.files).toHaveLength(1);
+    expect(screen.queryByTestId('chat-compose-images')).not.toBeInTheDocument();
+  });
+
+  it('rejects a fifth image and keeps four', async () => {
+    const user = userEvent.setup();
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const input = screen.getByLabelText('Välj bilder');
+    await user.upload(input, [jpeg('1'), jpeg('2'), jpeg('3'), jpeg('4')]);
+    await screen.findByTestId('chat-compose-images');
+    await user.upload(input, jpeg('5'));
+
+    expect(
+      screen.getByTestId('chat-compose-images').querySelectorAll('img'),
+    ).toHaveLength(4);
+    expect(screen.getByText(/högst fyra bilder/i)).toBeInTheDocument();
+  });
+
+  it('disables send and shows a pending label while a send is in flight', () => {
+    prime({ messages: [row(1)] }, { isPending: true });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByRole('button', { name: /laddar upp/i })).toBeDisabled();
+  });
+
+  it('an image-only send is allowed (send enabled with no text)', async () => {
+    const user = userEvent.setup();
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByRole('button', { name: 'Skicka' })).toBeDisabled();
+    await user.upload(screen.getByLabelText('Välj bilder'), jpeg());
+    await screen.findByTestId('chat-compose-images');
+    expect(screen.getByRole('button', { name: 'Skicka' })).toBeEnabled();
   });
 });

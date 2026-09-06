@@ -19,13 +19,19 @@ export const CHAT_RATE_LIMIT_WINDOW_SECONDS = 30;
 export function displayBody(message: {
   status: ChatMessageStatus;
   body: string | null;
-}): string {
-  // A hidden message never shows its text — and the server already withholds
-  // `body` (sends null) for a non-admin viewer, so treat a missing body as
-  // hidden too rather than rendering an empty bubble.
-  return message.status === 'hidden' || message.body === null
-    ? HIDDEN_MESSAGE_PLACEHOLDER
-    : message.body;
+  /** Optional — pre-image callers can omit it. */
+  attachments?: { position: number; path: string }[];
+}): string | null {
+  // A hidden message never shows its text (and the server withholds it, and
+  // its attachments, sending null / []).
+  if (message.status === 'hidden') return HIDDEN_MESSAGE_PLACEHOLDER;
+  if (message.body !== null) return message.body;
+  // body === null: an image-only active message renders no text line; a
+  // text-less message with nothing to show at all falls back to the
+  // placeholder (a withheld body with no attachments — the pre-image case).
+  return (message.attachments?.length ?? 0) > 0
+    ? null
+    : HIDDEN_MESSAGE_PLACEHOLDER;
 }
 
 /**
@@ -57,4 +63,49 @@ export function isWithinRateLimitWindow(
 /** Returns a new array sorted ascending by `seq` — the only display order. */
 export function sortBySeq(messages: readonly ChatMessage[]): ChatMessage[] {
   return [...messages].sort((a, b) => a.seq - b.seq);
+}
+
+// ---------------------------------------------------------------------------
+// Scroll positioning (B1 — chat opens at the latest message)
+// ---------------------------------------------------------------------------
+
+/** Default "close enough to the bottom to follow new messages" gap, in px. */
+export const NEAR_BOTTOM_PX = 96;
+
+interface ScrollMetrics {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}
+
+/**
+ * Is the scroll container within `px` of its bottom edge? Used to decide
+ * whether an incoming message should pull the viewport down (follow) or be
+ * announced with the "Nya meddelanden" button instead.
+ */
+export function isNearBottom(el: ScrollMetrics, px = NEAR_BOTTOM_PX): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= px;
+}
+
+/**
+ * How much to add to `scrollTop` after older messages are prepended so the
+ * viewport stays visually anchored on the same message. Never negative — a
+ * shorter list after a refetch must not scroll the user around.
+ */
+export function scrollAnchorAdjustment(
+  prevScrollHeight: number,
+  nextScrollHeight: number,
+): number {
+  const delta = nextScrollHeight - prevScrollHeight;
+  return delta > 0 ? delta : 0;
+}
+
+/**
+ * Whether a newly-arrived message should pull the viewport to the newest
+ * message. The panel additionally always follows the viewer's OWN message
+ * (sending scrolls you down even if you had scrolled up) — that check needs
+ * the sender identity and stays in the component.
+ */
+export function shouldFollowNewMessage(wasNearBottom: boolean): boolean {
+  return wasNearBottom;
 }

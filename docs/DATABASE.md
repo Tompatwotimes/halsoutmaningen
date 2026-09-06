@@ -130,18 +130,23 @@ audit_log  (append-only; holds raw ids, NO foreign keys, survives deletes)
 
 ### `training_proofs`
 
-| Column                     | Type    | Notes                                                               |
-| -------------------------- | ------- | ------------------------------------------------------------------- |
-| `id`                       | uuid PK |                                                                     |
-| `training_entry_id`        | uuid    | → `training_entries.id` cascade, **UNIQUE** (one proof/entry in V1) |
-| `challenge_id` / `user_id` | uuid    | denormalised from the entry by `training_proofs_guard`              |
-| `storage_path`             | text    | **UNIQUE**; object key in the `proofs` bucket                       |
-| `mime_type`                | text    | jpeg/png/webp/heic/heif only                                        |
-| `size_bytes`               | bigint  | `1 … 15 MiB`                                                        |
-| `width` / `height`         | integer | optional                                                            |
+| Column                     | Type     | Notes                                                                                  |
+| -------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `id`                       | uuid PK  |                                                                                        |
+| `training_entry_id`        | uuid     | → `training_entries.id` cascade                                                        |
+| `position`                 | smallint | `1` or `2` (`20260906120000`); `default 1`. **UNIQUE `(training_entry_id, position)`** |
+| `challenge_id` / `user_id` | uuid     | denormalised from the entry by `training_proofs_guard`                                 |
+| `storage_path`             | text     | **UNIQUE**; object key in the `proofs` bucket                                          |
+| `mime_type`                | text     | jpeg/png/webp/heic/heif only                                                           |
+| `size_bytes`               | bigint   | `1 … 15 MiB`                                                                           |
+| `width` / `height`         | integer  | optional                                                                               |
 
+- Up to **two** proof images per session (`20260906120000`): slot 1 = primary
+  (required when the challenge requires proof), slot 2 = optional.
+  `check (position in (1,2))` + the composite unique ⇒ a third is impossible.
+  Pre-existing single-proof rows keep `position = 1` via the column default.
 - Participants may attach/remove proof only on their own current-day entry.
-- No `UPDATE` — replace = delete + insert (same day).
+- No `UPDATE` — replace = delete + insert (same day, whole set at once).
 
 ### `audit_log`
 
@@ -171,7 +176,7 @@ Columns: `actor_user_id`, `challenge_id`, `target_user_id`, `entity_type`,
 | `challenges`            | `(status)`, `(created_by)`                                                                                    |
 | `challenge_memberships` | `UNIQUE (challenge_id, user_id)`, `(user_id)`, `(challenge_id, active)`                                       |
 | `training_entries`      | `UNIQUE (challenge_id, user_id, challenge_date)`, `(challenge_id, challenge_date)`, `(user_id, challenge_id)` |
-| `training_proofs`       | `UNIQUE (training_entry_id)`, `UNIQUE (storage_path)`, `(user_id)`, `(challenge_id)`                          |
+| `training_proofs`       | `UNIQUE (training_entry_id, position)`, `UNIQUE (storage_path)`, `(user_id)`, `(challenge_id)`                |
 | `audit_log`             | `(challenge_id, created_at desc)`, `(entity_type, entity_id)`, `(actor_user_id)`                              |
 
 The dashboard / matrix queries are all `O(1)` round-trips against
@@ -224,20 +229,26 @@ fields are **not** exposed — the frontend only ever reads `profiles`.
 
 ## 6. Storage
 
-Two **private** buckets (no public URLs, ever). Reads go through short-lived
+**Private** buckets (no public URLs, ever). Reads go through short-lived
 signed URLs the client requests after the SELECT policy authorises.
 
-| Bucket    | Path                                                     | Size / types                      |
-| --------- | -------------------------------------------------------- | --------------------------------- |
-| `proofs`  | `{challenge_id}/{user_id}/{challenge_date}/{uuid}.{ext}` | ≤ 15 MiB, jpeg/png/webp/heic/heif |
-| `avatars` | `{user_id}/{uuid}.{ext}`                                 | ≤ 5 MiB, jpeg/png/webp            |
+| Bucket       | Path                                                       | Size / types                      |
+| ------------ | ---------------------------------------------------------- | --------------------------------- |
+| `proofs`     | `{challenge_id}/{user_id}/{challenge_date}/{uuid}.{ext}`   | ≤ 15 MiB, jpeg/png/webp/heic/heif |
+| `avatars`    | `{user_id}/{uuid}.{ext}`                                   | ≤ 5 MiB, jpeg/png/webp            |
+| `chat-media` | `{challenge_id}/{user_id}/{message_id}/{pos}-{uuid}.{ext}` | ≤ 15 MiB, jpeg/png/webp/heic/heif |
 
 `storage.objects` policies:
 
-| Bucket    | read                                    | write (insert)                                  | update/delete               |
-| --------- | --------------------------------------- | ----------------------------------------------- | --------------------------- |
-| `proofs`  | admin ∪ member of `folder[1]` challenge | `folder[2] = uid` **and** member of `folder[1]` | owner (`folder[2]`) ∪ admin |
-| `avatars` | any authenticated user                  | `folder[1] = uid`                               | `folder[1] = uid`           |
+| Bucket       | read                                                                                                | write (insert)                                  | update/delete               |
+| ------------ | --------------------------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------- |
+| `proofs`     | admin ∪ member of `folder[1]` challenge                                                             | `folder[2] = uid` **and** member of `folder[1]` | owner (`folder[2]`) ∪ admin |
+| `avatars`    | any authenticated user                                                                              | `folder[1] = uid`                               | `folder[1] = uid`           |
+| `chat-media` | admin ∪ `_chat_attachment_readable(name)` — member **and** the backing message is `status='active'` | `folder[2] = uid` **and** member of `folder[1]` | owner (`folder[2]`) ∪ admin |
+
+`chat-media`: hiding the message flips `_chat_attachment_readable` to false, so
+a member can no longer fetch the image even with a path obtained earlier —
+`docs/CHAT.md` §8.
 
 The DB `training_proofs` row and the Storage object are written in two steps by
 the client; a failure between them leaves an orphan on one side. Acceptable for

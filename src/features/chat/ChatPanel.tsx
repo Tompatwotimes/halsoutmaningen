@@ -1,15 +1,29 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Sheet } from '@/components/ui/Sheet';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { ImageIcon, CloseIcon } from '@/components/icons';
+import { probeImage } from '@/features/challenge/heic';
+import { ChatImageGrid } from './ChatImageGrid';
+import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import {
   CHAT_BODY_MAX_LENGTH,
   chatDateSeparatorKey,
   displayBody,
+  isNearBottom,
+  scrollAnchorAdjustment,
 } from './chat';
 import {
   useChatMessages,
@@ -54,20 +68,131 @@ export function ChatPanel({
   const { mutate: markRead } = useMarkChatRead();
   const post = usePostChatMessage();
   const [draft, setDraft] = useState('');
-  const lastMarkedSeq = useRef(0);
+  const [files, setFiles] = useState<File[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Object URLs for the pending-image previews, created and revoked with `files`.
+  const previewUrls = useMemo(
+    () => files.map((f) => URL.createObjectURL(f)),
+    [files],
+  );
+  useEffect(
+    () => () => previewUrls.forEach((u) => URL.revokeObjectURL(u)),
+    [previewUrls],
+  );
+
+  // --- scroll positioning (B1) --------------------------------------------
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  // Have we done the one-time "open at the newest message" jump yet?
+  const didInitialScroll = useRef(false);
+  // Set right before an older page is fetched; consumed once it has rendered.
+  const pendingAnchorHeight = useRef<number | null>(null);
+  // Snapshot of "is the viewport near the bottom", kept fresh by the scroll
+  // listener and read when new messages arrive.
+  const nearBottomRef = useRef(true);
+  // Newest seq we have already reacted to (scrolled to / announced).
+  const reactedMaxSeq = useRef(0);
+  // Newest seq the read cursor has been advanced to (never regresses).
+  const markedSeq = useRef(0);
+  const [showNewMessages, setShowNewMessages] = useState(false);
 
   const messages = query.messages;
+  const maxSeq =
+    messages.length > 0 ? (messages[messages.length - 1]?.seq ?? 0) : 0;
 
-  // Mark everything currently visible as read whenever the newest seq advances.
-  // Best-effort — a failure is silently ignored and read state never regresses.
+  const advanceRead = useCallback(
+    (seq: number) => {
+      if (seq > markedSeq.current) {
+        markedSeq.current = seq;
+        markRead({ challengeId, seq });
+      }
+    },
+    [markRead, challengeId],
+  );
+
+  // Reset all positioning state when the room changes or the panel is (re)opened.
   useEffect(() => {
-    if (!open || messages.length === 0) return;
-    const maxSeq = messages[messages.length - 1]?.seq ?? 0;
-    if (maxSeq > lastMarkedSeq.current) {
-      lastMarkedSeq.current = maxSeq;
-      markRead({ challengeId, seq: maxSeq });
+    didInitialScroll.current = false;
+    pendingAnchorHeight.current = null;
+    nearBottomRef.current = true;
+    reactedMaxSeq.current = 0;
+    markedSeq.current = 0;
+    setShowNewMessages(false);
+  }, [challengeId, open]);
+
+  // Keep the near-bottom snapshot fresh; auto-load older history near the top;
+  // dismiss the "Nya meddelanden" pill once the user scrolls back down.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!open || !el) return;
+    const onScroll = () => {
+      const near = isNearBottom(el);
+      nearBottomRef.current = near;
+      if (near && showNewMessages) {
+        setShowNewMessages(false);
+        advanceRead(maxSeq);
+      }
+      if (
+        el.scrollTop < 48 &&
+        query.hasNextPage &&
+        !query.isFetchingNextPage &&
+        pendingAnchorHeight.current === null
+      ) {
+        pendingAnchorHeight.current = el.scrollHeight;
+        void query.fetchNextPage();
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [open, showNewMessages, maxSeq, advanceRead, query]);
+
+  // The single scroll orchestration point. Runs before paint so the viewport
+  // never visibly jumps.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!open || query.isLoading || messages.length === 0 || !el) return;
+
+    // (a) an older page was just prepended — keep the same message in view.
+    if (pendingAnchorHeight.current !== null) {
+      el.scrollTop += scrollAnchorAdjustment(
+        pendingAnchorHeight.current,
+        el.scrollHeight,
+      );
+      pendingAnchorHeight.current = null;
+      if (maxSeq > reactedMaxSeq.current) reactedMaxSeq.current = maxSeq;
+      return;
     }
-  }, [open, messages, markRead, challengeId]);
+
+    // (b) first render with content — open pinned to the newest message.
+    if (!didInitialScroll.current) {
+      el.scrollTop = el.scrollHeight;
+      didInitialScroll.current = true;
+      nearBottomRef.current = true;
+      reactedMaxSeq.current = maxSeq;
+      advanceRead(maxSeq);
+      return;
+    }
+
+    // (c) a newer message arrived.
+    if (maxSeq > reactedMaxSeq.current) {
+      const newest = messages[messages.length - 1];
+      const isOwnMessage = newest?.senderUserId === userId;
+      if (nearBottomRef.current || isOwnMessage) {
+        bottomRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'end',
+        });
+        nearBottomRef.current = true;
+        setShowNewMessages(false);
+        advanceRead(maxSeq);
+      } else {
+        setShowNewMessages(true);
+      }
+      reactedMaxSeq.current = maxSeq;
+    }
+  }, [open, query.isLoading, messages, maxSeq, userId, advanceRead]);
 
   const rows = useMemo(() => {
     const out: (
@@ -91,16 +216,61 @@ export function ChatPanel({
   }, [messages, timeZone]);
 
   const canSend =
-    draft.trim().length > 0 &&
+    (draft.trim().length > 0 || files.length > 0) &&
     draft.length <= CHAT_BODY_MAX_LENGTH &&
     !post.isPending;
 
   function send() {
     if (!canSend) return;
     post.mutate(
-      { challengeId, body: draft },
-      { onSuccess: () => setDraft('') },
+      { challengeId, userId, body: draft, files },
+      {
+        onSuccess: () => {
+          setDraft('');
+          setFiles([]);
+          setImageError(null);
+        },
+      },
     );
+  }
+
+  async function addImages(picked: FileList | null) {
+    setImageError(null);
+    if (!picked || picked.length === 0) return;
+    const next = [...files];
+    for (const file of Array.from(picked)) {
+      if (next.length >= CHAT_IMAGE_MAX_COUNT) {
+        setImageError('Högst fyra bilder per meddelande.');
+        break;
+      }
+      const probe = await probeImage(file);
+      if (!probe.decodable) {
+        setImageError('En av bilderna kunde inte läsas och hoppades över.');
+        continue;
+      }
+      next.push(file);
+    }
+    setFiles(next);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  }
+
+  function removeImageAt(i: number) {
+    setFiles((prev) => prev.filter((_, idx) => idx !== i));
+    setImageError(null);
+  }
+
+  function jumpToLatest() {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    nearBottomRef.current = true;
+    setShowNewMessages(false);
+    advanceRead(maxSeq);
+  }
+
+  function loadOlder() {
+    const el = scrollRef.current;
+    if (el) pendingAnchorHeight.current = el.scrollHeight;
+    void query.fetchNextPage();
   }
 
   if (!open) return null;
@@ -113,18 +283,60 @@ export function ChatPanel({
         send();
       }}
     >
-      <textarea
-        className={styles.input}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        placeholder="Skriv ett meddelande…"
-        rows={2}
-        maxLength={CHAT_BODY_MAX_LENGTH + 200}
-        aria-label="Skriv ett meddelande"
-      />
-      <Button type="submit" size="sm" disabled={!canSend}>
-        Skicka
-      </Button>
+      {files.length > 0 && (
+        <div className={styles.pickStrip} data-testid="chat-compose-images">
+          {files.map((file, i) => (
+            <span key={`${file.name}-${i}`} className={styles.pickThumb}>
+              <img src={previewUrls[i]} alt="" />
+              <button
+                type="button"
+                onClick={() => removeImageAt(i)}
+                aria-label={`Ta bort bild ${i + 1}`}
+              >
+                <CloseIcon />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={styles.composeRow}>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className={styles.hiddenFile}
+          tabIndex={-1}
+          aria-label="Välj bilder"
+          onChange={(e) => void addImages(e.target.files)}
+        />
+        <button
+          type="button"
+          className={styles.imageButton}
+          onClick={() => imageInputRef.current?.click()}
+          disabled={files.length >= CHAT_IMAGE_MAX_COUNT || post.isPending}
+          aria-label="Lägg till bild"
+        >
+          <ImageIcon />
+        </button>
+        <textarea
+          className={styles.input}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Skriv ett meddelande…"
+          rows={2}
+          maxLength={CHAT_BODY_MAX_LENGTH + 200}
+          aria-label="Skriv ett meddelande"
+        />
+        <Button type="submit" size="sm" disabled={!canSend}>
+          {post.isPending ? 'Laddar upp…' : 'Skicka'}
+        </Button>
+      </div>
+      {imageError && (
+        <p className={styles.sendError} role="status">
+          {imageError}
+        </p>
+      )}
       {post.isError && (
         <p className={styles.sendError} role="status">
           Meddelandet kunde inte skickas — försök igen.
@@ -134,13 +346,19 @@ export function ChatPanel({
   );
 
   return (
-    <Sheet open onClose={onClose} title="Chatt" footer={composer}>
+    <Sheet
+      open
+      onClose={onClose}
+      title="Chatt"
+      footer={composer}
+      bodyRef={scrollRef}
+    >
       <div className={styles.list} role="log" aria-label="Chattmeddelanden">
         {query.hasNextPage && (
           <button
             type="button"
             className={styles.loadOlder}
-            onClick={() => void query.fetchNextPage()}
+            onClick={loadOlder}
             disabled={query.isFetchingNextPage}
           >
             Ladda äldre meddelanden
@@ -187,6 +405,17 @@ export function ChatPanel({
             ),
           )
         )}
+        <div ref={bottomRef} aria-hidden="true" />
+
+        {showNewMessages && (
+          <button
+            type="button"
+            className={styles.newMessages}
+            onClick={jumpToLatest}
+          >
+            Nya meddelanden ↓
+          </button>
+        )}
       </div>
     </Sheet>
   );
@@ -202,6 +431,7 @@ function MessageRow({
   moderation: ReactNode;
 }) {
   const isGameMaster = message.senderType === 'game_master';
+  const text = displayBody(message);
   return (
     <div
       className={[
@@ -224,9 +454,17 @@ function MessageRow({
         )}
         <time className={styles.time}>{formatTime(message.createdAt)}</time>
       </div>
-      <p className={styles.body} data-testid="chat-message-body">
-        {displayBody(message)}
-      </p>
+      {text !== null && (
+        <p className={styles.body} data-testid="chat-message-body">
+          {text}
+        </p>
+      )}
+      {message.attachments.length > 0 && (
+        <ChatImageGrid
+          messageId={message.id}
+          attachments={message.attachments}
+        />
+      )}
       {moderation}
     </div>
   );

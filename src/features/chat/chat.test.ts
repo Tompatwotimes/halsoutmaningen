@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   chatDateSeparatorKey,
   displayBody,
+  isNearBottom,
   isWithinRateLimitWindow,
+  scrollAnchorAdjustment,
+  shouldFollowNewMessage,
   sortBySeq,
 } from './chat';
 import type { ChatMessage } from './types';
@@ -17,6 +20,7 @@ function msg(overrides: Partial<ChatMessage>): ChatMessage {
     senderDisplayName: 'Pia',
     body: 'hej',
     status: 'active',
+    attachments: [],
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -93,5 +97,50 @@ describe('sortBySeq', () => {
     const input = [msg({ id: 'b', seq: 2 }), msg({ id: 'a', seq: 1 })];
     sortBySeq(input);
     expect(input.map((m) => m.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('isNearBottom', () => {
+  it('is true when the scroll position is within the gap of the bottom', () => {
+    // 1000 content, 400 viewport, scrolled to 560 → 40px from the bottom.
+    expect(
+      isNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 560 }),
+    ).toBe(true);
+  });
+  it('is true exactly at the bottom', () => {
+    expect(
+      isNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 }),
+    ).toBe(true);
+  });
+  it('is false when scrolled up past the gap', () => {
+    expect(
+      isNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 200 }),
+    ).toBe(false);
+  });
+  it('honours a custom gap', () => {
+    const m = { scrollHeight: 1000, clientHeight: 400, scrollTop: 500 }; // 100 up
+    expect(isNearBottom(m, 96)).toBe(false);
+    expect(isNearBottom(m, 120)).toBe(true);
+  });
+});
+
+describe('scrollAnchorAdjustment', () => {
+  it('returns the height the list grew by, to keep the same message in view', () => {
+    expect(scrollAnchorAdjustment(1000, 1600)).toBe(600);
+  });
+  it('never returns a negative adjustment (list got shorter)', () => {
+    expect(scrollAnchorAdjustment(1600, 1000)).toBe(0);
+  });
+  it('is zero when the height did not change', () => {
+    expect(scrollAnchorAdjustment(1000, 1000)).toBe(0);
+  });
+});
+
+describe('shouldFollowNewMessage', () => {
+  it('follows when the viewer was near the bottom', () => {
+    expect(shouldFollowNewMessage(true)).toBe(true);
+  });
+  it('does not follow when the viewer was reading older history', () => {
+    expect(shouldFollowNewMessage(false)).toBe(false);
   });
 });

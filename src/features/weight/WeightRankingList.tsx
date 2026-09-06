@@ -5,16 +5,19 @@ import styles from './WeightRankingList.module.css';
 
 /**
  * The public live Viktkampen table. It does NO filtering of its own — a hidden
- * participant is already absent from `weight_public_ranking`'s result (RLS,
- * server-side, spec §4). This component renders exactly the rows it is handed,
- * in the order given (the RPC already orders most-weight-lost first).
+ * participant is already absent from `weight_public_ranking`'s result (an
+ * explicit `not is_weight_hidden` predicate + RLS, server-side, spec §2.8/§4).
+ * This component renders exactly the rows it is handed, in the order given
+ * (the RPC already orders most-weight-lost first). A zero-row result means
+ * nobody has cleared the 24h start-weight lock AND logged a regular entry yet
+ * — the empty state says so rather than implying nobody has weighed in.
  */
 export function WeightRankingList({ rows }: { rows: WeightRankingRow[] }) {
   if (rows.length === 0) {
     return (
       <EmptyState
-        title="Ingen är med i Viktkampen än"
-        body="Deltagare dyker upp här när de har låst en startvikt och loggat minst en vikt."
+        title="Ingen är kvalificerad för rankingen ännu."
+        body="Startvikten behöver vara låst i 24 timmar och minst en vanlig invägning behöver vara registrerad."
       />
     );
   }

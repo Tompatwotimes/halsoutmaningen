@@ -71,7 +71,7 @@ function detail(over: Partial<DayDetail['sessions'][number]> = {}): DayDetail {
         submittedAt: '2026-08-15T08:00:00Z',
         status: 'active',
         invalidatedReason: null,
-        proofSignedUrl: 'blob:x',
+        proofSignedUrls: ['blob:x'],
         ...over,
       },
     ],
@@ -113,6 +113,50 @@ describe('EntryDetailSheet requirement agreement', () => {
   it('the session itself counts on a normal day', () => {
     renderSheet(null);
     expect(screen.getByText('Räknas')).toBeInTheDocument();
+  });
+
+  it('renders one proof image per signed URL, and an empty state for none', () => {
+    entryDetailMock.mockReturnValue({
+      data: detail({ proofSignedUrls: ['a', 'b'] }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    profileMock.mockReturnValue({ isAdmin: false });
+    const { rerender } = render(
+      <EntryDetailSheet
+        open
+        onClose={vi.fn()}
+        challenge={CHALLENGE}
+        participantName="Anna"
+        isSelf={false}
+        userId="anna"
+        date="2026-08-15"
+        requirement={null}
+      />,
+    );
+    expect(screen.getAllByTestId('proof')).toHaveLength(2);
+
+    entryDetailMock.mockReturnValue({
+      data: detail({ proofSignedUrls: [] }),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    rerender(
+      <EntryDetailSheet
+        open
+        onClose={vi.fn()}
+        challenge={CHALLENGE}
+        participantName="Anna"
+        isSelf={false}
+        userId="anna"
+        date="2026-08-15"
+        requirement={null}
+      />,
+    );
+    expect(screen.queryByTestId('proof')).not.toBeInTheDocument();
+    expect(screen.getByText('Inget bildbevis')).toBeInTheDocument();
   });
 
   it('an admin can start an invalidation and it requires a reason', async () => {

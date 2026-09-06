@@ -171,3 +171,10 @@
 .retroStatus {
   font-weight: var(--fw-medium);
 }
+
+/* Two proof images side by side (one image renders on its own, full width). */
+.proofGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}

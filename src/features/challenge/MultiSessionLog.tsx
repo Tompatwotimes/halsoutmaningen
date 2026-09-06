@@ -69,7 +69,7 @@ export function MultiSessionLog({
           durationMinutes: value.durationMinutes,
           activity: value.activity,
           note: value.note,
-          proofFile: value.proofFile,
+          proofFiles: value.proofFiles,
         });
       } else {
         await addSession.mutateAsync({
@@ -79,7 +79,7 @@ export function MultiSessionLog({
           durationMinutes: value.durationMinutes,
           activity: value.activity,
           note: value.note,
-          proofFile: value.proofFile,
+          proofFiles: value.proofFiles,
         });
       }
       setShowForm(false);

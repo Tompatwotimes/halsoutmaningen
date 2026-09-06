@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase', () => ({
 
 const {
   ChatError,
-  postChatMessage,
+  sendChatMessage,
   markChatRead,
   fetchRecentChatMessages,
   fetchOlderChatMessages,
@@ -43,15 +43,16 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     sender_display_name: 'Pia',
     body: 'hej',
     status: 'active',
+    attachments: [],
     created_at: '2026-09-05T12:00:00Z',
     ...overrides,
   };
 }
 
-describe('postChatMessage', () => {
+describe('sendChatMessage (text only)', () => {
   it('calls the RPC with exactly the challenge id and body — no sender field', async () => {
     rpc.mockResolvedValue({ data: rowFixture(), error: null });
-    await postChatMessage('c1', 'hej');
+    await sendChatMessage({ challengeId: 'c1', userId: 'u1', body: 'hej' });
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith('post_chat_message', {
       p_challenge_id: 'c1',
@@ -70,21 +71,61 @@ describe('postChatMessage', () => {
         seq: 9,
         sender_user_id: 'me',
         sender_display_name: 'Jag',
+        attachments: [{ position: 1, path: 'c1/u1/m/1-a.jpg' }],
       }),
       error: null,
     });
-    const msg = await postChatMessage('c1', 'hej');
+    const msg = await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: 'hej',
+    });
     expect(msg.seq).toBe(9);
     expect(msg.senderUserId).toBe('me');
-    expect(msg.senderDisplayName).toBe('Jag');
-    expect(msg.senderType).toBe('participant');
+    expect(msg.attachments).toEqual([{ position: 1, path: 'c1/u1/m/1-a.jpg' }]);
   });
 
   it('rejects with ChatError on a transport failure', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'network' } });
-    await expect(postChatMessage('c1', 'hej')).rejects.toBeInstanceOf(
-      ChatError,
-    );
+    await expect(
+      sendChatMessage({ challengeId: 'c1', userId: 'u1', body: 'hej' }),
+    ).rejects.toBeInstanceOf(ChatError);
+  });
+
+  it('rejects an empty message with no text and no images', async () => {
+    await expect(
+      sendChatMessage({ challengeId: 'c1', userId: 'u1', body: '   ' }),
+    ).rejects.toBeInstanceOf(ChatError);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than four images before any upload', async () => {
+    const f = () => new File(['x'], 'a.jpg', { type: 'image/jpeg' });
+    await expect(
+      sendChatMessage({
+        challengeId: 'c1',
+        userId: 'u1',
+        body: 'x',
+        files: [f(), f(), f(), f(), f()],
+      }),
+    ).rejects.toBeInstanceOf(ChatError);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('mapChatRow attachments', () => {
+  it('maps a hidden row to an empty attachments array', async () => {
+    rpc.mockResolvedValue({
+      data: rowFixture({ status: 'hidden', body: null, attachments: [] }),
+      error: null,
+    });
+    const msg = await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: 'x',
+    });
+    expect(msg.attachments).toEqual([]);
+    expect(msg.body).toBeNull();
   });
 });
 

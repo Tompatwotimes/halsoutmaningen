@@ -54,10 +54,14 @@ values
 -- ========================================================================
 -- Section A — post_chat_message signature and impersonation surface
 -- ========================================================================
+-- Signature carries a challenge id, an optional body, an optional
+-- client-supplied message id and an optional attachments array — but NO sender
+-- field: a client can never set sender_user_id / sender_type (chat images,
+-- 20260906120200).
 select is(
-  pg_get_function_arguments('public.post_chat_message(uuid, text)'::regprocedure),
-  'p_challenge_id uuid, p_body text',
-  'post_chat_message takes exactly a challenge id and a body — no sender field');
+  pg_get_function_arguments('public.post_chat_message(uuid, text, uuid, jsonb)'::regprocedure),
+  'p_challenge_id uuid, p_body text DEFAULT NULL::text, p_message_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb',
+  'post_chat_message takes challenge/body/message_id/attachments — no sender field');
 
 set local role authenticated;
 select set_config('request.jwt.claims',

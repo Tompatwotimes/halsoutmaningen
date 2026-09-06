@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { SignedProofImage } from '@/components/proof/SignedProofImage';
-import { ProofImagePicker } from '@/components/proof/ProofImagePicker';
+import { ProofSlots } from '@/components/proof/ProofSlots';
 import { CheckIcon, ClockIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
@@ -104,22 +104,26 @@ function LogForm({
   );
   const [activity, setActivity] = useState(existing?.activity ?? '');
   const [note, setNote] = useState(existing?.note ?? '');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [image1, setImage1] = useState<File | null>(null);
+  const [image2, setImage2] = useState<File | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
+
+  const proofFiles = [image1, image2].filter((f): f is File => f !== null);
+  const pickedAnyImage = proofFiles.length > 0;
 
   const submitMutation = useSubmitTraining();
   const existingProofQuery = useEntryDetail(
     challenge.id,
     self.userId,
     today,
-    editing && Boolean(existing?.hasProof) && imageFile === null,
+    editing && Boolean(existing?.hasProof) && !pickedAnyImage,
   );
 
   const durationValid = duration >= challenge.requiredMinutes;
   const keepsExistingProof =
-    editing && Boolean(existing?.hasProof) && imageFile === null;
+    editing && Boolean(existing?.hasProof) && !pickedAnyImage;
   const proofValid =
-    !challenge.proofRequired || imageFile !== null || keepsExistingProof;
+    !challenge.proofRequired || image1 !== null || keepsExistingProof;
   const canSubmit = durationValid && proofValid;
 
   const streakAfter = useMemo(
@@ -143,7 +147,7 @@ function LogForm({
         durationMinutes: duration,
         activity: activity.trim() || null,
         note: note.trim() || null,
-        proofFile: imageFile,
+        proofFiles,
       });
       setPhase('success');
     } catch {
@@ -201,7 +205,7 @@ function LogForm({
   if (phase === 'success') {
     const nowQualifies = isQualifyingEntry(challenge, {
       durationMinutes: duration,
-      hasProof: imageFile !== null || keepsExistingProof,
+      hasProof: image1 !== null || keepsExistingProof,
     });
     return (
       <div className={styles.successWrap}>
@@ -375,26 +379,32 @@ function LogForm({
         >
           {keepsExistingProof && (
             <div className={styles.existingProof}>
-              {existingProofQuery.data?.sessions[0]?.proofSignedUrl ? (
-                <SignedProofImage
-                  src={existingProofQuery.data.sessions[0].proofSignedUrl}
-                  alt="Nuvarande bildbevis"
-                />
+              {existingProofQuery.data?.sessions[0]?.proofSignedUrls.length ? (
+                existingProofQuery.data.sessions[0].proofSignedUrls.map(
+                  (url, i) => (
+                    <SignedProofImage
+                      key={url}
+                      src={url}
+                      alt={`Nuvarande bildbevis ${i + 1}`}
+                    />
+                  ),
+                )
               ) : (
                 <Skeleton height="12rem" radius="var(--radius-md)" />
               )}
               <p className={styles.hint}>
-                Behåller nuvarande bild om du inte väljer en ny.
+                Behåller nuvarande bild(er) om du inte väljer en ny.
               </p>
             </div>
           )}
-          <ProofImagePicker
-            file={imageFile}
-            onChange={setImageFile}
+          <ProofSlots
+            image1={image1}
+            image2={image2}
+            onChange1={setImage1}
+            onChange2={setImage2}
             idPrefix="proof"
-            promptTitle={
-              keepsExistingProof ? 'Byt bild' : 'Lägg till bildbevis'
-            }
+            proofRequired={challenge.proofRequired}
+            hasExistingProof={keepsExistingProof}
           />
           {triedSubmit && !proofValid && (
             <p className={styles.fieldError}>

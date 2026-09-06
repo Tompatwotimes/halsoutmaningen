@@ -5,8 +5,12 @@ import {
   type EntryDetail,
 } from './entries-api';
 
-export interface SessionDetailWithProof extends Omit<EntryDetail, 'proofPath'> {
-  proofSignedUrl: string | null;
+export interface SessionDetailWithProof extends Omit<
+  EntryDetail,
+  'proofPaths'
+> {
+  /** 0, 1 or 2 short-lived signed URLs, in slot order. */
+  proofSignedUrls: string[];
 }
 
 export interface DayDetail {
@@ -33,9 +37,9 @@ export function useEntryDetail(
       const withProof = await Promise.all(
         sessions.map(async (s) => ({
           ...s,
-          proofSignedUrl: s.proofPath
-            ? await createProofSignedUrl(s.proofPath)
-            : null,
+          proofSignedUrls: await Promise.all(
+            s.proofPaths.map((p) => createProofSignedUrl(p)),
+          ),
         })),
       );
       return { sessions: withProof };

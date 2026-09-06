@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { CloseIcon } from '@/components/icons';
 import styles from './Sheet.module.css';
@@ -13,6 +20,8 @@ export interface SheetProps {
   children: ReactNode;
   /** Rendered as a sticky footer action row. */
   footer?: ReactNode;
+  /** Ref to the scrollable content region (for scroll-position control). */
+  bodyRef?: Ref<HTMLDivElement>;
 }
 
 const FOCUSABLE =
@@ -26,6 +35,7 @@ export function Sheet({
   ariaLabel,
   children,
   footer,
+  bodyRef,
 }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const lastActive = useRef<HTMLElement | null>(null);
@@ -121,7 +131,9 @@ export function Sheet({
             </div>
           </header>
         )}
-        <div className={styles.body}>{children}</div>
+        <div ref={bodyRef} className={styles.body}>
+          {children}
+        </div>
         {footer && <footer className={styles.footer}>{footer}</footer>}
       </div>
     </div>,

@@ -237,7 +237,7 @@ select is(
 set local role postgres;
 
 select ok(
-  not has_function_privilege('anon', 'public.post_chat_message(uuid, text)', 'execute'),
+  not has_function_privilege('anon', 'public.post_chat_message(uuid, text, uuid, jsonb)', 'execute'),
   'anon has NO EXECUTE on post_chat_message');
 select ok(
   not has_function_privilege('anon', 'public.mark_chat_read(uuid, bigint)', 'execute'),
