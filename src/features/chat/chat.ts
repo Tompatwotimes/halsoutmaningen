@@ -109,3 +109,20 @@ export function scrollAnchorAdjustment(
 export function shouldFollowNewMessage(wasNearBottom: boolean): boolean {
   return wasNearBottom;
 }
+
+/**
+ * Did a `scroll` event come from the panel's own `el.scrollTop = …` assignment
+ * rather than from the user? The panel records the exact `scrollTop` it is
+ * about to set in a ref; the resulting `scroll` event lands within a pixel or
+ * two of it. A larger gap means the user scrolled — which unsticks the
+ * follow-the-bottom latch. `expectedTop === null` means "no programmatic scroll
+ * is pending", so any event is the user's.
+ */
+export function isProgrammaticScroll(
+  actualTop: number,
+  expectedTop: number | null,
+  tolerancePx = 2,
+): boolean {
+  if (expectedTop === null) return false;
+  return Math.abs(actualTop - expectedTop) <= tolerancePx;
+}
