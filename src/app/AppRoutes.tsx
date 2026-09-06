@@ -38,6 +38,11 @@ const StraffbankenPage = lazy(() =>
     default: m.StraffbankenPage,
   })),
 );
+const WeightRankingPage = lazy(() =>
+  import('@/pages/WeightRankingPage').then((m) => ({
+    default: m.WeightRankingPage,
+  })),
+);
 const GameMasterArchivePage = lazy(() =>
   import('@/pages/GameMasterArchivePage').then((m) => ({
     default: m.GameMasterArchivePage,
@@ -105,6 +110,7 @@ export function AppRoutes() {
             <Route path="ranking" element={<RankingPage />} />
             <Route path="straffbanken" element={<StraffbankenPage />} />
             <Route path="arkivet" element={<GameMasterArchivePage />} />
+            <Route path="viktkampen" element={<WeightRankingPage />} />
             <Route path="profil" element={<ProfilePage />} />
             <Route path="admin" element={<AdminPage />} />
             <Route path="admin-utmaningar" element={<AdminChallengesPage />} />
@@ -127,6 +133,7 @@ export function AppRoutes() {
           <Route path="ranking" element={<RankingPage />} />
           <Route path="straffbanken" element={<StraffbankenPage />} />
           <Route path="arkivet" element={<GameMasterArchivePage />} />
+          <Route path="viktkampen" element={<WeightRankingPage />} />
           <Route path="profil" element={<ProfilePage />} />
           <Route
             path="admin"

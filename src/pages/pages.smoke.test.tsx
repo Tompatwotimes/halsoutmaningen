@@ -34,6 +34,7 @@ import {
   fetchMyWeightProfile,
 } from '@/features/weight/weight-api';
 import { ProfilePage } from './ProfilePage';
+import { WeightRankingPage } from './WeightRankingPage';
 import { GameMasterArchivePage } from './GameMasterArchivePage';
 import { GameMasterPage } from './admin/GameMasterPage';
 
@@ -415,6 +416,14 @@ describe('participant screens render from mocked Supabase data', () => {
     expect(
       screen.queryByRole('button', { name: /gilla|kommentera|svara/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it('Viktkampen renders for an authenticated participant (not admin-gated)', async () => {
+    wrap(<WeightRankingPage />);
+    expect(
+      await screen.findByRole('heading', { name: /viktkampen/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Live-ställning/i)).toBeInTheDocument();
   });
 });
 

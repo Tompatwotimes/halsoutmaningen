@@ -1,0 +1,27 @@
+.winnerCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  align-items: flex-start;
+}
+
+.winnerEyebrow {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--c-accent-text);
+}
+
+.winnerName {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--c-text);
+}
+
+.winnerPct {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  color: var(--c-completed-text);
+}
