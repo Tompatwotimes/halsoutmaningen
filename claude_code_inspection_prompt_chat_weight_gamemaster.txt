@@ -1,0 +1,586 @@
+We are going to extend the existing Hälsoutmaningen application.
+
+IMPORTANT:
+DO NOT MODIFY ANY FILES YET.
+DO NOT WRITE IMPLEMENTATION CODE.
+DO NOT CREATE MIGRATIONS.
+DO NOT COMMIT ANYTHING.
+
+Your task in this step is ONLY to inspect the existing codebase and report how it actually works today.
+
+We are preparing three new areas:
+
+1. Shared real-time chat
+2. Weight tracking + weight-loss ranking
+3. Integration of chat and weight data into the existing Game Master system
+
+Do not assume the current implementation matches our expectations.
+Inspect the repository first and report facts.
+
+==================================================
+A. INSPECT THE EXISTING APPLICATION ARCHITECTURE
+==================================================
+
+Map the current implementation of:
+
+- frontend framework and project structure
+- routing
+- application layout
+- authentication
+- Supabase clients
+- database schema
+- migrations
+- RLS policies
+- existing Supabase Realtime usage, if any
+- users / participant profiles
+- training registration
+- training history
+- streak logic
+- missed-day logic
+- debt / payment-related challenge logic
+- overview / dashboard
+- profile page
+- admin functionality
+- relevant tests
+
+Use exact file paths.
+
+When relevant, include actual function names, component names, database table names, hooks, services, RPC functions, triggers, and policies.
+
+==================================================
+B. GAME MASTER — THIS IS ESPECIALLY IMPORTANT
+==================================================
+
+Inspect the COMPLETE existing Game Master implementation.
+
+We need an exact understanding of:
+
+- which Game Master events currently exist
+- where and how those events are created
+- what metadata each event contains
+- how Game Master context is assembled
+- which training data Game Master can actually access today
+- whether Game Master already receives complete training metadata
+- how candidates are generated
+- how candidate eligibility works
+- cooldown handling
+- probability / randomness handling
+- Silence / no-op behavior
+- how the final effect is selected
+- which effect/output types currently exist
+- how templates work
+- whether one event can currently cause multiple effects
+- how duplicate effects are prevented
+- whether there is already a centralized Game Master context/data layer
+- whether templates/rules perform direct database queries
+- how Game Master is isolated from the core application
+- how Game Master can be globally disabled
+- which tests currently cover Game Master
+
+Answer this question explicitly:
+
+"Does Game Master already have access to all relevant metadata from training sessions?"
+
+If the answer is NO:
+
+Describe exactly:
+- what Game Master receives today
+- what it does not receive
+- where the missing data would need to come from
+
+Do not guess.
+
+==================================================
+C. NEW FEATURE: SHARED CHAT
+==================================================
+
+The future implementation should contain ONE shared chat room.
+
+Requirements:
+
+- all participants can read it
+- all participants can write to it
+- text only in v1
+- no image messages
+- no reactions
+- no threads
+- no DMs
+- no user editing
+- no user deletion
+- no push notifications
+- complete chat history must be retained for the entire challenge
+- every message stores exact date and time
+- UI should show date separators
+- UI should show message timestamps
+- real-time message delivery
+- older messages should load incrementally when scrolling upward
+- read state must be tracked per user
+- unread count must be tracked per user
+
+CHAT UI:
+
+Chat must NOT be a separate main page or navigation tab.
+
+It should be a floating chat bubble in the bottom-right corner on the existing application pages.
+
+On mobile:
+- open as a large overlay / bottom sheet / near-fullscreen panel
+- keyboard behavior must be usable and stable
+
+On desktop:
+- open as a smaller floating chat window
+
+GAME MASTER IN CHAT:
+
+Game Master must be able to read:
+
+- the full chat message text
+- sender
+- exact timestamp
+- relevant chat metadata
+- relevant previous chat history
+
+Game Master is NOT an AI or LLM.
+
+It must remain the existing rule-based Game Master engine.
+
+There must be:
+- no LLM
+- no AI chatbot
+- no semantic AI interpretation of free text
+
+Simple rule-based text triggers may later exist, for example:
+
+- @gm
+- specific words
+- specific phrases
+- specific participant names
+
+A new chat message should be able to create an event such as:
+
+chat_message_created
+
+That event should enter the EXISTING Game Master pipeline.
+
+The existing Game Master should then be able to select:
+
+- Silence
+OR
+- one eligible Game Master effect
+
+Game Master must also be able to post messages into the shared chat.
+
+Game Master chat messages must:
+
+- be stored in the same chat history
+- be clearly identified as GAME MASTER
+- have normal date/time metadata
+- count as unread chat messages for participants
+
+Chat must also be a possible OUTPUT CHANNEL for existing Game Master events.
+
+Example:
+
+training_logged
+→ existing Game Master candidate system
+→ selected effect may be post_to_chat
+
+CRITICAL RULE:
+
+ONE event may produce at most ONE Game Master effect.
+
+For example:
+
+training_logged
+
+must NOT produce:
+- one existing surprise
+AND
+- one Game Master chat message
+
+for the same event.
+
+Chat output must be one possible effect among the existing Game Master effects.
+
+==================================================
+D. NEW FEATURE: WEIGHT TRACKING
+==================================================
+
+Weight tracking must be completely independent from training registration.
+
+Users must NOT need to know or enter their weight while logging a training session.
+
+Weight belongs under Profile.
+
+There should be two separate concepts:
+
+1. START WEIGHT
+2. REGULAR WEIGHT LOGGING
+
+==================================================
+E. START WEIGHT
+==================================================
+
+Start weight is separate from normal weight entries.
+
+Requirements:
+
+- participant enters their own start weight
+- the first time it is saved, a 24-hour edit window begins
+- participant may freely modify the start weight during those first 24 hours
+- after exactly 24 hours, it becomes locked for the participant
+- participant must not be able to unlock it
+- admin must be able to correct a locked start weight
+
+Admin corrections must be audit logged.
+
+Audit data should include at minimum:
+
+- previous value
+- new value
+- timestamp
+- admin/user who performed the change
+
+Assess how this should fit the existing admin architecture.
+
+==================================================
+F. REGULAR WEIGHT LOGGING
+==================================================
+
+Regular weight logging is optional.
+
+Requirements:
+
+- no daily requirement
+- participant may log weight every day if they want
+- weight can ONLY be entered for the current calendar day
+- NO backdating
+- maximum one official weight entry per participant per calendar day
+- today's entry may be edited during the same calendar day
+- once the calendar day has passed, the participant may no longer modify it
+
+Do not tie this functionality to training logs.
+
+Do not introduce mandatory weight images or proof unless such functionality already exists and is explicitly reusable.
+
+==================================================
+G. HIDE MY WEIGHT
+==================================================
+
+Default behavior:
+
+Weight data is visible to all participants.
+
+A participant must be able to enable:
+
+"Hide my weight"
+
+When enabled, ALL of that participant's weight information must disappear for other participants.
+
+That includes:
+
+- start weight
+- latest weight
+- absolute kg change
+- percentage change
+- ranking position
+- all previous weight entries
+- all dates
+- the full weight history
+- the weight chart
+
+The hiding behavior is RETROACTIVE.
+
+If a participant has had public weight data for three weeks and then enables "Hide my weight":
+
+all previously visible weight data must immediately become unavailable to other participants.
+
+If they later disable hiding:
+
+the historical data becomes visible again.
+
+The participant must always be able to see their own data.
+
+Admin must be able to see it.
+
+Game Master must be able to access it internally.
+
+CRITICAL PRIVACY RULE:
+
+Game Master may use hidden weight data internally in its rule engine.
+
+However, it must NEVER publicly disclose hidden weight information through:
+
+- chat
+- roast
+- surprise
+- banner
+- notification
+- other public Game Master output
+
+This includes:
+
+- exact kilograms
+- percentage change
+- trend
+- ranking
+- indirect wording that reveals or strongly implies the person's hidden weight progress
+
+Inspect how this kind of output-safety restriction can be enforced centrally rather than relying on every individual template author to remember it.
+
+==================================================
+H. PUBLIC WEIGHT RANKING
+==================================================
+
+There should be a public weight-loss ranking during the challenge.
+
+Ranking is based on the percentage difference between:
+
+LOCKED START WEIGHT
+
+and
+
+LATEST REGISTERED WEIGHT
+
+Formula:
+
+percentage_change =
+(latest_weight - start_weight) / start_weight * 100
+
+Example:
+
+start_weight = 82.0
+latest_weight = 78.7
+
+percentage_change ≈ -4.02%
+
+A lower / more negative percentage means greater weight loss.
+
+People with "Hide my weight" enabled must NOT appear in the public ranking at all.
+
+For participants with public weight data, other participants should be able to see everything:
+
+- start weight
+- latest weight
+- kg change
+- percentage change
+- complete weight history
+- dates of all weigh-ins
+- full weight chart
+
+The ranking always compares start weight to the participant's latest registered weight.
+
+It does NOT matter how old the latest entry is.
+
+The latest registered entry remains the current ranking value until a new one is logged.
+
+==================================================
+I. FINAL WEIGH-IN
+==================================================
+
+The official final weigh-in will happen physically, in person, when all participants are together at the finale.
+
+A participant who has hidden their weight throughout the challenge is still fully eligible to win the weight-loss competition.
+
+The privacy setting only controls public visibility during the challenge.
+
+It must not remove the person from the actual competition logic.
+
+==================================================
+J. GAME MASTER CONTEXT
+==================================================
+
+The desired direction is to avoid individual templates/rules making arbitrary direct database queries.
+
+First inspect the existing implementation.
+
+Then assess how a centralized or shared Game Master context layer could fit the current architecture.
+
+Game Master should eventually be able to receive relevant context from:
+
+TRAINING:
+- participant/user
+- activity
+- training date
+- registration timestamp
+- training duration
+- whether today's requirement is complete
+- current streak
+- missed days
+- debt
+- relevant training history
+- any other useful metadata already stored today
+
+CHAT:
+- full message text
+- sender
+- exact timestamp
+- chat activity metadata
+- relevant recent history
+- simple text matches / rule triggers
+
+WEIGHT:
+- start weight
+- latest weight
+- percentage change
+- weight history
+- is_weight_hidden
+
+Again:
+
+Game Master remains RULE-BASED.
+
+No LLM.
+No AI chatbot.
+No semantic language model.
+
+==================================================
+K. AUTHORIZATION / SECURITY
+==================================================
+
+Inspect how authorization and RLS are implemented today.
+
+These rules must NOT be enforced only through the frontend.
+
+A malicious or manually modified client request must not be able to bypass them.
+
+CHAT SECURITY PRINCIPLES:
+
+Authenticated challenge participants may:
+- read the shared chat
+- create their own participant messages
+
+Participants may NOT:
+- impersonate another participant
+- create messages as GAME MASTER
+- edit participant messages
+- delete participant messages
+
+Only trusted Game Master/server-side logic may create:
+
+sender_type = game_master
+
+Assess whether this should be enforced using:
+- RLS
+- database constraints
+- RPC/server function
+- service role
+- existing backend patterns
+
+Follow the project's existing architecture where reasonable.
+
+WEIGHT SECURITY PRINCIPLES:
+
+Participant may:
+- create their own current-day weight
+- modify their own current-day weight
+- set their own start weight
+- edit their start weight during the first 24 hours
+- toggle their own weight visibility
+
+Participant may NOT:
+- create backdated entries
+- modify old weight entries
+- modify another participant's data
+- change their locked start weight after 24 hours
+
+Admin may:
+- correct locked start weight
+- read hidden weight data
+
+Game Master may:
+- internally read hidden weight data
+
+Other participants may:
+- read weight data only if the owner has not hidden it
+
+Hidden weight data must be protected at the data/access level.
+
+It is NOT sufficient to fetch the data to the client and merely hide the UI component.
+
+==================================================
+L. REALTIME
+==================================================
+
+The intended direction is:
+
+Supabase Postgres + Supabase Realtime
+
+Do NOT build a separate WebSocket server unless the existing architecture gives a very strong reason to do so.
+
+Inspect:
+
+- whether Realtime is already enabled anywhere
+- existing subscription patterns
+- existing Supabase client patterns
+- cleanup/unsubscribe handling
+- auth/session behavior
+- whether RLS interacts correctly with the intended realtime model
+
+Recommend the cleanest integration point.
+
+==================================================
+M. EXPECTED DELIVERABLE
+==================================================
+
+DO NOT IMPLEMENT ANYTHING.
+
+Return a structured technical report containing:
+
+1. Current application architecture
+2. Exact relevant file paths
+3. Existing database tables relevant to this work
+4. Existing migrations relevant to this work
+5. Existing RLS policies relevant to this work
+6. Existing authentication / role / admin model
+7. Existing Game Master architecture
+8. Exact Game Master event types currently present
+9. Exact training metadata Game Master can access today
+10. Explicit answer to:
+   "Does Game Master already have access to all relevant training metadata?"
+11. Existing effect/output types
+12. Existing candidate / eligibility / cooldown / silence pipeline
+13. Existing tests covering Game Master
+14. Existing Realtime usage, if any
+15. Gaps between the existing implementation and these new requirements
+16. Conflicts or architectural problems you discovered
+17. Recommended database model for chat
+18. Recommended database model for weight tracking
+19. Recommended audit model for start-weight corrections
+20. Recommended RLS/security design
+21. Recommended Realtime integration
+22. Recommended integration into the existing Game Master pipeline
+23. Recommended way to enforce hidden-weight privacy for public Game Master outputs
+24. Existing files likely to require modification
+25. New files/migrations likely to be needed
+26. Recommended implementation sequence broken into small, independently testable stages
+27. Risks, unanswered questions, or decisions that should be made BEFORE implementation
+
+Be concrete.
+
+Use real:
+- file paths
+- database names
+- function names
+- hook names
+- type names
+- component names
+- migration names
+
+from the repository.
+
+Do not invent names for existing code.
+
+If something does not exist, explicitly say that it does not exist.
+
+If you are uncertain, inspect further instead of guessing.
+
+STOP after the report.
+
+DO NOT:
+- modify files
+- create files
+- create migrations
+- write implementation code
+- run destructive database commands
+- commit changes

@@ -93,16 +93,16 @@ async function decodeViaImageElement(file: File): Promise<DecodedImage> {
         reject(new Error('image load failed'));
       };
       img.src = url;
-      // `decode()` rejects on a genuine decode failure in browsers that support
-      // it; where it is missing, `onload` / `onerror` above still settle us.
+      // Best-effort fast path: resolve as soon as the pixels are decoded, so
+      // the first `drawImage` does not pay a synchronous decode. A `decode()`
+      // *rejection* is deliberately NOT fatal — WebKit rejects it spuriously
+      // for a detached <img> — `onerror` is the authoritative failure signal.
       if (typeof img.decode === 'function') {
-        img.decode().then(
+        void img.decode().then(
           () => {
             resolve();
           },
-          () => {
-            reject(new Error('image decode failed'));
-          },
+          () => undefined,
         );
       }
     });
