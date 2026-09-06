@@ -10,11 +10,15 @@
 --     the owner and an admin always see them; toggling hidden off makes the
 --     same historical rows visible again with no data migration
 --   * no role may INSERT / UPDATE / DELETE any of the three tables directly
---   * every challenge member may see the weight_competition_results row exists
+--   * weight_competition_results: a co-member may read the row while the winner
+--     is not hidden, or once disclosed; while the winner is HIDDEN and
+--     undisclosed the row is ABSENT to a co-member (identity + percentage are
+--     only ever reachable through weight_final_result's field gate). The winner
+--     themselves and an admin can always read it directly.
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(32);
+select plan(36);
 
 set local role postgres;
 
@@ -167,6 +171,15 @@ select is(
    where challenge_id = '00000000-0000-0000-0000-0000000acf01'),
   1, 'the co-member still sees their own (non-hidden) weight_profiles row');
 
+-- The competition winner (a1004) is now hidden and NOT disclosed. A co-member
+-- must not be able to learn the winner's identity / percentage through a raw
+-- select on weight_competition_results — the row itself is absent to them
+-- (weight_final_result is the only sanctioned surface, and it field-gates).
+select is(
+  (select count(*)::int from public.weight_competition_results
+   where challenge_id = '00000000-0000-0000-0000-0000000acf01'),
+  0, 'a co-member cannot directly read the competition row while the winner is hidden and undisclosed');
+
 -- Rex (the hidden owner) still sees their own data unconditionally.
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000a1004","role":"authenticated"}', true);
@@ -179,6 +192,12 @@ select is(
   (select count(*)::int from public.weight_entries
    where user_id = '00000000-0000-0000-0000-0000000a1004'),
   1, 'the hidden participant still sees their OWN weight_entries');
+-- ...including the competition row where they are the (still hidden) winner.
+select is(
+  (select winner_user_id from public.weight_competition_results
+   where challenge_id = '00000000-0000-0000-0000-0000000acf01'),
+  '00000000-0000-0000-0000-0000000a1004'::uuid,
+  'the winner themselves can always directly read their own competition row');
 
 -- Admin still sees the hidden participant's data.
 select set_config('request.jwt.claims',
@@ -191,6 +210,11 @@ select is(
   (select count(*)::int from public.weight_entries
    where user_id = '00000000-0000-0000-0000-0000000a1004'),
   1, 'an admin always sees a hidden participant''s weight_entries');
+select is(
+  (select winner_user_id from public.weight_competition_results
+   where challenge_id = '00000000-0000-0000-0000-0000000acf01'),
+  '00000000-0000-0000-0000-0000000a1004'::uuid,
+  'an admin can always directly read the competition row (oversight preserved)');
 
 -- ========================================================================
 -- Section D — retroactive: toggle hidden OFF, prior rows visible again
@@ -211,6 +235,11 @@ select is(
   (select weight_kg from public.weight_entries
    where user_id = '00000000-0000-0000-0000-0000000a1004'),
   81.2, 'un-hiding makes the prior weight_entries visible again with identical values');
+select is(
+  (select winner_user_id from public.weight_competition_results
+   where challenge_id = '00000000-0000-0000-0000-0000000acf01'),
+  '00000000-0000-0000-0000-0000000a1004'::uuid,
+  'un-hiding the winner makes the competition row directly visible to a co-member again');
 
 -- ========================================================================
 -- Section E — a non-member sees nothing

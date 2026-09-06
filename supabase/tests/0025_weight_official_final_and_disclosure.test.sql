@@ -17,10 +17,14 @@
 --                               winner's weight_profiles/weight_entries stay
 --                               invisible (independent mechanisms); a non-hidden
 --                               winner / the winner / an admin always see real
+--   weight_competition_results  a co-member cannot go around weight_final_result:
+--                               a raw select on the table returns no row while
+--                               the winner is HIDDEN and undisclosed; disclosure
+--                               (or a non-hidden winner) lifts that row gate
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(27);
+select plan(29);
 
 set local role postgres;
 
@@ -161,6 +165,14 @@ select ok(
 select is(
   (select disclosed from public.weight_final_result('00000000-0000-0000-0000-0000000dcf01')),
   false, 'and disclosed is false');
+-- ...and the co-member cannot go around weight_final_result: a raw select on
+-- weight_competition_results returns no row at all while the hidden winner is
+-- undisclosed (the field gate is not the only thing standing between them and
+-- the winner's identity + percentage).
+select is(
+  (select count(*)::int from public.weight_competition_results
+   where challenge_id = '00000000-0000-0000-0000-0000000dcf01'),
+  0, 'a co-member cannot directly read weight_competition_results for a hidden, undisclosed winner');
 
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000d1003","role":"authenticated"}', true);
@@ -215,6 +227,15 @@ select is(
   (select count(*)::int from public.weight_entries
    where user_id = '00000000-0000-0000-0000-0000000d1003'),
   0, 'nor any of the winner''s weight_entries — the two mechanisms are independent');
+-- Disclosure DOES lift the row-level gate on weight_competition_results itself:
+-- the winner + percentage are now public, so a direct read is fine (it is the
+-- same {name, %} weight_final_result now returns). Start/final kg + history stay
+-- gated by weight_profiles / weight_entries RLS (asserted just above).
+select is(
+  (select winner_user_id from public.weight_competition_results
+   where challenge_id = '00000000-0000-0000-0000-0000000dcf01'),
+  '00000000-0000-0000-0000-0000000d1003'::uuid,
+  'after disclosure a co-member CAN directly read the (now public) competition row');
 
 -- ========================================================================
 -- Section G — re-finalize that CHANGES the winner clears the disclosure
