@@ -8,13 +8,13 @@ const {
   fetchRecentChatMessages,
   fetchOlderChatMessages,
   fetchUnreadCount,
-  postChatMessage,
+  sendChatMessage,
   markChatRead,
 } = vi.hoisted(() => ({
   fetchRecentChatMessages: vi.fn(),
   fetchOlderChatMessages: vi.fn(),
   fetchUnreadCount: vi.fn(),
-  postChatMessage: vi.fn(),
+  sendChatMessage: vi.fn(),
   markChatRead: vi.fn(),
 }));
 
@@ -23,8 +23,12 @@ vi.mock('./chat-api', () => ({
   fetchRecentChatMessages,
   fetchOlderChatMessages,
   fetchUnreadCount,
-  postChatMessage,
+  sendChatMessage,
   markChatRead,
+}));
+
+vi.mock('./chat-media', () => ({
+  chatImageSignedUrl: vi.fn().mockResolvedValue(null),
 }));
 
 /**
@@ -102,6 +106,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     senderDisplayName: 'Pia',
     body: `body ${seq}`,
     status: 'active',
+    attachments: [],
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -249,18 +254,18 @@ describe('useUnreadChatCount', () => {
 
 describe('usePostChatMessage', () => {
   it('does not throw out of the caller when the post rejects', async () => {
-    postChatMessage.mockRejectedValue(new Error('rate limit'));
+    sendChatMessage.mockRejectedValue(new Error('rate limit'));
     const { result } = renderHook(() => usePostChatMessage(), { wrapper });
     // .mutate is fire-and-forget — it must never throw synchronously or
     // produce an unhandled rejection.
     expect(() =>
-      result.current.mutate({ challengeId: 'c1', body: 'x' }),
+      result.current.mutate({ challengeId: 'c1', userId: 'u1', body: 'x' }),
     ).not.toThrow();
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
 
   it('invalidates the message list on a successful post', async () => {
-    postChatMessage.mockResolvedValue(row(5));
+    sendChatMessage.mockResolvedValue(row(5));
     const client = new QueryClient();
     const spy = vi.spyOn(client, 'invalidateQueries');
     const localWrapper = ({ children }: { children: ReactNode }) => (
@@ -269,9 +274,25 @@ describe('usePostChatMessage', () => {
     const { result } = renderHook(() => usePostChatMessage(), {
       wrapper: localWrapper,
     });
-    result.current.mutate({ challengeId: 'c1', body: 'x' });
+    result.current.mutate({ challengeId: 'c1', userId: 'u1', body: 'x' });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(spy).toHaveBeenCalledWith({ queryKey: chatKeys.messages('c1') });
+  });
+
+  it('forwards image files to sendChatMessage', async () => {
+    sendChatMessage.mockResolvedValue(row(6));
+    const { result } = renderHook(() => usePostChatMessage(), { wrapper });
+    const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' });
+    result.current.mutate({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: '',
+      files: [file],
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ files: [file], userId: 'u1' }),
+    );
   });
 });
 

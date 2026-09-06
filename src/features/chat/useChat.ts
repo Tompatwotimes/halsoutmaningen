@@ -12,8 +12,9 @@ import {
   fetchRecentChatMessages,
   fetchUnreadCount,
   markChatRead,
-  postChatMessage,
+  sendChatMessage,
 } from './chat-api';
+import { chatImageSignedUrl } from './chat-media';
 import type { ChatMessage } from './types';
 
 /**
@@ -135,23 +136,61 @@ export function useUnreadChatCount(
 
 interface PostVars {
   challengeId: string;
+  userId: string;
   body: string;
+  /** 0–4 image files; the upload + atomic RPC happen inside the mutation. */
+  files?: File[];
 }
 
 /**
  * Use `.mutate()` (never `.mutateAsync()`) from a fire-and-forget caller —
  * `.mutate` never throws; a rejection lands in `isError`, not the call site.
+ * The mutation covers image upload + the atomic `post_chat_message` RPC, and
+ * cleans up uploaded objects if the RPC fails.
  */
 export function usePostChatMessage() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: PostVars) =>
-      postChatMessage(vars.challengeId, vars.body),
+      sendChatMessage({
+        challengeId: vars.challengeId,
+        userId: vars.userId,
+        body: vars.body,
+        files: vars.files ?? [],
+      }),
     onSuccess: (_data, vars) => {
       void queryClient.invalidateQueries({
         queryKey: chatKeys.messages(vars.challengeId),
       });
     },
+  });
+}
+
+/**
+ * Resolve short-lived signed URLs for one message's image attachments, only
+ * when the bubble is actually rendered. The storage read policy
+ * (`_chat_attachment_readable`) is the real gate: a hidden message's objects
+ * return no URL (the query then yields `null` for that slot).
+ */
+export function useChatImageUrls(
+  messageId: string,
+  attachments: { position: number; path: string }[],
+) {
+  return useQuery({
+    queryKey: ['chat', 'images', messageId, attachments.map((a) => a.path)],
+    enabled: attachments.length > 0,
+    queryFn: async () => {
+      const out = await Promise.all(
+        attachments.map(async (a) => ({
+          position: a.position,
+          url: await chatImageSignedUrl(a.path),
+        })),
+      );
+      return out;
+    },
+    staleTime: 90_000,
+    retry: false,
+    throwOnError: false,
   });
 }
 

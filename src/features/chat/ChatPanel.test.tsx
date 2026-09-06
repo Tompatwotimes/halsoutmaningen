@@ -4,22 +4,36 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatMessage } from './types';
 
-// jsdom has no scrollIntoView — give it a spy so the B1 tests can assert on it.
+// jsdom has no scrollIntoView / createObjectURL — stub them.
 beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn();
+  if (!('createObjectURL' in URL)) {
+    Object.defineProperty(URL, 'createObjectURL', { value: () => 'blob:x' });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: () => undefined });
+  }
 });
 
-const { useChatMessagesMock, useMarkChatReadMock, usePostChatMessageMock } =
-  vi.hoisted(() => ({
-    useChatMessagesMock: vi.fn<() => Record<string, unknown>>(),
-    useMarkChatReadMock: vi.fn<() => Record<string, unknown>>(),
-    usePostChatMessageMock: vi.fn<() => Record<string, unknown>>(),
-  }));
+const {
+  useChatMessagesMock,
+  useMarkChatReadMock,
+  usePostChatMessageMock,
+  probeImageMock,
+} = vi.hoisted(() => ({
+  useChatMessagesMock: vi.fn<() => Record<string, unknown>>(),
+  useMarkChatReadMock: vi.fn<() => Record<string, unknown>>(),
+  usePostChatMessageMock: vi.fn<() => Record<string, unknown>>(),
+  probeImageMock: vi.fn(),
+}));
 
 vi.mock('./useChat', () => ({
   useChatMessages: () => useChatMessagesMock(),
   useMarkChatRead: () => useMarkChatReadMock(),
   usePostChatMessage: () => usePostChatMessageMock(),
+  useChatImageUrls: () => ({ data: [], isLoading: false }),
+}));
+
+vi.mock('@/features/challenge/heic', () => ({
+  probeImage: probeImageMock,
 }));
 
 import { ChatPanel } from './ChatPanel';
@@ -34,6 +48,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     senderDisplayName: 'Anna',
     body: `body ${seq}`,
     status: 'active',
+    attachments: [],
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -48,10 +63,26 @@ function wrap(node: ReactNode) {
 let markReadMutate = vi.fn();
 let fetchNextPage = vi.fn();
 
-function prime(over: Partial<ReturnType<typeof buildQuery>> = {}): void {
+let postMutate = vi.fn();
+
+function prime(
+  over: Partial<ReturnType<typeof buildQuery>> = {},
+  post: Record<string, unknown> = {},
+): void {
   useChatMessagesMock.mockReturnValue({ ...buildQuery(), ...over });
   useMarkChatReadMock.mockReturnValue({ mutate: markReadMutate });
-  usePostChatMessageMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  usePostChatMessageMock.mockReturnValue({
+    mutate: postMutate,
+    isPending: false,
+    isError: false,
+    ...post,
+  });
+  probeImageMock.mockResolvedValue({
+    decodable: true,
+    width: 10,
+    height: 10,
+    likelyHeic: false,
+  });
 }
 
 function buildQuery() {
@@ -110,6 +141,7 @@ afterEach(() => {
   vi.clearAllMocks();
   markReadMutate = vi.fn();
   fetchNextPage = vi.fn();
+  postMutate = vi.fn();
 });
 
 const BASE_PROPS = {
@@ -393,5 +425,78 @@ describe('ChatPanel scroll behaviour (B1)', () => {
     ctl.scrollTop = 120;
     ctl.fireScroll();
     expect(markReadMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatPanel image composer (B3)', () => {
+  function jpeg(name = 'a.jpg') {
+    return new File(['x'], name, { type: 'image/jpeg' });
+  }
+
+  it('shows a preview thumbnail after picking an image and can remove it', async () => {
+    const user = userEvent.setup();
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    const input = screen.getByLabelText('Välj bilder');
+    await user.upload(input, jpeg());
+
+    const strip = await screen.findByTestId('chat-compose-images');
+    expect(strip.querySelectorAll('img')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Ta bort bild 1' }));
+    expect(screen.queryByTestId('chat-compose-images')).not.toBeInTheDocument();
+  });
+
+  it('sends the picked files with the message and clears them on success', async () => {
+    const user = userEvent.setup();
+    postMutate = vi.fn((_vars, opts?: { onSuccess?: () => void }) =>
+      opts?.onSuccess?.(),
+    );
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    await user.upload(screen.getByLabelText('Välj bilder'), jpeg());
+    await screen.findByTestId('chat-compose-images');
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+
+    expect(postMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ challengeId: 'c1', userId: 'u1' }),
+      expect.anything(),
+    );
+    const [vars] = postMutate.mock.calls[0] as [{ files: File[] }];
+    expect(vars.files).toHaveLength(1);
+    expect(screen.queryByTestId('chat-compose-images')).not.toBeInTheDocument();
+  });
+
+  it('rejects a fifth image and keeps four', async () => {
+    const user = userEvent.setup();
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const input = screen.getByLabelText('Välj bilder');
+    await user.upload(input, [jpeg('1'), jpeg('2'), jpeg('3'), jpeg('4')]);
+    await screen.findByTestId('chat-compose-images');
+    await user.upload(input, jpeg('5'));
+
+    expect(
+      screen.getByTestId('chat-compose-images').querySelectorAll('img'),
+    ).toHaveLength(4);
+    expect(screen.getByText(/högst fyra bilder/i)).toBeInTheDocument();
+  });
+
+  it('disables send and shows a pending label while a send is in flight', () => {
+    prime({ messages: [row(1)] }, { isPending: true });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByRole('button', { name: /laddar upp/i })).toBeDisabled();
+  });
+
+  it('an image-only send is allowed (send enabled with no text)', async () => {
+    const user = userEvent.setup();
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByRole('button', { name: 'Skicka' })).toBeDisabled();
+    await user.upload(screen.getByLabelText('Välj bilder'), jpeg());
+    await screen.findByTestId('chat-compose-images');
+    expect(screen.getByRole('button', { name: 'Skicka' })).toBeEnabled();
   });
 });

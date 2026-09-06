@@ -15,6 +15,18 @@ export type ChatSenderType = 'participant' | 'game_master';
 
 export type ChatMessageStatus = 'active' | 'hidden';
 
+/**
+ * One image attachment on a chat message. `path` is a private storage-object
+ * name in the `chat-media` bucket — useless without a signed URL, and the
+ * storage read policy (`_chat_attachment_readable`) denies one for a hidden
+ * message. `list_chat_messages` returns an empty list for a hidden message
+ * seen by a non-admin, so a non-admin never even receives the paths.
+ */
+export interface ChatAttachment {
+  position: number;
+  path: string;
+}
+
 export interface ChatMessage {
   id: string;
   seq: number;
@@ -35,6 +47,12 @@ export interface ChatMessage {
    */
   body: string | null;
   status: ChatMessageStatus;
+  /**
+   * Image attachments in display order (0–4). Empty for a text-only message,
+   * and empty for a hidden message seen by a non-admin — the server withholds
+   * the paths, exactly like `body`.
+   */
+  attachments: ChatAttachment[];
   /**
    * Admin-only. Never populated for a non-admin viewer (the `list_chat_messages`
    * read surface does not project it). Kept on the type for admin tooling.

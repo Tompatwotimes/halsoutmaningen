@@ -1,6 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import type { ChatMessage, ChatMessageStatus, ChatSenderType } from './types';
+import type {
+  ChatAttachment,
+  ChatMessage,
+  ChatMessageStatus,
+  ChatSenderType,
+} from './types';
+import {
+  newChatMessageId,
+  removeChatImages,
+  uploadChatImages,
+} from './chat-media';
+import { ChatError } from './chat-error';
 
 /**
  * Shared chat — Supabase adapter boundary.
@@ -24,12 +35,10 @@ import type { ChatMessage, ChatMessageStatus, ChatSenderType } from './types';
 // `npm run db:types` has run (see the plan's rollout section).
 const chatdb = supabase as unknown as SupabaseClient;
 
-export class ChatError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ChatError';
-  }
-}
+// Re-exported so existing importers (`import { ChatError } from './chat-api'`)
+// keep working; the class now lives in ./chat-error to avoid an import cycle
+// with ./chat-media.
+export { ChatError };
 
 interface RpcResult {
   data: unknown;
@@ -71,6 +80,18 @@ function narrowSenderType(v: unknown): ChatSenderType {
 function narrowStatus(v: unknown): ChatMessageStatus {
   return v === 'hidden' ? 'hidden' : 'active';
 }
+function narrowAttachments(v: unknown): ChatAttachment[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((raw): ChatAttachment | null => {
+      const r = asRecord(raw);
+      const path = jstrOrNull(r.path);
+      const position = jnum(r.position);
+      return path && position > 0 ? { position, path } : null;
+    })
+    .filter((a): a is ChatAttachment => a !== null)
+    .sort((a, b) => a.position - b.position);
+}
 
 export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
   return {
@@ -84,6 +105,7 @@ export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
     // withholds it; `displayBody` renders the placeholder regardless.
     body: jstrOrNull(raw.body),
     status: narrowStatus(raw.status),
+    attachments: narrowAttachments(raw.attachments),
     hiddenReason: jstrOrNull(raw.hidden_reason),
     gameMasterEventId: jstrOrNull(raw.game_master_event_id),
     createdAt: jstr(raw.created_at),
@@ -94,21 +116,63 @@ export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
 // Writes (RPCs)
 // ---------------------------------------------------------------------------
 
+export interface SendChatMessageInput {
+  challengeId: string;
+  /** Required to build the `chat-media` upload path when there are images. */
+  userId: string;
+  /** Trimmed text, or empty when the message is image-only. */
+  body: string;
+  /** 0–4 already-picked image files. */
+  files?: File[];
+}
+
 /**
- * Post one message. The server sets `sender_user_id` (always the caller) and
- * `sender_type` ('participant') itself — this call carries only the challenge
- * id and the body, so a client cannot impersonate another user or post as
- * Game Master.
+ * Post one message, with 0–4 images, atomically.
+ *
+ * The server sets `sender_user_id` (always the caller) and `sender_type`
+ * ('participant') itself. When there are images the client generates the
+ * message id, uploads the files to `chat-media/{challenge}/{uid}/{id}/…`, then
+ * `post_chat_message` inserts the message row and its attachment rows in one
+ * transaction. If that RPC fails the uploaded objects are removed.
  */
-export async function postChatMessage(
-  challengeId: string,
-  body: string,
+export async function sendChatMessage(
+  input: SendChatMessageInput,
 ): Promise<ChatMessage> {
+  const body = input.body.trim();
+  const files = input.files ?? [];
+
+  if (body.length === 0 && files.length === 0) {
+    throw new ChatError('Meddelandet kan inte vara tomt.');
+  }
+  if (files.length > 4) {
+    throw new ChatError('Högst fyra bilder per meddelande.');
+  }
+
+  if (files.length === 0) {
+    const { data, error } = await chatRpc('post_chat_message', {
+      p_challenge_id: input.challengeId,
+      p_body: body.length > 0 ? body : null,
+    });
+    if (error) throw new ChatError(chatMessageError(error.message));
+    return mapChatRow(asRecord(data));
+  }
+
+  const messageId = newChatMessageId();
+  const prepared = await uploadChatImages(
+    input.challengeId,
+    input.userId,
+    messageId,
+    files,
+  );
+
   const { data, error } = await chatRpc('post_chat_message', {
-    p_challenge_id: challengeId,
-    p_body: body,
+    p_challenge_id: input.challengeId,
+    p_body: body.length > 0 ? body : null,
+    p_message_id: messageId,
+    p_attachments: prepared,
   });
   if (error) {
+    await removeChatImages(prepared.map((p) => p.path));
     throw new ChatError(chatMessageError(error.message));
   }
   return mapChatRow(asRecord(data));

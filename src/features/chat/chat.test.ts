@@ -20,6 +20,7 @@ function msg(overrides: Partial<ChatMessage>): ChatMessage {
     senderDisplayName: 'Pia',
     body: 'hej',
     status: 'active',
+    attachments: [],
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',

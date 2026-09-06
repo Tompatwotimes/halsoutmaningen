@@ -19,13 +19,19 @@ export const CHAT_RATE_LIMIT_WINDOW_SECONDS = 30;
 export function displayBody(message: {
   status: ChatMessageStatus;
   body: string | null;
-}): string {
-  // A hidden message never shows its text — and the server already withholds
-  // `body` (sends null) for a non-admin viewer, so treat a missing body as
-  // hidden too rather than rendering an empty bubble.
-  return message.status === 'hidden' || message.body === null
-    ? HIDDEN_MESSAGE_PLACEHOLDER
-    : message.body;
+  /** Optional — pre-image callers can omit it. */
+  attachments?: { position: number; path: string }[];
+}): string | null {
+  // A hidden message never shows its text (and the server withholds it, and
+  // its attachments, sending null / []).
+  if (message.status === 'hidden') return HIDDEN_MESSAGE_PLACEHOLDER;
+  if (message.body !== null) return message.body;
+  // body === null: an image-only active message renders no text line; a
+  // text-less message with nothing to show at all falls back to the
+  // placeholder (a withheld body with no attachments — the pre-image case).
+  return (message.attachments?.length ?? 0) > 0
+    ? null
+    : HIDDEN_MESSAGE_PLACEHOLDER;
 }
 
 /**

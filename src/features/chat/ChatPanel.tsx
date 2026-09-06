@@ -12,6 +12,10 @@ import { Button } from '@/components/ui/Button';
 import { Sheet } from '@/components/ui/Sheet';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
+import { ImageIcon, CloseIcon } from '@/components/icons';
+import { probeImage } from '@/features/challenge/heic';
+import { ChatImageGrid } from './ChatImageGrid';
+import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import {
@@ -64,6 +68,19 @@ export function ChatPanel({
   const { mutate: markRead } = useMarkChatRead();
   const post = usePostChatMessage();
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Object URLs for the pending-image previews, created and revoked with `files`.
+  const previewUrls = useMemo(
+    () => files.map((f) => URL.createObjectURL(f)),
+    [files],
+  );
+  useEffect(
+    () => () => previewUrls.forEach((u) => URL.revokeObjectURL(u)),
+    [previewUrls],
+  );
 
   // --- scroll positioning (B1) --------------------------------------------
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -199,16 +216,47 @@ export function ChatPanel({
   }, [messages, timeZone]);
 
   const canSend =
-    draft.trim().length > 0 &&
+    (draft.trim().length > 0 || files.length > 0) &&
     draft.length <= CHAT_BODY_MAX_LENGTH &&
     !post.isPending;
 
   function send() {
     if (!canSend) return;
     post.mutate(
-      { challengeId, body: draft },
-      { onSuccess: () => setDraft('') },
+      { challengeId, userId, body: draft, files },
+      {
+        onSuccess: () => {
+          setDraft('');
+          setFiles([]);
+          setImageError(null);
+        },
+      },
     );
+  }
+
+  async function addImages(picked: FileList | null) {
+    setImageError(null);
+    if (!picked || picked.length === 0) return;
+    const next = [...files];
+    for (const file of Array.from(picked)) {
+      if (next.length >= CHAT_IMAGE_MAX_COUNT) {
+        setImageError('Högst fyra bilder per meddelande.');
+        break;
+      }
+      const probe = await probeImage(file);
+      if (!probe.decodable) {
+        setImageError('En av bilderna kunde inte läsas och hoppades över.');
+        continue;
+      }
+      next.push(file);
+    }
+    setFiles(next);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  }
+
+  function removeImageAt(i: number) {
+    setFiles((prev) => prev.filter((_, idx) => idx !== i));
+    setImageError(null);
   }
 
   function jumpToLatest() {
@@ -235,18 +283,60 @@ export function ChatPanel({
         send();
       }}
     >
-      <textarea
-        className={styles.input}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        placeholder="Skriv ett meddelande…"
-        rows={2}
-        maxLength={CHAT_BODY_MAX_LENGTH + 200}
-        aria-label="Skriv ett meddelande"
-      />
-      <Button type="submit" size="sm" disabled={!canSend}>
-        Skicka
-      </Button>
+      {files.length > 0 && (
+        <div className={styles.pickStrip} data-testid="chat-compose-images">
+          {files.map((file, i) => (
+            <span key={`${file.name}-${i}`} className={styles.pickThumb}>
+              <img src={previewUrls[i]} alt="" />
+              <button
+                type="button"
+                onClick={() => removeImageAt(i)}
+                aria-label={`Ta bort bild ${i + 1}`}
+              >
+                <CloseIcon />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={styles.composeRow}>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className={styles.hiddenFile}
+          tabIndex={-1}
+          aria-label="Välj bilder"
+          onChange={(e) => void addImages(e.target.files)}
+        />
+        <button
+          type="button"
+          className={styles.imageButton}
+          onClick={() => imageInputRef.current?.click()}
+          disabled={files.length >= CHAT_IMAGE_MAX_COUNT || post.isPending}
+          aria-label="Lägg till bild"
+        >
+          <ImageIcon />
+        </button>
+        <textarea
+          className={styles.input}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Skriv ett meddelande…"
+          rows={2}
+          maxLength={CHAT_BODY_MAX_LENGTH + 200}
+          aria-label="Skriv ett meddelande"
+        />
+        <Button type="submit" size="sm" disabled={!canSend}>
+          {post.isPending ? 'Laddar upp…' : 'Skicka'}
+        </Button>
+      </div>
+      {imageError && (
+        <p className={styles.sendError} role="status">
+          {imageError}
+        </p>
+      )}
       {post.isError && (
         <p className={styles.sendError} role="status">
           Meddelandet kunde inte skickas — försök igen.
@@ -341,6 +431,7 @@ function MessageRow({
   moderation: ReactNode;
 }) {
   const isGameMaster = message.senderType === 'game_master';
+  const text = displayBody(message);
   return (
     <div
       className={[
@@ -363,9 +454,17 @@ function MessageRow({
         )}
         <time className={styles.time}>{formatTime(message.createdAt)}</time>
       </div>
-      <p className={styles.body} data-testid="chat-message-body">
-        {displayBody(message)}
-      </p>
+      {text !== null && (
+        <p className={styles.body} data-testid="chat-message-body">
+          {text}
+        </p>
+      )}
+      {message.attachments.length > 0 && (
+        <ChatImageGrid
+          messageId={message.id}
+          attachments={message.attachments}
+        />
+      )}
       {moderation}
     </div>
   );
