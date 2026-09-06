@@ -120,11 +120,22 @@ function computeTargetSize(
 }
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
+type Ctx2d = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-function createCanvas(width: number, height: number): AnyCanvas {
+/**
+ * A drawable canvas + its 2D context. `OffscreenCanvas` is used opportunistically
+ * (only when it actually yields a 2D context), never mandatorily — a detached
+ * `<canvas>` is the always-available fallback. Both are off-DOM.
+ */
+function createDrawSurface(
+  width: number,
+  height: number,
+): { canvas: AnyCanvas; ctx: Ctx2d } | null {
   if (typeof OffscreenCanvas === 'function') {
     try {
-      return new OffscreenCanvas(width, height);
+      const offscreen = new OffscreenCanvas(width, height);
+      const ctx = offscreen.getContext('2d');
+      if (ctx) return { canvas: offscreen, ctx };
     } catch {
       // fall through to a DOM canvas
     }
@@ -132,19 +143,14 @@ function createCanvas(width: number, height: number): AnyCanvas {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  return canvas;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  return { canvas, ctx };
 }
 
 function releaseCanvas(canvas: AnyCanvas): void {
   canvas.width = 0;
   canvas.height = 0;
-}
-
-function get2dContext(
-  canvas: AnyCanvas,
-): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {
-  if (canvas instanceof HTMLCanvasElement) return canvas.getContext('2d');
-  return canvas.getContext('2d');
 }
 
 let webpEncodeSupport: boolean | null = null;
@@ -275,15 +281,15 @@ export async function processImageForUpload(
             : 'image/jpeg';
 
     // 6. Draw.
-    const canvas = createCanvas(target.width, target.height);
+    const surface = createDrawSurface(target.width, target.height);
+    if (!surface) {
+      throw new ImageProcessingError(
+        'encode-failed',
+        'Bilden kunde inte bearbetas i den här webbläsaren.',
+      );
+    }
+    const { canvas, ctx } = surface;
     try {
-      const ctx = get2dContext(canvas);
-      if (!ctx) {
-        throw new ImageProcessingError(
-          'encode-failed',
-          'Bilden kunde inte bearbetas i den här webbläsaren.',
-        );
-      }
       if (mime === 'image/jpeg') {
         // JPEG has no alpha — flatten transparency onto white, not black.
         ctx.fillStyle = '#ffffff';

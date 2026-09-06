@@ -264,6 +264,24 @@ describe('processImageForUpload — size / quality', () => {
   });
 });
 
+describe('processImageForUpload — OffscreenCanvas path', () => {
+  it('uses OffscreenCanvas.convertToBlob when available', async () => {
+    canvas = installCanvasEncodeMock({
+      offscreenCanvas: true,
+      webpSupported: true,
+      sizeFor: () => 150_000,
+    });
+    decodeImageMock.mockResolvedValue(fakeDecoded(3000, 2000));
+    const result = await processImageForUpload(
+      fakeImageFile('a.jpg', 'image/jpeg', 9e6),
+      { maxLongSidePx: 1600, format: 'auto' },
+    );
+    expect(result.wasProcessed).toBe(true);
+    expect(result.sizeBytes).toBe(150_000);
+    expect(canvas.encodeCalls.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('processImageForUpload — encode failure & cleanup', () => {
   it('throws "encode-failed" when the canvas produces no blob', async () => {
     canvas = installCanvasEncodeMock({ sizeFor: () => null });
