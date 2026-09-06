@@ -11,6 +11,7 @@ import {
   removeChatImages,
   uploadChatImages,
 } from './chat-media';
+import type { UploadPhaseCallback } from '@/lib/media/image-processing';
 import { ChatError } from './chat-error';
 
 /**
@@ -124,6 +125,8 @@ export interface SendChatMessageInput {
   body: string;
   /** 0–4 already-picked image files. */
   files?: File[];
+  /** Composer progress: `'processing'` (compressing) then `'uploading'`. */
+  onPhase?: UploadPhaseCallback;
 }
 
 /**
@@ -163,6 +166,7 @@ export async function sendChatMessage(
     input.userId,
     messageId,
     files,
+    input.onPhase,
   );
 
   const { data, error } = await chatRpc('post_chat_message', {

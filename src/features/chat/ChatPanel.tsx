@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { ImageIcon, CloseIcon } from '@/components/icons';
 import { probeImage } from '@/features/challenge/heic';
+import type { UploadPhase } from '@/lib/media/image-processing';
 import { ChatImageGrid } from './ChatImageGrid';
 import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
@@ -71,6 +72,7 @@ export function ChatPanel({
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [composePhase, setComposePhase] = useState<UploadPhase | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Object URLs for the pending-image previews, created and revoked with `files`.
@@ -283,12 +285,15 @@ export function ChatPanel({
   function send() {
     if (!canSend) return;
     post.mutate(
-      { challengeId, userId, body: draft, files },
+      { challengeId, userId, body: draft, files, onPhase: setComposePhase },
       {
         onSuccess: () => {
           setDraft('');
           setFiles([]);
           setImageError(null);
+        },
+        onSettled: () => {
+          setComposePhase(null);
         },
       },
     );
@@ -388,7 +393,11 @@ export function ChatPanel({
           aria-label="Skriv ett meddelande"
         />
         <Button type="submit" size="sm" disabled={!canSend}>
-          {post.isPending ? 'Laddar upp…' : 'Skicka'}
+          {composePhase === 'processing'
+            ? 'Förbereder bild…'
+            : composePhase === 'uploading' || post.isPending
+              ? 'Laddar upp…'
+              : 'Skicka'}
         </Button>
       </div>
       {imageError && (

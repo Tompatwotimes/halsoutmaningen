@@ -594,6 +594,33 @@ describe('ChatPanel image composer (B3)', () => {
     expect(screen.getByRole('button', { name: /laddar upp/i })).toBeDisabled();
   });
 
+  it('shows "Förbereder bild…" then "Laddar upp…" as the send reports progress', async () => {
+    const user = userEvent.setup();
+    let capturedOnPhase: ((p: 'processing' | 'uploading') => void) | undefined;
+    postMutate = vi.fn(
+      (vars: { onPhase?: (p: 'processing' | 'uploading') => void }) => {
+        capturedOnPhase = vars.onPhase;
+      },
+    );
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    await user.upload(screen.getByLabelText('Välj bilder'), jpeg());
+    await screen.findByTestId('chat-compose-images');
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(capturedOnPhase).toBeTypeOf('function');
+
+    capturedOnPhase?.('processing');
+    expect(
+      await screen.findByRole('button', { name: /förbereder bild/i }),
+    ).toBeInTheDocument();
+
+    capturedOnPhase?.('uploading');
+    expect(
+      await screen.findByRole('button', { name: /laddar upp/i }),
+    ).toBeInTheDocument();
+  });
+
   it('an image-only send is allowed (send enabled with no text)', async () => {
     const user = userEvent.setup();
     prime({ messages: [row(1)] });
