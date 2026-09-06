@@ -34,6 +34,32 @@
   opacity: 0.5;
 }
 
+/*
+ * "Nya meddelanden" — shown only while the reader is scrolled up in history
+ * and newer messages have arrived. Sticks to the bottom of the scroll
+ * viewport, above the composer, and never moves the viewport on its own.
+ */
+.newMessages {
+  position: sticky;
+  bottom: var(--sp-2);
+  align-self: center;
+  margin-top: calc(-1 * var(--sp-2));
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-accent-contrast);
+  background: var(--c-accent);
+  border: none;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.newMessages:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
 .daySeparator {
   align-self: center;
   margin: var(--sp-2) 0;

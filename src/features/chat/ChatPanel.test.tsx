@@ -1,8 +1,13 @@
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatMessage } from './types';
+
+// jsdom has no scrollIntoView — give it a spy so the B1 tests can assert on it.
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+});
 
 const { useChatMessagesMock, useMarkChatReadMock, usePostChatMessageMock } =
   vi.hoisted(() => ({
@@ -40,16 +45,19 @@ function wrap(node: ReactNode) {
   return render(<>{node}</>);
 }
 
+let markReadMutate = vi.fn();
+let fetchNextPage = vi.fn();
+
 function prime(over: Partial<ReturnType<typeof buildQuery>> = {}): void {
   useChatMessagesMock.mockReturnValue({ ...buildQuery(), ...over });
-  useMarkChatReadMock.mockReturnValue({ mutate: vi.fn() });
+  useMarkChatReadMock.mockReturnValue({ mutate: markReadMutate });
   usePostChatMessageMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
 }
 
 function buildQuery() {
   return {
     messages: [] as ChatMessage[],
-    fetchNextPage: vi.fn(),
+    fetchNextPage,
     hasNextPage: false,
     isFetchingNextPage: false,
     isLoading: false,
@@ -57,7 +65,52 @@ function buildQuery() {
   };
 }
 
-afterEach(() => vi.clearAllMocks());
+/**
+ * jsdom reports 0 for every layout metric and no-ops `scrollIntoView`. Give one
+ * element real, mutable scroll geometry so the B1 positioning logic can be
+ * driven and asserted.
+ */
+function mockScroller(
+  el: HTMLElement,
+  metrics: { scrollHeight: number; clientHeight: number; scrollTop?: number },
+) {
+  let top = metrics.scrollTop ?? 0;
+  Object.defineProperty(el, 'scrollHeight', {
+    configurable: true,
+    get: () => metrics.scrollHeight,
+  });
+  Object.defineProperty(el, 'clientHeight', {
+    configurable: true,
+    get: () => metrics.clientHeight,
+  });
+  Object.defineProperty(el, 'scrollTop', {
+    configurable: true,
+    get: () => top,
+    set: (v: number) => {
+      top = v;
+    },
+  });
+  return {
+    get scrollTop() {
+      return top;
+    },
+    set scrollTop(v: number) {
+      top = v;
+    },
+    grow(to: number) {
+      metrics.scrollHeight = to;
+    },
+    fireScroll() {
+      el.dispatchEvent(new Event('scroll'));
+    },
+  };
+}
+
+afterEach(() => {
+  vi.clearAllMocks();
+  markReadMutate = vi.fn();
+  fetchNextPage = vi.fn();
+});
 
 const BASE_PROPS = {
   open: true,
@@ -188,5 +241,157 @@ describe('ChatPanel', () => {
     prime({ messages: [row(1)] });
     const { container } = wrap(<ChatPanel {...BASE_PROPS} open={false} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('ChatPanel scroll behaviour (B1)', () => {
+  function openWithMessages(
+    initial: ChatMessage[],
+    metrics: { scrollHeight: number; clientHeight: number; scrollTop?: number },
+  ) {
+    // Open → brief loading → messages arrive, mirroring the real lifecycle so
+    // the container ref is mounted before the first positioning pass.
+    prime({ isLoading: true });
+    const view = wrap(<ChatPanel {...BASE_PROPS} />);
+    const el = screen.getByRole('log').parentElement!;
+    const ctl = mockScroller(el, metrics);
+    prime({ isLoading: false, messages: initial });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+    return { view, el, ctl };
+  }
+
+  it('opens pinned to the newest message', () => {
+    const { ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 800,
+      clientHeight: 300,
+      scrollTop: 0,
+    });
+    expect(ctl.scrollTop).toBe(800);
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 3 });
+  });
+
+  it('keeps the same message in view when older history is prepended', () => {
+    const { view, ctl } = openWithMessages([row(10), row(11), row(12)], {
+      scrollHeight: 800,
+      clientHeight: 300,
+    });
+    // reader scrolls up to the top
+    ctl.scrollTop = 0;
+    ctl.fireScroll();
+    prime({
+      isLoading: false,
+      messages: [row(10), row(11), row(12)],
+      hasNextPage: true,
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /ladda äldre meddelanden/i }),
+    );
+    expect(fetchNextPage).toHaveBeenCalled();
+
+    // older page renders — list grows by 600px
+    ctl.grow(1400);
+    prime({
+      isLoading: false,
+      messages: [row(7), row(8), row(9), row(10), row(11), row(12)],
+      hasNextPage: true,
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    // scrollTop shifted by exactly the height delta → viewport did not jump
+    expect(ctl.scrollTop).toBe(600);
+  });
+
+  it('follows an incoming message when the reader is near the bottom', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    const { view, ctl } = openWithMessages([row(1), row(2)], {
+      scrollHeight: 500,
+      clientHeight: 400,
+      scrollTop: 100, // 500-100-400 = 0 → at the bottom
+    });
+    ctl.fireScroll();
+    markReadMutate.mockClear();
+
+    prime({ isLoading: false, messages: [row(1), row(2), row(3)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' }),
+    );
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 3 });
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it('does not yank the reader down while they read history — shows "Nya meddelanden"', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    const { view, ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 900,
+      clientHeight: 300,
+    });
+    // reader scrolls well up
+    ctl.scrollTop = 100; // 900-100-300 = 500 > 96 → not near bottom
+    ctl.fireScroll();
+    scrollIntoView.mockClear();
+    markReadMutate.mockClear();
+
+    prime({ isLoading: false, messages: [row(1), row(2), row(3), row(4)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    // viewport untouched, read cursor not advanced, indicator shown
+    expect(ctl.scrollTop).toBe(100);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(markReadMutate).not.toHaveBeenCalled();
+    const pill = screen.getByRole('button', { name: /nya meddelanden/i });
+
+    // tapping it jumps to the latest and clears itself
+    ctl.grow(1100);
+    fireEvent.click(pill);
+    expect(ctl.scrollTop).toBe(1100);
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 4 });
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it("always follows the viewer's own outgoing message even if scrolled up", () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    const { view, ctl } = openWithMessages([row(1), row(2)], {
+      scrollHeight: 900,
+      clientHeight: 300,
+    });
+    ctl.scrollTop = 50;
+    ctl.fireScroll();
+    scrollIntoView.mockClear();
+
+    // own message arrives (senderUserId === BASE_PROPS.userId)
+    prime({
+      isLoading: false,
+      messages: [row(1), row(2), row(3, { senderUserId: 'u1' })],
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it('does not advance the read cursor while only scrolling through old history', () => {
+    const { ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 900,
+      clientHeight: 300,
+    });
+    markReadMutate.mockClear();
+    ctl.scrollTop = 0;
+    ctl.fireScroll();
+    ctl.scrollTop = 120;
+    ctl.fireScroll();
+    expect(markReadMutate).not.toHaveBeenCalled();
   });
 });
