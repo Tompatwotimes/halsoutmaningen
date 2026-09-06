@@ -1162,6 +1162,174 @@ export type Database = {
           },
         ]
       }
+      weight_competition_results: {
+        Row: {
+          challenge_id: string
+          determined_at: string
+          determined_by: string | null
+          disclosed_at: string | null
+          disclosed_by: string | null
+          winner_percentage_change: number | null
+          winner_user_id: string | null
+        }
+        Insert: {
+          challenge_id: string
+          determined_at?: string
+          determined_by?: string | null
+          disclosed_at?: string | null
+          disclosed_by?: string | null
+          winner_percentage_change?: number | null
+          winner_user_id?: string | null
+        }
+        Update: {
+          challenge_id?: string
+          determined_at?: string
+          determined_by?: string | null
+          disclosed_at?: string | null
+          disclosed_by?: string | null
+          winner_percentage_change?: number | null
+          winner_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weight_competition_results_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: true
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weight_competition_results_determined_by_fkey"
+            columns: ["determined_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weight_competition_results_disclosed_by_fkey"
+            columns: ["disclosed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weight_competition_results_winner_user_id_fkey"
+            columns: ["winner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weight_entries: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          entry_date: string
+          id: string
+          updated_at: string
+          user_id: string
+          weight_kg: number
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          entry_date: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          weight_kg: number
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          entry_date?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          weight_kg?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weight_entries_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weight_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weight_profiles: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          is_weight_hidden: boolean
+          official_final_recorded_at: string | null
+          official_final_recorded_by: string | null
+          official_final_weight_kg: number | null
+          start_weight_first_saved_at: string | null
+          start_weight_kg: number | null
+          start_weight_locked_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          is_weight_hidden?: boolean
+          official_final_recorded_at?: string | null
+          official_final_recorded_by?: string | null
+          official_final_weight_kg?: number | null
+          start_weight_first_saved_at?: string | null
+          start_weight_kg?: number | null
+          start_weight_locked_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          is_weight_hidden?: boolean
+          official_final_recorded_at?: string | null
+          official_final_recorded_by?: string | null
+          official_final_weight_kg?: number | null
+          start_weight_first_saved_at?: string | null
+          start_weight_kg?: number | null
+          start_weight_locked_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weight_profiles_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weight_profiles_official_final_recorded_by_fkey"
+            columns: ["official_final_recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weight_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1233,6 +1401,14 @@ export type Database = {
           p_source: string
         }
         Returns: string
+      }
+      _weight_is_hidden: {
+        Args: { p_challenge_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      _weight_winner_is_hidden: {
+        Args: { p_challenge_id: string }
+        Returns: boolean
       }
       add_training_session: {
         Args: {
@@ -1438,6 +1614,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      correct_start_weight: {
+        Args: {
+          p_challenge_id: string
+          p_reason: string
+          p_user_id: string
+          p_weight_kg: number
+        }
+        Returns: undefined
+      }
       create_challenge: {
         Args: {
           p_description?: string
@@ -1474,6 +1659,10 @@ export type Database = {
         }
       }
       current_user_role: { Args: never; Returns: string }
+      disclose_weight_winner: {
+        Args: { p_challenge_id: string }
+        Returns: undefined
+      }
       duplicate_challenge: {
         Args: {
           p_copy_roster?: boolean
@@ -1502,6 +1691,24 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "challenges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      finalize_weight_competition: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          challenge_id: string
+          determined_at: string
+          determined_by: string | null
+          disclosed_at: string | null
+          disclosed_by: string | null
+          winner_percentage_change: number | null
+          winner_user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "weight_competition_results"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -1559,6 +1766,24 @@ export type Database = {
           seq: number
           status: string
         }[]
+      }
+      log_weight_entry: {
+        Args: { p_challenge_id: string; p_weight_kg: number }
+        Returns: {
+          challenge_id: string
+          created_at: string
+          entry_date: string
+          id: string
+          updated_at: string
+          user_id: string
+          weight_kg: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "weight_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       mark_chat_read: {
         Args: { p_challenge_id: string; p_seq: number }
@@ -1702,6 +1927,41 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      set_official_final_weight: {
+        Args: {
+          p_challenge_id: string
+          p_reason: string
+          p_user_id: string
+          p_weight_kg: number
+        }
+        Returns: undefined
+      }
+      set_start_weight: {
+        Args: { p_challenge_id: string; p_weight_kg: number }
+        Returns: {
+          challenge_id: string
+          created_at: string
+          is_weight_hidden: boolean
+          official_final_recorded_at: string | null
+          official_final_recorded_by: string | null
+          official_final_weight_kg: number | null
+          start_weight_first_saved_at: string | null
+          start_weight_kg: number | null
+          start_weight_locked_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "weight_profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_weight_hidden: {
+        Args: { p_challenge_id: string; p_hidden: boolean }
+        Returns: undefined
+      }
       shares_challenge_with: {
         Args: { p_other_user: string }
         Returns: boolean
@@ -1727,6 +1987,27 @@ export type Database = {
           p_public_roasts_enabled: boolean
         }
         Returns: undefined
+      }
+      weight_final_result: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          disclosed: boolean
+          winner_display_name: string
+          winner_percentage_change: number
+          winner_user_id: string
+        }[]
+      }
+      weight_public_ranking: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          display_name: string
+          kg_change: number
+          latest_entry_date: string
+          latest_weight_kg: number
+          percentage_change: number
+          start_weight_kg: number
+          user_id: string
+        }[]
       }
     }
     Enums: {
