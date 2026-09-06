@@ -1,0 +1,83 @@
+name: Deploy to production
+
+# MANUAL PROMOTION GATE.
+#
+# This is the ONLY sanctioned path that promotes new application code to
+# production traffic. It never runs on push / pull_request — it runs only when
+# a maintainer clicks "Run workflow" (workflow_dispatch) AND the required
+# reviewer approves the `production` GitHub Environment.
+#
+# Ordering that makes this real (see docs/DEPLOYMENT.md §1.6):
+#   1. The Cloudflare Workers Builds git integration for the `halsoutmaningen`
+#      Worker MUST be disconnected — otherwise Cloudflare keeps auto-deploying
+#      every push to `main` and this gate is bypassed.
+#   2. Repo secrets CLOUDFLARE_API_TOKEN (scope: "Edit Cloudflare Workers",
+#      account-scoped, nothing else) and CLOUDFLARE_ACCOUNT_ID must be set.
+#   3. Repo variables VITE_SUPABASE_URL / VITE_PUBLIC_SITE_URL and secret
+#      VITE_SUPABASE_ANON_KEY must be set (all public, RLS-enforced values —
+#      docs/DEPLOYMENT.md §1.4).
+#
+# What still happens automatically on push to main: nothing that touches
+# production. `database-tests.yml` runs on pull_request; normal CI / review
+# gates apply. Code reaches users only through this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or SHA to deploy (default: main)'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and promote to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The approval gate. Configure `production` under Settings → Environments
+    # with at least one Required reviewer. Without that, this job runs on
+    # dispatch alone — still manual, but unreviewed.
+    environment:
+      name: production
+      url: ${{ vars.VITE_PUBLIC_SITE_URL }}
+
+    steps:
+      - name: Checkout the ref being deployed
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the frontend
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_PUBLIC_SITE_URL: ${{ vars.VITE_PUBLIC_SITE_URL }}
+
+      - name: Deploy the Worker (promotes to production traffic)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: Record what was deployed
+        run: |
+          echo "Deployed ref: ${{ inputs.ref }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
