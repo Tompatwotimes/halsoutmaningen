@@ -229,32 +229,32 @@ create policy weight_entries_select on public.weight_entries
     )
   );
 
+-- Correction (2026-09-06): row-level gate, NOT "any member".
 create policy weight_competition_results_select on public.weight_competition_results
   for select to authenticated
   using (
     public.is_admin()
-    or public.is_challenge_member(challenge_id)
-    -- Every authenticated challenge member may read this table's row, but the
-    -- CONTENT of winner_user_id/winner_percentage_change for a hidden winner
-    -- is only meaningful once disclosed_at is set — enforced by having
-    -- weight_public_ranking / the frontend read model never surface
-    -- winner_user_id at all until disclosed_at is not null. This table's own
-    -- RLS intentionally does NOT hide the row itself (there is exactly one
-    -- row per challenge and hiding it entirely would also hide "has a winner
-    -- been determined yet" from ordinary participants) — the read model is
-    -- the enforcement point for the narrower "which fields," per the general
-    -- centralized-enforcement principle used throughout this project.
+    or winner_user_id = (select auth.uid())
+    or (
+      public.is_challenge_member(challenge_id)
+      and (
+        disclosed_at is not null
+        or not public._weight_winner_is_hidden(challenge_id)
+      )
+    )
   );
 
 -- No INSERT/UPDATE/DELETE policy on any of the three tables — every write
 -- goes through §2's RPCs.
 ```
 
-**Important, explicit design note on `weight_competition_results`:** RLS on Postgres is row-level, not column-level — it cannot itself say "show this row but blank two columns depending on `disclosed_at`." Two implementation options exist, and this spec recommends the second for consistency with the "centralize at the render/read boundary" principle used everywhere else in this project (see Game Master spec §5's identical reasoning for hidden-weight output safety):
-1. A `security invoker` read RPC (`weight_final_result(p_challenge_id)`) that returns `winner_user_id`/`winner_percentage_change` as `NULL` unless `disclosed_at is not null` or the caller is the winner/an admin — this is the recommended shape, mirroring `weight_public_ranking`'s own pattern.
-2. Relying on the frontend to withhold the fields — **explicitly rejected**, per "do not fetch hidden data to the client and merely hide the UI component" (§4, and the project's existing hard rule).
+**Important, explicit design note on `weight_competition_results` (corrected 2026-09-06):** RLS on Postgres is row-level, not column-level — it cannot show a row while blanking two columns based on `disclosed_at`. The original spec proposed keeping an "any challenge member may read the row" policy and relying only on a `security invoker` `weight_final_result` RPC to gate `winner_user_id` / `winner_percentage_change`. **That is a leak:** those are directly-selectable columns, so a raw PostgREST `select winner_user_id, winner_percentage_change from weight_competition_results` by any member bypasses the RPC entirely and exposes exactly the `{identity, percentage}` pair `disclose_weight_winner` exists to protect — functionally equivalent to option 2, which §4 explicitly rejects. The final code review of PR #4 caught this before merge.
 
-So: add `weight_final_result(p_challenge_id uuid) returns table(winner_user_id uuid, winner_display_name text, winner_percentage_change numeric, disclosed boolean)` to §2 as `weight_final_result` — `security invoker`, returns `null` for `winner_user_id`/`winner_display_name`/`winner_percentage_change` when `disclosed_at is null` and the caller is neither the winner nor an admin, otherwise returns the real values. This keeps the actual withholding logic in exactly one server-side place, never the client.
+**Corrected design:**
+1. The `weight_competition_results` SELECT policy (above) gates the **whole row**: admin always; the winner themselves always; a co-member only when `disclosed_at is not null` **or** the winner is not hidden (`_weight_winner_is_hidden`, a one-boolean SECURITY DEFINER predicate — an inline `weight_profiles` subquery here would be RLS-filtered). While the winner is hidden and undisclosed the row is **absent** to a co-member.
+2. `weight_final_result(p_challenge_id uuid) returns table(winner_user_id uuid, winner_display_name text, winner_percentage_change numeric, disclosed boolean)` is **`security definer`** (with an in-body `is_admin() or is_challenge_member` re-check — the membership scope an invoker would have inherited from RLS). Because the policy above hides the row from a co-member pre-disclosure, an invoker read model would return no row and could not emit the `disclosed=false` signal a co-member is entitled to; as definer it always sees the row and applies the winner-field gate itself (`null` for `winner_user_id`/`winner_display_name`/`winner_percentage_change` when `disclosed_at is null` and the caller is neither the winner nor an admin nor a co-member-of-a-non-hidden-winner). It still returns only name + percentage — never any start/final kg or history.
+
+"Has a winner been determined / disclosed yet" stays observable to every co-member through `weight_final_result` (one row, always, with a `disclosed` boolean), so hiding the base row costs the co-member nothing they are entitled to. This keeps the withholding logic server-side in one place, never the client — the original intent, now actually enforced.
 
 ---
 
@@ -350,6 +350,7 @@ More negative = more weight lost. Uses `weight_entries`'s **latest row by `entry
 - `weight_public_ranking`: excludes a hidden participant entirely — for an ordinary co-member caller **and** for an admin caller (the explicit `not is_weight_hidden` predicate, proven for both roles); an admin can still read that same hidden participant's `weight_profiles`/`weight_entries` directly (oversight unchanged); excludes a participant with no locked start weight; excludes a participant with zero entries; uses the latest entry regardless of its age; percentage formula matches §7 exactly for a known fixture (e.g. 82.0 → 78.7 ≈ −4.02%).
 - `finalize_weight_competition`: includes a hidden participant in the winner computation (assert a hidden participant CAN be computed as the winner); re-running after a `correct_start_weight`/`set_official_final_weight` change updates the stored winner.
 - `disclose_weight_winner`: before disclosure, `weight_final_result` returns null winner fields to an ordinary co-member for a hidden winner; after disclosure, it returns `winner_user_id`/`winner_percentage_change` but the co-member still cannot read the winner's `start_weight_kg`/`official_final_weight_kg`/history via `weight_profiles`/`weight_entries` (still hidden) — the two are proven independent in the same test.
+- `weight_competition_results` direct read (corrected 2026-09-06): a co-member's raw `select` on the table returns **no row** while the winner is hidden and `disclosed_at is null` — the winner-self and an admin can always read it; a direct `select` for a non-hidden winner works; disclosure lifts the row gate. This is a real access attempt as `role authenticated` + participant JWT, not a check through `weight_final_result` (0022 §C, 0025 §D/§F).
 - Isolation: a `training_entries` insert/read and `challenge_results()` output are byte-identical before/after every weight RPC in this spec runs (mirrors the Game Master isolation-proof pattern in `supabase/tests/0017_game_master_rls_audit_cron.test.sql`).
 
 ## 13. Vitest coverage

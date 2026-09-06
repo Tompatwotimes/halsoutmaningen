@@ -25,7 +25,11 @@
 --                                — backdating is structurally impossible (§2.3).
 --   weight_competition_results   one row per challenge: the official winner,
 --                                with a narrow separate disclosure gate for a
---                                hidden winner (§1.3 / §2.7).
+--                                hidden winner (§1.3 / §2.7). Its SELECT policy
+--                                hides the WHOLE row from a co-member while the
+--                                winner is hidden and undisclosed — the winner
+--                                identity + percentage are only ever reachable
+--                                through weight_final_result's field gate.
 --
 -- Weight tracking must not change or affect completed/missed day state,
 -- training requirement, streak, debt/liability, KASSAN, training ranking,
@@ -196,6 +200,35 @@ $$;
 revoke all on function public._weight_is_hidden(uuid, uuid) from public, anon;
 grant execute on function public._weight_is_hidden(uuid, uuid) to authenticated;
 
+-- Is the CURRENT Viktkampen winner (weight_competition_results.winner_user_id)
+-- a participant who has hidden their weight? SECURITY DEFINER, same shape as
+-- _weight_is_hidden / is_challenge_member: it must answer this for a co-member
+-- who (correctly) cannot see that winner's weight_profiles row. Returns ONE
+-- boolean — never a weight value, name, kg or percentage. Used both by the
+-- weight_competition_results SELECT policy below (to hide the whole row from a
+-- co-member while the winner is hidden and undisclosed) and by
+-- weight_final_result (the field-gated read model). Defined here, not in the
+-- RPC migration, because the policy below needs it.
+create or replace function public._weight_winner_is_hidden(p_challenge_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.weight_competition_results r
+    join public.weight_profiles wp
+      on wp.challenge_id = r.challenge_id and wp.user_id = r.winner_user_id
+    where r.challenge_id = p_challenge_id
+      and wp.is_weight_hidden
+  );
+$$;
+
+revoke all on function public._weight_winner_is_hidden(uuid) from public, anon;
+grant execute on function public._weight_winner_is_hidden(uuid) to authenticated;
+
 alter table public.weight_profiles            enable row level security;
 alter table public.weight_entries             enable row level security;
 alter table public.weight_competition_results enable row level security;
@@ -232,14 +265,34 @@ create policy weight_entries_select on public.weight_entries
     )
   );
 
--- Any challenge member (not just admin) may read this row — hiding the row
--- itself would also hide "has a winner been determined yet". WHICH fields a
--- hidden winner exposes is gated by weight_final_result (§3), not here.
+-- The admin and the winner themselves always see the row. A co-member sees it
+-- only when nothing sensitive is on it: either the winner is not hidden, or the
+-- winner is hidden but an admin has explicitly disclosed them. While the winner
+-- is hidden AND undisclosed the row is ABSENT to a co-member — winner_user_id /
+-- winner_percentage_change are columns on this row, so a table-wide grant + a
+-- "any member" policy would let a raw PostgREST select read exactly the
+-- {identity, percentage} pair that disclose_weight_winner exists to protect
+-- (spec §2.7 / §4), bypassing weight_final_result's field gate.
+--
+-- "Has a winner been determined / disclosed yet" stays observable to every
+-- co-member through weight_final_result (SECURITY DEFINER), which always
+-- returns exactly one row with a `disclosed` boolean — so hiding the base row
+-- here costs the co-member nothing they are entitled to.
+--
+-- _weight_winner_is_hidden is SECURITY DEFINER (an inline subquery on
+-- weight_profiles here would be RLS-filtered and could not see the hidden row).
 create policy weight_competition_results_select on public.weight_competition_results
   for select to authenticated
   using (
     public.is_admin()
-    or public.is_challenge_member(challenge_id)
+    or winner_user_id = (select auth.uid())
+    or (
+      public.is_challenge_member(challenge_id)
+      and (
+        disclosed_at is not null
+        or not public._weight_winner_is_hidden(challenge_id)
+      )
+    )
   );
 
 -- No INSERT / UPDATE / DELETE policy on any of the three tables: set_start_weight,

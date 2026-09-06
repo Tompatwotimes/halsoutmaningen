@@ -8,12 +8,19 @@
 -- SECURITY DEFINER, language plpgsql, set search_path = '', schema-qualified,
 -- EXECUTE revoked from public/anon and granted to authenticated — the same
 -- convention as 20260905140100_chat_rpcs.sql /
--- 20260904100100_retroactive_registration_rpcs.sql. The two read models
--- (weight_public_ranking, weight_final_result) are SECURITY INVOKER so RLS
--- still applies for whoever calls them (spec §2.8 / §3 / §4). weight_public_
--- ranking ALSO carries an explicit `not is_weight_hidden` domain predicate so
--- its output is identical for a participant and an admin — the public ranking
--- is never an admin-inspection surface.
+-- 20260904100100_retroactive_registration_rpcs.sql.
+--
+-- Read models:
+--   * weight_public_ranking  — SECURITY INVOKER, so RLS applies, AND carries an
+--     explicit `not is_weight_hidden` domain predicate so its output is
+--     identical for a participant and an admin; the public ranking is never an
+--     admin-inspection surface (spec §2.8).
+--   * weight_final_result    — SECURITY DEFINER (membership re-checked in-body).
+--     The weight_competition_results SELECT policy hides the whole row from a
+--     co-member while the winner is hidden and undisclosed; an invoker read
+--     model would then get no row and could not return the `disclosed=false`
+--     signal a co-member is entitled to. It applies the winner-field gate
+--     itself and never returns start/final kg or history (spec §3 / §4).
 --
 --   set_start_weight(challenge, kg)                participant, once + 24h window
 --   correct_start_weight(challenge, user, kg, reason)  admin, value only, audited
@@ -23,7 +30,7 @@
 --   set_official_final_weight(challenge, user, kg, reason)  admin, audited (Task 6)
 --   finalize_weight_competition(challenge)        admin, never consults hidden (Task 6)
 --   disclose_weight_winner(challenge)             admin (Task 6)
---   weight_final_result(challenge)                read model, invoker (Task 6)
+--   weight_final_result(challenge)                read model, definer (Task 6)
 --
 -- Weight tracking never touches training / day state / streak / liability /
 -- KASSAN / training ranking / Straffbanken / retroactive registration.
@@ -531,35 +538,14 @@ comment on function public.disclose_weight_winner(uuid) is
 revoke all on function public.disclose_weight_winner(uuid) from public, anon;
 grant execute on function public.disclose_weight_winner(uuid) to authenticated;
 
--- ----------------------------------------------------------------------------
--- _weight_winner_is_hidden  (targeted predicate for weight_final_result)
--- ----------------------------------------------------------------------------
--- Single-boolean helper, same shape as is_admin() / is_challenge_member():
--- SECURITY DEFINER so it can answer "is the current winner hidden?" even for a
--- co-member who (correctly) cannot see that winner's weight_profiles row. It
--- exposes ONE boolean — never a weight value, name or history.
-create or replace function public._weight_winner_is_hidden(p_challenge_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1
-    from public.weight_competition_results r
-    join public.weight_profiles wp
-      on wp.challenge_id = r.challenge_id and wp.user_id = r.winner_user_id
-    where r.challenge_id = p_challenge_id
-      and wp.is_weight_hidden
-  );
-$$;
-
-revoke all on function public._weight_winner_is_hidden(uuid) from public, anon;
-grant execute on function public._weight_winner_is_hidden(uuid) to authenticated;
+-- _weight_winner_is_hidden(p_challenge_id) — the "is the current winner a
+-- hidden participant?" one-boolean SECURITY DEFINER predicate — is defined in
+-- 20260905150000_weight_schema.sql (the weight_competition_results SELECT
+-- policy needs it, so it has to exist before this migration runs). Both that
+-- policy and weight_final_result below consult it.
 
 -- ----------------------------------------------------------------------------
--- weight_final_result  (read model — SECURITY INVOKER, field-gated by disclosure)
+-- weight_final_result  (read model — SECURITY DEFINER, field-gated by disclosure)
 -- ----------------------------------------------------------------------------
 -- Withholds winner_user_id / winner_display_name / winner_percentage_change
 -- from an ordinary co-member when the winner is HIDDEN and not yet disclosed.
@@ -567,6 +553,16 @@ grant execute on function public._weight_winner_is_hidden(uuid) to authenticated
 -- the winner and any admin always see the real values. The narrower "which
 -- fields" gate lives here, in one server-side place, never the client
 -- (spec §3 design note).
+--
+-- SECURITY DEFINER, not INVOKER: the weight_competition_results SELECT policy
+-- now hides the whole row from a co-member while the winner is hidden and
+-- undisclosed (so a raw PostgREST select can't leak the identity + percentage
+-- that this function is the sanctioned surface for). An invoker read model
+-- would then get no row and could not return the `disclosed=false` signal a
+-- co-member is entitled to. As definer it always sees the row, applies the
+-- field gate itself, and re-checks membership explicitly below (an invoker
+-- would have got that check for free from RLS). It still returns ONLY the
+-- winner's name + percentage — never any start / final kg or history.
 create or replace function public.weight_final_result(p_challenge_id uuid)
 returns table (
   winner_user_id           uuid,
@@ -576,7 +572,7 @@ returns table (
 )
 language sql
 stable
-security invoker
+security definer
 set search_path = ''
 as $$
   select
@@ -594,16 +590,18 @@ as $$
       or not public._weight_winner_is_hidden(r.challenge_id)
     ) as show_it
   ) g
-  where r.challenge_id = p_challenge_id;
+  where r.challenge_id = p_challenge_id
+    -- definer: re-impose the membership scope RLS used to give an invoker.
+    and (public.is_admin() or public.is_challenge_member(r.challenge_id));
 $$;
 
 comment on function public.weight_final_result(uuid) is
-  'Participant-facing official result. Returns NULL winner_user_id/'
-  'display_name/percentage_change to an ordinary co-member while the winner is '
-  'HIDDEN and disclosed_at is null; real values once disclosed, or always for '
-  'a non-hidden winner / the winner themselves / an admin. Never returns any '
-  'start/final kg or history — those stay gated by weight_profiles RLS, '
-  'independent of disclosure.';
+  'Participant-facing official result. SECURITY DEFINER, membership re-checked '
+  'in-body. Returns NULL winner_user_id/display_name/percentage_change to an '
+  'ordinary co-member while the winner is HIDDEN and disclosed_at is null; real '
+  'values once disclosed, or always for a non-hidden winner / the winner '
+  'themselves / an admin. Never returns any start/final kg or history — those '
+  'stay gated by weight_profiles RLS, independent of disclosure.';
 
 revoke all on function public.weight_final_result(uuid) from public, anon;
 grant execute on function public.weight_final_result(uuid) to authenticated;

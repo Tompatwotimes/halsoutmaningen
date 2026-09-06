@@ -16,7 +16,7 @@ Migrations:
 [`…20260905150000_weight_schema.sql`](../supabase/migrations/20260905150000_weight_schema.sql),
 [`…20260905150100_weight_rpcs.sql`](../supabase/migrations/20260905150100_weight_rpcs.sql).
 pgTAP coverage:
-[`supabase/tests/0022…0025`](../supabase/tests/) (32 + 30 + 21 + 27 = **110 assertions**).
+[`supabase/tests/0022…0025`](../supabase/tests/) (36 + 30 + 21 + 29 = **116 assertions**).
 
 ---
 
@@ -131,6 +131,18 @@ full precision, ties broken by `display_name`.
 > and the admin can still read the hidden participant's `start_weight_kg` /
 > `weight_kg` directly.
 
+**`weight_competition_results` follows the same principle.** Its SELECT policy
+is: admin always; the winner themselves always; a co-member only when
+`disclosed_at is not null` **or** `not _weight_winner_is_hidden(challenge_id)`.
+So while the Viktkampen winner is a hidden participant and an admin has **not**
+disclosed them, the whole row is **absent** to a co-member — `winner_user_id`
+and `winner_percentage_change` are columns on that row, so a table-wide grant +
+an "any member" policy would let a raw PostgREST `select` read exactly the
+`{identity, percentage}` pair `disclose_weight_winner` exists to protect,
+bypassing `weight_final_result`'s field gate. "Has a winner been determined /
+disclosed yet" stays observable to every co-member through `weight_final_result`
+(§5), which always returns one row with a `disclosed` boolean.
+
 **Game Master's internal access** (future, not built here) is not via these
 policies — it runs as the definer of its own SECURITY DEFINER context and reads
 `weight_profiles` / `weight_entries` regardless of `is_weight_hidden`; the
@@ -160,13 +172,19 @@ p_reason)`** (admin): mandatory reason on **every** call (no first-time vs
   `disclosed_at`/`by`). The **only** mechanism that makes a hidden winner's
   name + percentage visible to co-members — completely separate from
   `is_weight_hidden`, and it touches nothing else.
-- **`weight_final_result(p_challenge_id)`** (read model, SECURITY INVOKER):
-  returns `winner_user_id`, `winner_display_name`, `winner_percentage_change`,
-  `disclosed`. It consults `_weight_winner_is_hidden(challenge)` — a
-  one-boolean SECURITY DEFINER predicate (same shape as `is_admin()` /
-  `is_challenge_member()`), so a co-member who correctly cannot see a hidden
-  winner's `weight_profiles` row can still be told whether the winner is
-  hidden. It never returns any start / final kg or history.
+- **`weight_final_result(p_challenge_id)`** (read model, **SECURITY DEFINER**,
+  membership re-checked in-body): returns `winner_user_id`,
+  `winner_display_name`, `winner_percentage_change`, `disclosed`. It consults
+  `_weight_winner_is_hidden(challenge)` — a one-boolean SECURITY DEFINER
+  predicate (same shape as `is_admin()` / `is_challenge_member()`) — to apply
+  the winner-field gate. It never returns any start / final kg or history.
+  - It is `SECURITY DEFINER` because the `weight_competition_results` SELECT
+    policy now **hides the whole row** from a co-member while the winner is
+    hidden and `disclosed_at is null` (see §4) — otherwise `winner_user_id` /
+    `winner_percentage_change` would be directly selectable from the table via
+    raw PostgREST, bypassing this gate. An invoker read model would then get no
+    row and could not return the `disclosed=false` signal a co-member is
+    entitled to; as definer it always sees the row and applies the gate itself.
 
 ### Exact visibility matrix — `weight_final_result` (name + percentage only)
 
@@ -178,7 +196,11 @@ p_reason)`** (admin): mandatory reason on **every** call (no first-time vs
 
 **Independent of disclosure:** in **every** cell above, an ordinary co-member's
 direct `select` on the winner's `weight_profiles` / `weight_entries` still
-returns **zero rows** while the winner is hidden. Disclosure reveals the
+returns **zero rows** while the winner is hidden. Before disclosure a direct
+`select` on `weight_competition_results` also returns **zero rows** for a
+co-member (§4); disclosure lifts that row gate (the `{name, %}` it then exposes
+is the same pair `weight_final_result` returns), but the winner's
+`weight_profiles` / `weight_entries` stay hidden. Disclosure reveals the
 _result_ (name + %), never the _weights, chart or history_. A hidden
 non-winner stays fully hidden after the finale. A hidden participant who **wins
 and is disclosed** has their name + final % published — and nothing else.
