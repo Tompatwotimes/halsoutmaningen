@@ -345,3 +345,251 @@ comment on function public.weight_public_ranking(uuid) is
 
 revoke all on function public.weight_public_ranking(uuid) from public, anon;
 grant execute on function public.weight_public_ranking(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- set_official_final_weight  (admin — audited on EVERY call, no first-time branch)
+-- ----------------------------------------------------------------------------
+create or replace function public.set_official_final_weight(
+  p_challenge_id uuid,
+  p_user_id      uuid,
+  p_weight_kg    numeric,
+  p_reason       text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid      uuid := (select auth.uid());
+  v_actor  uuid;
+  v_before numeric;
+begin
+  if not ((uid is null) or public.is_admin()) then
+    raise exception 'Endast administratörer får registrera en officiell slutvikt';
+  end if;
+  if coalesce(btrim(p_reason), '') = '' then
+    raise exception 'Ange en anledning';
+  end if;
+  if p_weight_kg is null or p_weight_kg <= 0 or p_weight_kg > 400 then
+    raise exception 'Ogiltig vikt';
+  end if;
+
+  v_actor := coalesce(uid,
+    (select p.id from public.profiles p where p.role = 'admin' and p.active order by p.created_at limit 1));
+
+  select official_final_weight_kg into v_before from public.weight_profiles
+    where challenge_id = p_challenge_id and user_id = p_user_id
+    for update;
+
+  insert into public.weight_profiles (challenge_id, user_id,
+    official_final_weight_kg, official_final_recorded_at, official_final_recorded_by)
+  values (p_challenge_id, p_user_id, p_weight_kg, now(), v_actor)
+  on conflict (challenge_id, user_id) do update
+    set official_final_weight_kg   = excluded.official_final_weight_kg,
+        official_final_recorded_at = excluded.official_final_recorded_at,
+        official_final_recorded_by = excluded.official_final_recorded_by;
+
+  insert into public.audit_log
+    (actor_user_id, challenge_id, target_user_id, entity_type, entity_id,
+     action, before_data, after_data, note)
+  values (
+    uid, p_challenge_id, p_user_id, 'weight_profile', p_user_id,
+    'official_final_weight_set',
+    jsonb_build_object('official_final_weight_kg', v_before),
+    jsonb_build_object('official_final_weight_kg', p_weight_kg),
+    btrim(p_reason)
+  );
+end;
+$$;
+
+comment on function public.set_official_final_weight(uuid, uuid, numeric, text) is
+  'Admin records/corrects a participant''s official final weigh-in. Mandatory '
+  'reason on EVERY call — no first-time vs correction branch, so every write is '
+  'audited identically (entity_type=weight_profile, action=official_final_weight_set).';
+
+revoke all on function public.set_official_final_weight(uuid, uuid, numeric, text) from public, anon;
+grant execute on function public.set_official_final_weight(uuid, uuid, numeric, text) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- finalize_weight_competition  (admin — hidden participants ARE eligible)
+-- ----------------------------------------------------------------------------
+create or replace function public.finalize_weight_competition(p_challenge_id uuid)
+returns public.weight_competition_results
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid      uuid := (select auth.uid());
+  v_winner uuid;
+  v_pct    numeric;
+  v_row    public.weight_competition_results;
+begin
+  if not ((uid is null) or public.is_admin()) then
+    raise exception 'Endast administratörer får fastställa vinnaren';
+  end if;
+
+  -- Most negative (official_final - start)/start*100 across EVERY participant
+  -- with BOTH weights set. is_weight_hidden is NEVER consulted — a hidden
+  -- participant is fully eligible to win (spec §2.6). SECURITY DEFINER, so this
+  -- read of weight_profiles is intentionally not RLS-scoped.
+  select wp.user_id,
+         round((wp.official_final_weight_kg - wp.start_weight_kg) / wp.start_weight_kg * 100, 2)
+    into v_winner, v_pct
+  from public.weight_profiles wp
+  where wp.challenge_id = p_challenge_id
+    and wp.start_weight_kg is not null
+    and wp.official_final_weight_kg is not null
+  order by (wp.official_final_weight_kg - wp.start_weight_kg) / wp.start_weight_kg asc,
+           wp.user_id asc
+  limit 1;
+
+  insert into public.weight_competition_results
+    (challenge_id, winner_user_id, winner_percentage_change, determined_at, determined_by)
+  values (p_challenge_id, v_winner, v_pct, now(), uid)
+  on conflict (challenge_id) do update
+    set winner_user_id           = excluded.winner_user_id,
+        winner_percentage_change = excluded.winner_percentage_change,
+        determined_at            = excluded.determined_at,
+        determined_by            = excluded.determined_by,
+        -- A re-determination that CHANGES the winner invalidates a prior
+        -- disclosure; the same winner keeps it.
+        disclosed_at = case when public.weight_competition_results.winner_user_id
+                                 is distinct from excluded.winner_user_id
+                            then null else public.weight_competition_results.disclosed_at end,
+        disclosed_by = case when public.weight_competition_results.winner_user_id
+                                 is distinct from excluded.winner_user_id
+                            then null else public.weight_competition_results.disclosed_by end
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.finalize_weight_competition(uuid) is
+  'Admin computes the official Viktkampen winner: most negative '
+  '(official_final - start)/start across every participant with both weights '
+  'set. is_weight_hidden is NEVER consulted — a hidden participant is fully '
+  'eligible. Re-runnable (upsert); changing the winner clears any prior '
+  'disclosure.';
+
+revoke all on function public.finalize_weight_competition(uuid) from public, anon;
+grant execute on function public.finalize_weight_competition(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- disclose_weight_winner  (admin — the ONLY path that reveals a hidden winner)
+-- ----------------------------------------------------------------------------
+create or replace function public.disclose_weight_winner(p_challenge_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid     uuid := (select auth.uid());
+  v_actor uuid;
+begin
+  if not ((uid is null) or public.is_admin()) then
+    raise exception 'Endast administratörer får publicera vinnaren';
+  end if;
+  v_actor := coalesce(uid,
+    (select p.id from public.profiles p where p.role = 'admin' and p.active order by p.created_at limit 1));
+
+  update public.weight_competition_results
+    set disclosed_at = coalesce(disclosed_at, now()),
+        disclosed_by = coalesce(disclosed_by, v_actor)
+  where challenge_id = p_challenge_id;
+
+  if not found then
+    raise exception 'Ingen vinnare är fastställd än';
+  end if;
+end;
+$$;
+
+comment on function public.disclose_weight_winner(uuid) is
+  'Admin publishes the winner. Idempotent (coalesce keeps the first '
+  'disclosed_at/by). The ONLY mechanism that makes a HIDDEN winner''s name + '
+  'percentage visible to co-members — it touches nothing else: not the '
+  'winner''s weight_profiles/weight_entries visibility, not any other '
+  'participant (spec §2.7).';
+
+revoke all on function public.disclose_weight_winner(uuid) from public, anon;
+grant execute on function public.disclose_weight_winner(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- _weight_winner_is_hidden  (targeted predicate for weight_final_result)
+-- ----------------------------------------------------------------------------
+-- Single-boolean helper, same shape as is_admin() / is_challenge_member():
+-- SECURITY DEFINER so it can answer "is the current winner hidden?" even for a
+-- co-member who (correctly) cannot see that winner's weight_profiles row. It
+-- exposes ONE boolean — never a weight value, name or history.
+create or replace function public._weight_winner_is_hidden(p_challenge_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.weight_competition_results r
+    join public.weight_profiles wp
+      on wp.challenge_id = r.challenge_id and wp.user_id = r.winner_user_id
+    where r.challenge_id = p_challenge_id
+      and wp.is_weight_hidden
+  );
+$$;
+
+revoke all on function public._weight_winner_is_hidden(uuid) from public, anon;
+grant execute on function public._weight_winner_is_hidden(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- weight_final_result  (read model — SECURITY INVOKER, field-gated by disclosure)
+-- ----------------------------------------------------------------------------
+-- Withholds winner_user_id / winner_display_name / winner_percentage_change
+-- from an ordinary co-member when the winner is HIDDEN and not yet disclosed.
+-- A non-hidden winner is shown immediately after finalize (nothing to protect);
+-- the winner and any admin always see the real values. The narrower "which
+-- fields" gate lives here, in one server-side place, never the client
+-- (spec §3 design note).
+create or replace function public.weight_final_result(p_challenge_id uuid)
+returns table (
+  winner_user_id           uuid,
+  winner_display_name      text,
+  winner_percentage_change numeric,
+  disclosed                boolean
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select
+    case when g.show_it then r.winner_user_id else null end,
+    case when g.show_it then p.display_name  else null end,
+    case when g.show_it then r.winner_percentage_change else null end,
+    (r.disclosed_at is not null) as disclosed
+  from public.weight_competition_results r
+  left join public.profiles p on p.id = r.winner_user_id
+  cross join lateral (
+    select (
+      r.disclosed_at is not null
+      or public.is_admin()
+      or r.winner_user_id = (select auth.uid())
+      or not public._weight_winner_is_hidden(r.challenge_id)
+    ) as show_it
+  ) g
+  where r.challenge_id = p_challenge_id;
+$$;
+
+comment on function public.weight_final_result(uuid) is
+  'Participant-facing official result. Returns NULL winner_user_id/'
+  'display_name/percentage_change to an ordinary co-member while the winner is '
+  'HIDDEN and disclosed_at is null; real values once disclosed, or always for '
+  'a non-hidden winner / the winner themselves / an admin. Never returns any '
+  'start/final kg or history — those stay gated by weight_profiles RLS, '
+  'independent of disclosure.';
+
+revoke all on function public.weight_final_result(uuid) from public, anon;
+grant execute on function public.weight_final_result(uuid) to authenticated;
