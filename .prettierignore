@@ -9,3 +9,4 @@ supabase
 *.toml
 src/types/database.ts
 package-lock.json
+.claude
