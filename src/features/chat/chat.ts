@@ -58,3 +58,48 @@ export function isWithinRateLimitWindow(
 export function sortBySeq(messages: readonly ChatMessage[]): ChatMessage[] {
   return [...messages].sort((a, b) => a.seq - b.seq);
 }
+
+// ---------------------------------------------------------------------------
+// Scroll positioning (B1 — chat opens at the latest message)
+// ---------------------------------------------------------------------------
+
+/** Default "close enough to the bottom to follow new messages" gap, in px. */
+export const NEAR_BOTTOM_PX = 96;
+
+interface ScrollMetrics {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}
+
+/**
+ * Is the scroll container within `px` of its bottom edge? Used to decide
+ * whether an incoming message should pull the viewport down (follow) or be
+ * announced with the "Nya meddelanden" button instead.
+ */
+export function isNearBottom(el: ScrollMetrics, px = NEAR_BOTTOM_PX): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= px;
+}
+
+/**
+ * How much to add to `scrollTop` after older messages are prepended so the
+ * viewport stays visually anchored on the same message. Never negative — a
+ * shorter list after a refetch must not scroll the user around.
+ */
+export function scrollAnchorAdjustment(
+  prevScrollHeight: number,
+  nextScrollHeight: number,
+): number {
+  const delta = nextScrollHeight - prevScrollHeight;
+  return delta > 0 ? delta : 0;
+}
+
+/**
+ * Whether a newly-arrived message should pull the viewport to the newest
+ * message. The panel additionally always follows the viewer's OWN message
+ * (sending scrolls you down even if you had scrolled up) — that check needs
+ * the sender identity and stays in the component.
+ */
+export function shouldFollowNewMessage(wasNearBottom: boolean): boolean {
+  return wasNearBottom;
+}
