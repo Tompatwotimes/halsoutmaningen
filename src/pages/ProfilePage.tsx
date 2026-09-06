@@ -34,6 +34,7 @@ import { useMyRetroactiveRequests } from '@/features/retroactive/useRetroactive'
 import { LiabilityCard } from '@/features/challenge/LiabilityCard';
 import { MyChallengesCard } from '@/features/challenge/MyChallengesCard';
 import { PersonalCalendar } from '@/features/profile/PersonalCalendar';
+import { WeightSection } from '@/features/weight/WeightSection';
 import { useStraffbank } from '@/features/straffbanken/useStraffbank';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import type { SelfEntry } from '@/features/challenge/types';
@@ -365,6 +366,12 @@ function ChallengeSection({
       <RetroactiveRequestsCard
         challengeId={challenge.id}
         userId={self.userId}
+      />
+
+      <WeightSection
+        challengeId={challenge.id}
+        userId={self.userId}
+        today={today}
       />
 
       <Card title="Din kalender">
