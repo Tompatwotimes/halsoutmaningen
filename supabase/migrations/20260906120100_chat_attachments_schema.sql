@@ -25,20 +25,9 @@
 --   * Nothing here is added to supabase_realtime.
 -- ============================================================================
 
--- Widen the append-only audit entity vocabulary (precedent: 0007, 0014, 0015,
--- 0018, weight). Full current list + 'chat_attachment' (reserved for any future
--- attachment-level moderation; not written by this migration).
-alter table public.audit_log
-  drop constraint if exists audit_log_entity_type_valid;
-alter table public.audit_log
-  add constraint audit_log_entity_type_valid
-  check (entity_type in (
-    'profile', 'challenge', 'challenge_membership', 'training_entry',
-    'training_proof', 'challenge_penalty_definition', 'earned_penalty',
-    'penalty_assignment', 'retroactive_training_request',
-    'game_master_settings', 'game_master_event', 'chat_message',
-    'weight_profile', 'chat_attachment'
-  ));
+-- (No audit-vocabulary change: this migration writes no audit rows. Hiding a
+-- message with images still goes through hide_chat_message, whose existing
+-- 'chat_message' / 'chat_message_hidden' audit row already covers it.)
 
 -- ----------------------------------------------------------------------------
 -- chat_messages — body nullable + composite unique key
