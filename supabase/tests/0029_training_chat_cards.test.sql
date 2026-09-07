@@ -242,20 +242,24 @@ select lives_ok($$
     'olämplig bild')
 $$, 'an admin can hide a training card');
 
+-- A member cannot read chat_messages directly (admin-only) — assert over the
+-- read model instead: the one hidden training card leaks neither field.
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-000000002902","role":"authenticated"}', true);
-select ok(
-  (select training_card is null and body is null
+select is(
+  (select count(*)::int
    from public.list_chat_messages('00000000-0000-0000-0000-0000000029f1')
-   where id = (select id from public.chat_messages where training_entry_id = '00000000-0000-0000-0000-0000000029e1')),
-  'a hidden card returns training_card NULL and body NULL to a member');
+   where sender_type = 'training_card' and status = 'hidden'
+     and (training_card is not null or body is not null)),
+  0, 'a hidden card returns training_card NULL and body NULL to a member');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-000000002901","role":"authenticated"}', true);
-select ok(
-  (select training_card is not null
+select is(
+  (select count(*)::int
    from public.list_chat_messages('00000000-0000-0000-0000-0000000029f1')
-   where id = (select id from public.chat_messages where training_entry_id = '00000000-0000-0000-0000-0000000029e1')),
-  'an admin still sees the hidden card payload (moderation context)');
+   where sender_type = 'training_card' and status = 'hidden'
+     and training_card is not null),
+  1, 'an admin still sees the hidden card payload (moderation context)');
 
 -- ========================================================================
 -- Section I — a participant cannot forge a card
