@@ -341,6 +341,7 @@ export type Database = {
           sender_user_id: string | null
           seq: number
           status: string
+          training_entry_id: string | null
         }
         Insert: {
           body?: string | null
@@ -354,6 +355,7 @@ export type Database = {
           sender_user_id?: string | null
           seq?: never
           status?: string
+          training_entry_id?: string | null
         }
         Update: {
           body?: string | null
@@ -367,6 +369,7 @@ export type Database = {
           sender_user_id?: string | null
           seq?: never
           status?: string
+          training_entry_id?: string | null
         }
         Relationships: [
           {
@@ -388,6 +391,13 @@ export type Database = {
             columns: ["sender_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_training_entry_id_fkey"
+            columns: ["training_entry_id"]
+            isOneToOne: true
+            referencedRelation: "training_entries"
             referencedColumns: ["id"]
           },
         ]
@@ -1824,6 +1834,7 @@ export type Database = {
           sender_user_id: string
           seq: number
           status: string
+          training_card: Json
         }[]
       }
       log_weight_entry: {
@@ -1871,6 +1882,7 @@ export type Database = {
           sender_user_id: string | null
           seq: number
           status: string
+          training_entry_id: string | null
         }
         SetofOptions: {
           from: "*"
