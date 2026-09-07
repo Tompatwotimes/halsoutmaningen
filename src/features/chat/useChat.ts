@@ -15,8 +15,9 @@ import {
   sendChatMessage,
 } from './chat-api';
 import { chatImageSignedUrl } from './chat-media';
+import { createProofSignedUrl } from '@/features/challenge/entries-api';
 import type { UploadPhaseCallback } from '@/lib/media/image-processing';
-import type { ChatMessage } from './types';
+import type { ChatMessage, TrainingCardProof } from './types';
 
 /**
  * TanStack Query bindings for shared chat.
@@ -192,6 +193,35 @@ export function useChatImageUrls(
       );
       return out;
     },
+    staleTime: 90_000,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/**
+ * Resolve short-lived signed URLs for a training card's proof images, only when
+ * the card is actually rendered. These objects live in the `proofs` bucket; the
+ * bucket's SELECT policy already lets a challenge member read that challenge's
+ * proof objects, and `list_chat_messages` only hands a member the paths for an
+ * active card — so this mints no new access. A denied / failed path resolves to
+ * `null` and the card shows a broken-image fallback for that slot.
+ */
+export function useTrainingCardProofUrls(
+  entryId: string,
+  proofs: TrainingCardProof[],
+) {
+  const paths = proofs.map((p) => p.path);
+  return useQuery({
+    queryKey: ['chat', 'trainingCardProofs', entryId, paths],
+    enabled: proofs.length > 0,
+    queryFn: () =>
+      Promise.all(
+        proofs.map(async (p) => ({
+          position: p.position,
+          url: await createProofSignedUrl(p.path).catch(() => null),
+        })),
+      ),
     staleTime: 90_000,
     retry: false,
     throwOnError: false,

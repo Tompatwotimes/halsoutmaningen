@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ChatMessageStatus,
   ChatSenderType,
+  TrainingCardData,
 } from './types';
 import {
   newChatMessageId,
@@ -76,10 +77,35 @@ function jnum(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 function narrowSenderType(v: unknown): ChatSenderType {
-  return v === 'game_master' ? 'game_master' : 'participant';
+  if (v === 'game_master') return 'game_master';
+  if (v === 'training_card') return 'training_card';
+  return 'participant';
 }
 function narrowStatus(v: unknown): ChatMessageStatus {
   return v === 'hidden' ? 'hidden' : 'active';
+}
+function narrowTrainingCard(v: unknown): TrainingCardData | null {
+  const r = asRecord(v);
+  const entryId = jstrOrNull(r.entry_id);
+  if (entryId === null) return null;
+  return {
+    entryId,
+    activity: jstrOrNull(r.activity),
+    durationMinutes: jnum(r.duration_minutes),
+    note: jstrOrNull(r.note),
+    challengeDate: jstr(r.challenge_date),
+    entryStatus: r.entry_status === 'invalidated' ? 'invalidated' : 'active',
+    trainedAt: jstr(r.trained_at),
+    proofs: asArray(r.proofs)
+      .map((raw): { position: number; path: string } | null => {
+        const p = asRecord(raw);
+        const path = jstrOrNull(p.path);
+        const position = jnum(p.position);
+        return path && position > 0 ? { position, path } : null;
+      })
+      .filter((p): p is { position: number; path: string } => p !== null)
+      .sort((a, b) => a.position - b.position),
+  };
 }
 function narrowAttachments(v: unknown): ChatAttachment[] {
   if (!Array.isArray(v)) return [];
@@ -107,6 +133,7 @@ export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
     body: jstrOrNull(raw.body),
     status: narrowStatus(raw.status),
     attachments: narrowAttachments(raw.attachments),
+    trainingCard: narrowTrainingCard(raw.training_card),
     hiddenReason: jstrOrNull(raw.hidden_reason),
     gameMasterEventId: jstrOrNull(raw.game_master_event_id),
     createdAt: jstr(raw.created_at),

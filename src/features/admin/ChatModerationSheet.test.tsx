@@ -37,6 +37,7 @@ function message(over: Partial<ChatMessage> = {}): ChatMessage {
     body: 'något olämpligt',
     status: 'active',
     attachments: [],
+    trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',

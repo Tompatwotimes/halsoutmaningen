@@ -33,6 +33,7 @@ const {
   ChatError,
   sendChatMessage,
   markChatRead,
+  mapChatRow,
   fetchRecentChatMessages,
   fetchOlderChatMessages,
   fetchUnreadCount,
@@ -173,6 +174,61 @@ describe('mapChatRow attachments', () => {
     });
     expect(msg.attachments).toEqual([]);
     expect(msg.body).toBeNull();
+  });
+});
+
+describe('mapChatRow training_card', () => {
+  it('maps a training_card row from list_chat_messages', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        sender_type: 'training_card',
+        body: null,
+        training_card: {
+          entry_id: 'ent-1',
+          activity: 'Simning',
+          duration_minutes: 50,
+          note: 'skönt',
+          challenge_date: '2026-09-06',
+          entry_status: 'active',
+          trained_at: '2026-09-06T18:00:00Z',
+          proofs: [
+            { position: 2, path: 'c/u/d/2-b.jpg' },
+            { position: 1, path: 'c/u/d/1-a.jpg' },
+          ],
+        },
+      }),
+    );
+    expect(msg.senderType).toBe('training_card');
+    expect(msg.trainingCard).toEqual({
+      entryId: 'ent-1',
+      activity: 'Simning',
+      durationMinutes: 50,
+      note: 'skönt',
+      challengeDate: '2026-09-06',
+      entryStatus: 'active',
+      trainedAt: '2026-09-06T18:00:00Z',
+      proofs: [
+        { position: 1, path: 'c/u/d/1-a.jpg' },
+        { position: 2, path: 'c/u/d/2-b.jpg' },
+      ],
+    });
+  });
+
+  it('maps a withheld (hidden) training_card to trainingCard null', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        sender_type: 'training_card',
+        status: 'hidden',
+        body: null,
+        training_card: null,
+      }),
+    );
+    expect(msg.senderType).toBe('training_card');
+    expect(msg.trainingCard).toBeNull();
+  });
+
+  it('leaves trainingCard null for an ordinary message', () => {
+    expect(mapChatRow(rowFixture()).trainingCard).toBeNull();
   });
 });
 

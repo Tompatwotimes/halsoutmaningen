@@ -31,6 +31,11 @@ vi.mock('./chat-media', () => ({
   chatImageSignedUrl: vi.fn().mockResolvedValue(null),
 }));
 
+const { createProofSignedUrl } = vi.hoisted(() => ({
+  createProofSignedUrl: vi.fn(),
+}));
+vi.mock('@/features/challenge/entries-api', () => ({ createProofSignedUrl }));
+
 /**
  * A minimal fake of the Supabase Realtime surface `useChatMessages` touches:
  * `supabase.channel(name).on(event, filter, handler).subscribe()` and
@@ -93,6 +98,7 @@ import {
   useChatMessages,
   useMarkChatRead,
   usePostChatMessage,
+  useTrainingCardProofUrls,
   useUnreadChatCount,
 } from './useChat';
 
@@ -107,6 +113,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     body: `body ${seq}`,
     status: 'active',
     attachments: [],
+    trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -329,5 +336,51 @@ describe('useMarkChatRead', () => {
     expect(spy).toHaveBeenCalledWith({
       queryKey: chatKeys.unreadRoot('c1'),
     });
+  });
+});
+
+describe('useTrainingCardProofUrls', () => {
+  beforeEach(() => {
+    createProofSignedUrl.mockReset();
+  });
+
+  it('is disabled and fetches nothing when the card has no proofs', () => {
+    const { result } = renderHook(() => useTrainingCardProofUrls('e1', []), {
+      wrapper,
+    });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(createProofSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('resolves a signed proofs-bucket URL per proof, in position order', async () => {
+    createProofSignedUrl.mockImplementation((p: string) =>
+      Promise.resolve(`signed:${p}`),
+    );
+    const { result } = renderHook(
+      () =>
+        useTrainingCardProofUrls('e1', [
+          { position: 1, path: 'c/u/d/1-a.jpg' },
+          { position: 2, path: 'c/u/d/2-b.jpg' },
+        ]),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([
+      { position: 1, url: 'signed:c/u/d/1-a.jpg' },
+      { position: 2, url: 'signed:c/u/d/2-b.jpg' },
+    ]);
+  });
+
+  it('yields null for a denied path instead of rejecting the whole query', async () => {
+    createProofSignedUrl.mockRejectedValue(new Error('denied'));
+    const { result } = renderHook(
+      () =>
+        useTrainingCardProofUrls('e1', [
+          { position: 1, path: 'c/u/d/1-a.jpg' },
+        ]),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([{ position: 1, url: null }]);
   });
 });
