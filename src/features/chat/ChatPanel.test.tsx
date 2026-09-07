@@ -1,16 +1,33 @@
 import type { ReactNode } from 'react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {
+  installResizeObserverMock,
+  type ResizeObserverMockHandle,
+} from '@/test/resize-observer-mock';
 import type { ChatMessage } from './types';
 
-// jsdom has no scrollIntoView / createObjectURL — stub them.
+// jsdom has no scrollIntoView / createObjectURL / ResizeObserver — stub them.
+let roMock: ResizeObserverMockHandle;
 beforeAll(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn();
   if (!('createObjectURL' in URL)) {
     Object.defineProperty(URL, 'createObjectURL', { value: () => 'blob:x' });
     Object.defineProperty(URL, 'revokeObjectURL', { value: () => undefined });
   }
+  roMock = installResizeObserverMock();
+});
+afterAll(() => {
+  roMock.uninstall();
 });
 
 const {
@@ -426,6 +443,93 @@ describe('ChatPanel scroll behaviour (B1)', () => {
     ctl.fireScroll();
     expect(markReadMutate).not.toHaveBeenCalled();
   });
+
+  // --- first-open media/layout growth (the production bug) ------------------
+
+  it('re-pins to the newest message when first-page media grows the list after the initial pin', () => {
+    // Cold first open: the initial pin runs against a not-yet-settled height
+    // (image thumbnails still skeletons). Then the images load and grow the
+    // list. The viewport must stay pinned to the newest message.
+    const { ctl } = openWithMessages(
+      [row(1, { attachments: [{ position: 1, path: 'p1' }] }), row(2), row(3)],
+      { scrollHeight: 1400, clientHeight: 400, scrollTop: 0 },
+    );
+    expect(ctl.scrollTop).toBe(1400);
+
+    // media finishes loading → list is 800px taller, reported by ResizeObserver
+    ctl.grow(2200);
+    roMock.trigger();
+
+    expect(ctl.scrollTop).toBe(2200);
+  });
+
+  it('stops re-pinning once the user scrolls up to read history', () => {
+    const { ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 1400,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    expect(ctl.scrollTop).toBe(1400);
+
+    // user scrolls well up (1400 - 200 - 400 = 800 > 96 → not near bottom)
+    ctl.scrollTop = 200;
+    ctl.fireScroll();
+
+    // later layout growth must NOT drag them back down
+    ctl.grow(2600);
+    roMock.trigger();
+    expect(ctl.scrollTop).toBe(200);
+  });
+
+  it('resumes re-pinning after the user scrolls back to the bottom', () => {
+    const { ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 1400,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    ctl.scrollTop = 200;
+    ctl.fireScroll();
+    ctl.grow(2600);
+    roMock.trigger();
+    expect(ctl.scrollTop).toBe(200);
+
+    // user scrolls back to the bottom (2600 - 2200 - 400 = 0 → near bottom)
+    ctl.scrollTop = 2200;
+    ctl.fireScroll();
+
+    // now later growth follows again
+    ctl.grow(3000);
+    roMock.trigger();
+    expect(ctl.scrollTop).toBe(3000);
+  });
+
+  it('opens at the newest message again after being closed and reopened', () => {
+    const { view, ctl } = openWithMessages([row(1), row(2), row(3)], {
+      scrollHeight: 1400,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    expect(ctl.scrollTop).toBe(1400);
+
+    // user scrolls up, then closes the panel
+    ctl.scrollTop = 100;
+    ctl.fireScroll();
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} open={false} />}</>);
+
+    // reopen → loading → messages; a fresh scroller starting at 0
+    prime({ isLoading: true });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+    const el2 = screen.getByRole('log').parentElement!;
+    const ctl2 = mockScroller(el2, {
+      scrollHeight: 1400,
+      clientHeight: 400,
+      scrollTop: 0,
+    });
+    prime({ isLoading: false, messages: [row(1), row(2), row(3)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(ctl2.scrollTop).toBe(1400);
+  });
 });
 
 describe('ChatPanel image composer (B3)', () => {
@@ -488,6 +592,33 @@ describe('ChatPanel image composer (B3)', () => {
     prime({ messages: [row(1)] }, { isPending: true });
     wrap(<ChatPanel {...BASE_PROPS} />);
     expect(screen.getByRole('button', { name: /laddar upp/i })).toBeDisabled();
+  });
+
+  it('shows "Förbereder bild…" then "Laddar upp…" as the send reports progress', async () => {
+    const user = userEvent.setup();
+    let capturedOnPhase: ((p: 'processing' | 'uploading') => void) | undefined;
+    postMutate = vi.fn(
+      (vars: { onPhase?: (p: 'processing' | 'uploading') => void }) => {
+        capturedOnPhase = vars.onPhase;
+      },
+    );
+    prime({ messages: [row(1)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    await user.upload(screen.getByLabelText('Välj bilder'), jpeg());
+    await screen.findByTestId('chat-compose-images');
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(capturedOnPhase).toBeTypeOf('function');
+
+    capturedOnPhase?.('processing');
+    expect(
+      await screen.findByRole('button', { name: /förbereder bild/i }),
+    ).toBeInTheDocument();
+
+    capturedOnPhase?.('uploading');
+    expect(
+      await screen.findByRole('button', { name: /laddar upp/i }),
+    ).toBeInTheDocument();
   });
 
   it('an image-only send is allowed (send enabled with no text)', async () => {

@@ -35,13 +35,26 @@ function chain(result: FakeResult): FakeBuilder {
   return builder;
 }
 
-const mocks = vi.hoisted(() => ({
-  from: vi.fn<(table: string) => unknown>(),
-  insert: vi.fn(),
-  upload: vi.fn(),
-  remove: vi.fn(),
-  probeImage: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class ImageProcessingError extends Error {
+    code: string;
+    likelyHeic: boolean;
+    constructor(code: string, message: string, likelyHeic = false) {
+      super(message);
+      this.name = 'ImageProcessingError';
+      this.code = code;
+      this.likelyHeic = likelyHeic;
+    }
+  }
+  return {
+    from: vi.fn<(table: string) => unknown>(),
+    insert: vi.fn(),
+    upload: vi.fn(),
+    remove: vi.fn(),
+    processImages: vi.fn(),
+    ImageProcessingError,
+  };
+});
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -52,11 +65,28 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-vi.mock('./heic', () => ({
-  probeImage: mocks.probeImage,
+vi.mock('@/lib/media/image-processing', () => ({
+  processImagesForUpload: mocks.processImages,
+  ImageProcessingError: mocks.ImageProcessingError,
 }));
 
-const { submitTraining } = await import('./submit-training');
+const { submitTraining, PROOF_IMAGE_PROCESS_OPTIONS } =
+  await import('./submit-training');
+
+/** Default processor behaviour: each input file -> a compressed WebP. */
+function compressedOf(file: File) {
+  const out = new File(['c'], file.name.replace(/\.\w+$/, '.webp'), {
+    type: 'image/webp',
+  });
+  return {
+    file: out,
+    mimeType: 'image/webp',
+    sizeBytes: out.size,
+    width: 1600,
+    height: 1200,
+    wasProcessed: true,
+  };
+}
 
 function makeFile(name = 'foto.jpg', type = 'image/jpeg'): File {
   return new File(['x'.repeat(10)], name, { type });
@@ -74,12 +104,9 @@ const BASE_INPUT = {
 describe('submitTraining', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.probeImage.mockResolvedValue({
-      decodable: true,
-      width: 100,
-      height: 100,
-      likelyHeic: false,
-    });
+    mocks.processImages.mockImplementation((files: File[]) =>
+      Promise.resolve(files.map(compressedOf)),
+    );
   });
 
   it('translates a guard-trigger rejection into a Swedish message and does not touch storage', async () => {
@@ -104,7 +131,7 @@ describe('submitTraining', () => {
     expect(mocks.upload).not.toHaveBeenCalled();
   });
 
-  it('rejects a third image before any upload', async () => {
+  it('rejects a third image before processing or uploading', async () => {
     mocks.from.mockImplementation(() =>
       chain({ data: { id: 'entry-1' }, error: null }),
     );
@@ -118,30 +145,53 @@ describe('submitTraining', () => {
       message: expect.stringContaining('Högst två'),
       entrySaved: true,
     });
+    expect(mocks.processImages).not.toHaveBeenCalled();
     expect(mocks.upload).not.toHaveBeenCalled();
   });
 
-  it('rejects an undecodable image before uploading, but keeps the saved entry', async () => {
+  it('rejects an undecodable image during processing, but keeps the saved entry', async () => {
     mocks.from.mockImplementation(() =>
       chain({ data: { id: 'entry-1' }, error: null }),
     );
-    mocks.probeImage.mockResolvedValue({
-      decodable: false,
-      width: null,
-      height: null,
-      likelyHeic: true,
-    });
+    mocks.processImages.mockRejectedValue(
+      new mocks.ImageProcessingError('undecodable', 'Bild 1: trasig', true),
+    );
 
     await expect(
       submitTraining({
         ...BASE_INPUT,
         proofFiles: [makeFile('IMG.heic', 'image/heic')],
       }),
-    ).rejects.toMatchObject({ entrySaved: true });
+    ).rejects.toMatchObject({
+      entrySaved: true,
+      message: expect.stringMatching(/HEIC/i),
+    });
     expect(mocks.upload).not.toHaveBeenCalled();
   });
 
-  it('uploads two images and links them at positions 1 and 2', async () => {
+  it('compresses every proof file with the proof profile before uploading', async () => {
+    mocks.from.mockImplementation((table: string) =>
+      table === 'training_entries'
+        ? chain({ data: { id: 'entry-1' }, error: null })
+        : chain({ data: [], error: null }),
+    );
+    mocks.upload.mockResolvedValue({ data: { path: 'ok' }, error: null });
+    const phases: string[] = [];
+
+    await submitTraining({
+      ...BASE_INPUT,
+      proofFiles: [makeFile('selfie.jpg')],
+      onProofPhase: (p) => phases.push(p),
+    });
+
+    expect(mocks.processImages).toHaveBeenCalledWith(
+      [expect.any(File)],
+      PROOF_IMAGE_PROCESS_OPTIONS,
+    );
+    expect(phases).toEqual(['processing', 'uploading']);
+  });
+
+  it('uploads two compressed images and links them at positions 1 and 2', async () => {
     mocks.from.mockImplementation((table: string) => {
       if (table === 'training_entries') {
         return chain({ data: { id: 'entry-1' }, error: null });
@@ -158,12 +208,26 @@ describe('submitTraining', () => {
 
     expect(result).toEqual({ entryId: 'entry-1' });
     expect(mocks.upload).toHaveBeenCalledTimes(2);
+    // upload receives the compressed file, not the original
+    const [, firstBody, firstOpts] = mocks.upload.mock.calls[0] as [
+      string,
+      File,
+      { contentType: string },
+    ];
+    expect(firstBody.type).toBe('image/webp');
+    expect(firstOpts.contentType).toBe('image/webp');
     const [rows] = mocks.insert.mock.calls.at(-1) as [
-      { position: number; storage_path: string; mime_type: string }[],
+      {
+        position: number;
+        storage_path: string;
+        mime_type: string;
+        size_bytes: number;
+      }[],
     ];
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.position)).toEqual([1, 2]);
-    expect(rows[1]?.mime_type).toBe('image/png');
+    expect(rows[1]?.mime_type).toBe('image/webp');
+    expect(rows[0]?.storage_path).toMatch(/\.webp$/);
     // both objects uploaded before any DB row is touched → no orphan removal
     expect(mocks.remove).not.toHaveBeenCalled();
   });

@@ -3,6 +3,7 @@ import {
   chatDateSeparatorKey,
   displayBody,
   isNearBottom,
+  isProgrammaticScroll,
   isWithinRateLimitWindow,
   scrollAnchorAdjustment,
   shouldFollowNewMessage,
@@ -142,5 +143,25 @@ describe('shouldFollowNewMessage', () => {
   });
   it('does not follow when the viewer was reading older history', () => {
     expect(shouldFollowNewMessage(false)).toBe(false);
+  });
+});
+
+describe('isProgrammaticScroll', () => {
+  it('is true when the scroll landed within tolerance of the expected top', () => {
+    expect(isProgrammaticScroll(1200, 1200)).toBe(true);
+    expect(isProgrammaticScroll(1199, 1200)).toBe(true);
+    expect(isProgrammaticScroll(1202, 1200)).toBe(true);
+  });
+  it('is false when the scroll is far from the expected top (a user scroll)', () => {
+    expect(isProgrammaticScroll(0, 1200)).toBe(false);
+    expect(isProgrammaticScroll(1190, 1200)).toBe(false);
+  });
+  it('is false when no programmatic scroll is pending (expectedTop null)', () => {
+    expect(isProgrammaticScroll(0, null)).toBe(false);
+    expect(isProgrammaticScroll(1200, null)).toBe(false);
+  });
+  it('honours a custom tolerance', () => {
+    expect(isProgrammaticScroll(1195, 1200, 2)).toBe(false);
+    expect(isProgrammaticScroll(1195, 1200, 8)).toBe(true);
   });
 });

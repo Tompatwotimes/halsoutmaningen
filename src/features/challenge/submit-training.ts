@@ -1,7 +1,13 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { requestGameMasterPulse } from '@/features/game-master/game-master-api';
-import { probeImage } from './heic';
+import {
+  ImageProcessingError,
+  processImagesForUpload,
+  type ProcessImageOptions,
+  type UploadPhaseCallback,
+} from '@/lib/media/image-processing';
+import { GENERIC_UNSUPPORTED_MESSAGE, HEIC_UNSUPPORTED_MESSAGE } from './heic';
 
 /**
  * The "Logga träning" write path (CLAUDE.md §5.2, real-data phase Part 5).
@@ -56,27 +62,46 @@ export interface SubmitTrainingInput {
    * non-empty array is given it REPLACES the whole proof set for the entry.
    */
   proofFiles?: File[];
+  /** Proof upload progress: `'processing'` (compressing) then `'uploading'`. */
+  onProofPhase?: UploadPhaseCallback;
 }
 
 export interface SubmitTrainingResult {
   entryId: string;
 }
 
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]);
+/**
+ * Compression profile for training-proof images (spec §5). A slightly higher
+ * quality floor than chat — a Strava screenshot's small text must stay legible.
+ */
+export const PROOF_IMAGE_PROCESS_OPTIONS: ProcessImageOptions = {
+  maxLongSidePx: 1600,
+  format: 'auto',
+  quality: 0.85,
+  qualityFloor: 0.65,
+  targetBytes: 500 * 1024,
+  passthroughMaxBytes: 512 * 1024,
+};
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
-  'image/png': 'png',
   'image/webp': 'webp',
-  'image/heic': 'heic',
-  'image/heif': 'heif',
+  'image/png': 'png',
 };
+
+/** Translate a client compression failure into Swedish proof-flow copy. */
+function proofProcessingError(err: ImageProcessingError): SubmitTrainingError {
+  if (err.code === 'undecodable' || err.code === 'unsupported-type') {
+    return new SubmitTrainingError(
+      err.likelyHeic ? HEIC_UNSUPPORTED_MESSAGE : GENERIC_UNSUPPORTED_MESSAGE,
+      true,
+    );
+  }
+  return new SubmitTrainingError(
+    'Bilden kunde inte förberedas och sparades inte. Passet i sig är sparat — försök med en annan bild.',
+    true,
+  );
+}
 
 function randomId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -161,14 +186,16 @@ async function removeObjectsQuiet(paths: string[]): Promise<void> {
  * whole proof set. Ordering keeps a failure from stranding a permanent orphan
  * object and matches the single-image behaviour it generalises:
  *
- *   validate+probe all → upload every new object → delete old DB rows →
+ *   compress+decode all → upload every new object → delete old DB rows →
  *   insert new DB rows (positions 1..n) → delete old objects
  *
  * `unique (training_entry_id, position)` forbids two rows in a slot, so the old
  * rows must go before the new ones — the brief window with no linked proof is
  * the same accepted residual gap as before (same-day, owner-recoverable by
  * retry — docs/DATABASE.md §6). Every newly uploaded object is removed on any
- * failure.
+ * failure. Each image is resized + re-compressed client-side first (PR A); the
+ * bytes stored are always a browser-universal JPEG/WebP within the server MIME
+ * allow-list, which still applies.
  */
 export async function attachProofs(
   challengeId: string,
@@ -176,29 +203,23 @@ export async function attachProofs(
   date: string,
   entryId: string,
   files: File[],
+  onProofPhase?: UploadPhaseCallback,
 ): Promise<void> {
   if (files.length === 0) return;
   if (files.length > MAX_PROOF_IMAGES) {
     throw new SubmitTrainingError('Högst två bildbevis per pass.', true);
   }
 
-  const probed: { file: File; width: number | null; height: number | null }[] =
-    [];
-  for (const file of files) {
-    if (!ALLOWED_MIME.has(file.type)) {
-      throw new SubmitTrainingError(
-        'Bildformatet stöds inte. Använd en JPEG-, PNG- eller WEBP-bild.',
-        true,
-      );
-    }
-    const probe = await probeImage(file);
-    if (!probe.decodable) {
-      throw new SubmitTrainingError(
-        'Bilden kunde inte läsas och sparades inte. Passet i sig är sparat — försök med en annan bild.',
-        true,
-      );
-    }
-    probed.push({ file, width: probe.width, height: probe.height });
+  onProofPhase?.('processing');
+  let processed;
+  try {
+    processed = await processImagesForUpload(
+      files,
+      PROOF_IMAGE_PROCESS_OPTIONS,
+    );
+  } catch (err) {
+    if (err instanceof ImageProcessingError) throw proofProcessingError(err);
+    throw err;
   }
 
   // Existing proof objects for the entry (may be 0, 1 or 2 rows).
@@ -210,21 +231,26 @@ export async function attachProofs(
     (r) => r.storage_path,
   );
 
-  // Upload every new object BEFORE touching any DB row.
+  // Upload every new (compressed) object BEFORE touching any DB row.
+  onProofPhase?.('uploading');
   const uploaded: {
     path: string;
-    file: File;
+    mimeType: string;
+    sizeBytes: number;
     width: number | null;
     height: number | null;
   }[] = [];
-  for (const { file, width, height } of probed) {
-    const ext = EXT_BY_MIME[file.type] ?? 'jpg';
+  for (const image of processed) {
+    const ext = EXT_BY_MIME[image.mimeType] ?? 'jpg';
     // Path shape must match the storage RLS policies exactly (0002_storage.sql):
     // folder[1] = challenge_id (membership check), folder[2] = user_id (owner check).
     const path = `${challengeId}/${userId}/${date}/${randomId()}.${ext}`;
     const { error: uploadError } = await supabase.storage
       .from('proofs')
-      .upload(path, file, { contentType: file.type, upsert: false });
+      .upload(path, image.file, {
+        contentType: image.mimeType,
+        upsert: false,
+      });
     if (uploadError) {
       await removeObjectsQuiet(uploaded.map((u) => u.path));
       throw new SubmitTrainingError(
@@ -232,7 +258,13 @@ export async function attachProofs(
         true,
       );
     }
-    uploaded.push({ path, file, width, height });
+    uploaded.push({
+      path,
+      mimeType: image.mimeType,
+      sizeBytes: image.sizeBytes,
+      width: image.width,
+      height: image.height,
+    });
   }
 
   if (oldPaths.length > 0) {
@@ -257,8 +289,8 @@ export async function attachProofs(
     challenge_id: challengeId,
     user_id: userId,
     storage_path: u.path,
-    mime_type: u.file.type,
-    size_bytes: u.file.size,
+    mime_type: u.mimeType,
+    size_bytes: u.sizeBytes,
     width: u.width,
     height: u.height,
     position: i + 1,
@@ -296,6 +328,7 @@ export async function submitTraining(
       input.date,
       entry.id,
       files,
+      input.onProofPhase,
     );
   }
 

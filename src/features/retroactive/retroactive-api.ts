@@ -1,5 +1,13 @@
 import { supabase } from '@/lib/supabase';
-import { probeImage } from '@/features/challenge/heic';
+import {
+  GENERIC_UNSUPPORTED_MESSAGE,
+  HEIC_UNSUPPORTED_MESSAGE,
+} from '@/features/challenge/heic';
+import { PROOF_IMAGE_PROCESS_OPTIONS } from '@/features/challenge/submit-training';
+import {
+  ImageProcessingError,
+  processImageForUpload,
+} from '@/lib/media/image-processing';
 import type { PenaltyType } from '@/domain/penalties';
 
 /**
@@ -12,26 +20,18 @@ import type { PenaltyType } from '@/domain/penalties';
  * `challenge_date`; the existing daily-requirement engine and reconcile triggers
  * then recompute day state / streak / debt / KASSAN / Straffbanken.
  *
- * Proof images: uploaded once, by the participant, into the same private
- * `proofs` bucket + canonical path as normal logging. A pending proof has no
- * `training_proofs` row, so the tightened bucket read policy keeps it visible
- * only to its owner + admins until approval (docs/DATABASE — storage §).
+ * Proof images: resized + re-compressed client-side (PR A, same processor and
+ * profile as `attachProofs`), then uploaded once, by the participant, into the
+ * same private `proofs` bucket + canonical path as normal logging. A pending
+ * proof has no `training_proofs` row, so the tightened bucket read policy keeps
+ * it visible only to its owner + admins until approval (docs/DATABASE —
+ * storage §).
  */
-
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]);
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
-  'image/png': 'png',
   'image/webp': 'webp',
-  'image/heic': 'heic',
-  'image/heif': 'heif',
+  'image/png': 'png',
 };
 
 function randomId(): string {
@@ -67,24 +67,31 @@ export async function uploadRetroactiveProof(
   challengeDate: string,
   file: File,
 ): Promise<RetroactiveProofMeta> {
-  if (!ALLOWED_MIME.has(file.type)) {
-    throw new RetroactiveError(
-      'Bildformatet stöds inte. Använd en JPEG-, PNG- eller WEBP-bild.',
-    );
-  }
-  const probe = await probeImage(file);
-  if (!probe.decodable) {
-    throw new RetroactiveError(
-      'Bilden kunde inte läsas. Försök med en annan bild.',
-    );
+  let processed;
+  try {
+    processed = await processImageForUpload(file, PROOF_IMAGE_PROCESS_OPTIONS);
+  } catch (err) {
+    if (err instanceof ImageProcessingError) {
+      throw new RetroactiveError(
+        err.code === 'undecodable' || err.code === 'unsupported-type'
+          ? err.likelyHeic
+            ? HEIC_UNSUPPORTED_MESSAGE
+            : GENERIC_UNSUPPORTED_MESSAGE
+          : 'Bilden kunde inte förberedas. Försök med en annan bild.',
+      );
+    }
+    throw err;
   }
 
-  const ext = EXT_BY_MIME[file.type] ?? 'jpg';
+  const ext = EXT_BY_MIME[processed.mimeType] ?? 'jpg';
   const path = `${challengeId}/${userId}/${challengeDate}/${randomId()}.${ext}`;
 
   const { error } = await supabase.storage
     .from('proofs')
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, processed.file, {
+      contentType: processed.mimeType,
+      upsert: false,
+    });
   if (error) {
     throw new RetroactiveError(
       'Bilden kunde inte laddas upp. Kontrollera uppkopplingen och försök igen.',
@@ -93,10 +100,10 @@ export async function uploadRetroactiveProof(
 
   return {
     storagePath: path,
-    mimeType: file.type,
-    sizeBytes: file.size,
-    width: probe.width,
-    height: probe.height,
+    mimeType: processed.mimeType,
+    sizeBytes: processed.sizeBytes,
+    width: processed.width,
+    height: processed.height,
   };
 }
 

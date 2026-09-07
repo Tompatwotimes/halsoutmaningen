@@ -254,6 +254,15 @@ The DB `training_proofs` row and the Storage object are written in two steps by
 the client; a failure between them leaves an orphan on one side. Acceptable for
 V1 — a later reconciliation job / Edge Function can sweep.
 
+**Client-side compression (PR A).** Every proof and chat image is resized
+(~1600 px long side) and re-encoded (WebP where the browser's canvas supports
+it, else JPEG) by `src/lib/media/image-processing.ts` _before_ upload, so
+stored objects are small and browser-universal. This is a cost / UX
+optimisation only — the bucket `file_size_limit` and `allowed_mime_types`
+above and the per-RPC MIME checks remain the authoritative limits, and both
+buckets already accept `image/jpeg` and `image/webp`, so PR A needed no
+migration.
+
 ## 7. Seed strategy
 
 - **Schema** → migrations only. No dashboard changes.

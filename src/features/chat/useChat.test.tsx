@@ -294,6 +294,23 @@ describe('usePostChatMessage', () => {
       expect.objectContaining({ files: [file], userId: 'u1' }),
     );
   });
+
+  it('forwards the onPhase progress callback to sendChatMessage', async () => {
+    sendChatMessage.mockResolvedValue(row(7));
+    const { result } = renderHook(() => usePostChatMessage(), { wrapper });
+    const onPhase = vi.fn();
+    result.current.mutate({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: '',
+      files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })],
+      onPhase,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ onPhase }),
+    );
+  });
 });
 
 describe('useMarkChatRead', () => {

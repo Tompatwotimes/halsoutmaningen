@@ -20,6 +20,15 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { rpc },
 }));
 
+const { uploadChatImagesMock } = vi.hoisted(() => ({
+  uploadChatImagesMock: vi.fn(),
+}));
+vi.mock('./chat-media', () => ({
+  newChatMessageId: () => 'generated-msg-id',
+  uploadChatImages: uploadChatImagesMock,
+  removeChatImages: vi.fn(),
+}));
+
 const {
   ChatError,
   sendChatMessage,
@@ -31,6 +40,15 @@ const {
 
 beforeEach(() => {
   rpc.mockReset();
+  uploadChatImagesMock.mockReset().mockResolvedValue([
+    {
+      path: 'c1/u1/generated-msg-id/1-a.webp',
+      mime_type: 'image/webp',
+      size_bytes: 10,
+      width: 1600,
+      height: 1200,
+    },
+  ]);
 });
 
 function rowFixture(overrides: Record<string, unknown> = {}) {
@@ -110,6 +128,35 @@ describe('sendChatMessage (text only)', () => {
       }),
     ).rejects.toBeInstanceOf(ChatError);
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('forwards the onPhase callback into uploadChatImages', async () => {
+    rpc.mockResolvedValue({ data: rowFixture(), error: null });
+    const onPhase = vi.fn();
+    await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: '',
+      files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })],
+      onPhase,
+    });
+    expect(uploadChatImagesMock).toHaveBeenCalledWith(
+      'c1',
+      'u1',
+      'generated-msg-id',
+      expect.any(Array),
+      onPhase,
+    );
+  });
+
+  it('does not touch the image pipeline for a text-only message', async () => {
+    rpc.mockResolvedValue({ data: rowFixture(), error: null });
+    await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: 'bara text',
+    });
+    expect(uploadChatImagesMock).not.toHaveBeenCalled();
   });
 });
 

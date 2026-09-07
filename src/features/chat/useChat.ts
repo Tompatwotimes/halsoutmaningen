@@ -15,6 +15,7 @@ import {
   sendChatMessage,
 } from './chat-api';
 import { chatImageSignedUrl } from './chat-media';
+import type { UploadPhaseCallback } from '@/lib/media/image-processing';
 import type { ChatMessage } from './types';
 
 /**
@@ -140,6 +141,8 @@ interface PostVars {
   body: string;
   /** 0–4 image files; the upload + atomic RPC happen inside the mutation. */
   files?: File[];
+  /** Composer progress callback: `'processing'` then `'uploading'`. */
+  onPhase?: UploadPhaseCallback;
 }
 
 /**
@@ -157,6 +160,7 @@ export function usePostChatMessage() {
         userId: vars.userId,
         body: vars.body,
         files: vars.files ?? [],
+        ...(vars.onPhase ? { onPhase: vars.onPhase } : {}),
       }),
     onSuccess: (_data, vars) => {
       void queryClient.invalidateQueries({
