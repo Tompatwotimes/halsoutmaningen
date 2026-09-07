@@ -22,6 +22,7 @@ function msg(overrides: Partial<ChatMessage>): ChatMessage {
     body: 'hej',
     status: 'active',
     attachments: [],
+    trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -47,6 +48,41 @@ describe('displayBody', () => {
     expect(displayBody({ status: 'active', body: null })).toBe(
       '[Borttaget av administratör]',
     );
+  });
+
+  it('renders no text line for an active training card (it draws itself)', () => {
+    expect(
+      displayBody({
+        status: 'active',
+        body: null,
+        trainingCard: { entryId: 'e1' },
+      }),
+    ).toBeNull();
+  });
+
+  it('renders the placeholder for a hidden training card', () => {
+    expect(
+      displayBody({ status: 'hidden', body: null, trainingCard: null }),
+    ).toBe('[Borttaget av administratör]');
+  });
+
+  it('is unchanged for a pre-PR-8 row where the trainingCard key is absent', () => {
+    // Release compatibility: the current production list_chat_messages has no
+    // training_card column, so `trainingCard` is simply not present.
+    expect(displayBody({ status: 'active', body: 'hej' })).toBe('hej');
+    expect(displayBody({ status: 'hidden', body: null })).toBe(
+      '[Borttaget av administratör]',
+    );
+    expect(displayBody({ status: 'active', body: null, attachments: [] })).toBe(
+      '[Borttaget av administratör]',
+    );
+    expect(
+      displayBody({
+        status: 'active',
+        body: null,
+        attachments: [{ position: 1, path: 'x' }],
+      }),
+    ).toBeNull();
   });
 });
 

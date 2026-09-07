@@ -11,9 +11,42 @@
  * reconstructs arrival order.
  */
 
-export type ChatSenderType = 'participant' | 'game_master';
+export type ChatSenderType = 'participant' | 'game_master' | 'training_card';
 
 export type ChatMessageStatus = 'active' | 'hidden';
+
+/**
+ * One proof image on a training card. `path` is a private object name in the
+ * `proofs` bucket — useless without a signed URL. `list_chat_messages` returns
+ * these only for an active card seen by a challenge member (the same
+ * membership gate that already lets a member read that challenge's proof
+ * objects), and withholds the whole card payload for a hidden card.
+ */
+export interface TrainingCardProof {
+  position: number;
+  path: string;
+}
+
+/**
+ * The payload of a `sender_type = 'training_card'` message — an automatic
+ * activity card for a real `training_entries` row. Resolved LIVE from the entry
+ * by `list_chat_messages` (the entry is the source of truth), so it always
+ * reflects the entry's current state, including invalidation. `null` on a
+ * `ChatMessage` for every non-card message, and for a hidden card seen by a
+ * non-admin.
+ */
+export interface TrainingCardData {
+  entryId: string;
+  activity: string | null;
+  durationMinutes: number;
+  note: string | null;
+  /** The challenge-local calendar day the session belongs to (`YYYY-MM-DD`). */
+  challengeDate: string;
+  entryStatus: 'active' | 'invalidated';
+  /** When the entry row was created (ISO). Display only. */
+  trainedAt: string;
+  proofs: TrainingCardProof[];
+}
 
 /**
  * One image attachment on a chat message. `path` is a private storage-object
@@ -53,6 +86,12 @@ export interface ChatMessage {
    * the paths, exactly like `body`.
    */
   attachments: ChatAttachment[];
+  /**
+   * Set only for a `senderType === 'training_card'` message — the training
+   * entry it represents, resolved live. `null` for every other message and for
+   * a hidden card seen by a non-admin.
+   */
+  trainingCard: TrainingCardData | null;
   /**
    * Admin-only. Never populated for a non-admin viewer (the `list_chat_messages`
    * read surface does not project it). Kept on the type for admin tooling.

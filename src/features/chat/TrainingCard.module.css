@@ -1,0 +1,96 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border: 1px solid var(--c-border-faint);
+  border-left: 3px solid var(--c-accent);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-raised);
+}
+
+.invalidated {
+  border-left-color: var(--c-danger);
+  opacity: 0.8;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--c-accent);
+  color: var(--c-accent-contrast);
+}
+
+.badge svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.invalidated .badge {
+  background: var(--c-danger);
+}
+
+.title {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.time {
+  margin-left: auto;
+  font-size: var(--fs-2xs);
+  color: var(--c-text-faint);
+}
+
+.summary {
+  font-size: var(--fs-sm);
+  color: var(--c-text);
+}
+
+.activity {
+  font-weight: var(--fw-semibold);
+}
+
+.dot {
+  margin: 0 0.4em;
+  color: var(--c-text-faint);
+}
+
+.when {
+  font-size: var(--fs-2xs);
+  color: var(--c-text-muted);
+}
+
+.proofs {
+  display: grid;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+}
+
+.proofs[data-count='2'] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.brokenProof {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-md);
+  background: var(--c-surface-sunken);
+}
+
+.note {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  font-style: italic;
+  color: var(--c-text-muted);
+}

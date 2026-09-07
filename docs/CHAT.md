@@ -322,3 +322,55 @@ while active / false once hidden / false for a non-member, and the storage
 object follows · `> 4` rejected · position + unique CHECKs · path-prefix check ·
 composite FK · anon EXECUTE denial · no direct member writes · publication
 membership. `0019` / `0021` updated for the new `post_chat_message` arity.
+
+---
+
+## 9. Training activity cards (`20260907120000`)
+
+When a real `training_entries` row is created — the normal "Logga träning"
+upsert, `add_training_session` (Dubbelpass), or an admin **approving** an
+efterregistrering (which materialises the entry) — one **training card**
+appears in that challenge's room. A submitted-but-pending or rejected
+after-registration produces **no** card. **No backfill** — the trigger only
+fires on rows inserted after the migration.
+
+**Model.** A card is a `chat_messages` row with `sender_type = 'training_card'`,
+`sender_user_id` = the trainer, `body` NULL, and a new
+`training_entry_id uuid unique references training_entries(id) on delete
+cascade`. It has **no free text** — every visible field is resolved **live**
+from the entry by `list_chat_messages`, so the card always shows the entry's
+current authoritative state.
+
+**Creation** is `AFTER INSERT ON training_entries` →
+`tg_training_entry_chat_card()` (`SECURITY DEFINER`, `on conflict
+(training_entry_id) do nothing`). Atomic with the entry, so a successful entry
+never permanently misses its card. **Idempotent twice over:** the retried
+submit is an `upsert` UPDATE (trigger doesn't re-fire) and the
+`training_entry_id` UNIQUE + `on conflict` dedupes anyway. **Not spoofable:**
+`post_chat_message` always writes `sender_type='participant'` and there is no
+INSERT policy on `chat_messages` — the trigger is the only writer of a
+`training_card` row.
+
+**Read model.** `list_chat_messages` gains a `training_card jsonb` column:
+`{entry_id, activity, duration_minutes, note, challenge_date, entry_status,
+trained_at, proofs: [{position, path}]}` — resolved from `training_entries` /
+`training_proofs`, **NULL for a hidden card seen by a non-admin** (same gate as
+`body` / `attachments`). Proof paths are in the private `proofs` bucket; a
+challenge member can already read that challenge's proof objects (existing
+policy), so the read model mints no new access — the client resolves a
+short-lived signed URL per rendered card.
+
+**Invalidation.** An invalidated entry is **not** deleted, so its card stays
+and `entry_status` becomes `'invalidated'` → the card renders **"Passet har
+underkänts"**. Physically deleting the entry cascades the card away.
+
+**Moderation.** A training card is an ordinary row for `hide_chat_message`
+(only `game_master` rows are refused). Hiding it withholds the whole
+`training_card` payload from members.
+
+**Realtime / core isolation.** The card is a `chat_messages` INSERT, so the
+existing `chat_messages_activity_fanout` bumps `chat_activity` and clients
+refetch — nothing new is published. The trigger only INSERTs a chat row; it
+never touches day state, streak, debt, KASSAN, Straffbanken, ranking or weight.
+
+**pgTAP** — `supabase/tests/0029_training_chat_cards.test.sql` (`plan(36)`).

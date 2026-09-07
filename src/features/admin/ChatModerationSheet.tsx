@@ -22,8 +22,18 @@ export function ChatModerationSheet({ message, challengeId, isAdmin }: Props) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
 
-  if (!isAdmin || message.senderType !== 'participant') return null;
+  // Participant messages and automatic training cards are moderatable; a Game
+  // Master row is withdrawn by cancelling its event, not here.
+  if (
+    !isAdmin ||
+    (message.senderType !== 'participant' &&
+      message.senderType !== 'training_card')
+  ) {
+    return null;
+  }
   if (message.status === 'hidden') return null;
+
+  const isCard = message.senderType === 'training_card';
 
   return (
     <>
@@ -42,12 +52,15 @@ export function ChatModerationSheet({ message, challengeId, isAdmin }: Props) {
       <ConfirmSheet
         open={open}
         onClose={() => setOpen(false)}
-        title="Dölj meddelandet?"
+        title={isCard ? 'Dölj passkortet?' : 'Dölj meddelandet?'}
         body={
           <>
-            Meddelandet ersätts med <em>{HIDDEN_MESSAGE_PLACEHOLDER}</em> för
-            alla deltagare. Den ursprungliga texten sparas men visas inte, och
-            åtgärden loggas.
+            {isCard ? 'Passkortet' : 'Meddelandet'} ersätts med{' '}
+            <em>{HIDDEN_MESSAGE_PLACEHOLDER}</em> för alla deltagare.{' '}
+            {isCard
+              ? 'Det loggade passet självt påverkas inte'
+              : 'Den ursprungliga texten sparas men visas inte'}
+            , och åtgärden loggas.
           </>
         }
         confirmLabel="Dölj"

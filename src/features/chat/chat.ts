@@ -21,17 +21,19 @@ export function displayBody(message: {
   body: string | null;
   /** Optional — pre-image callers can omit it. */
   attachments?: { position: number; path: string }[];
+  /** Optional — a training card renders its own layout, not a text line. */
+  trainingCard?: unknown;
 }): string | null {
   // A hidden message never shows its text (and the server withholds it, and
-  // its attachments, sending null / []).
+  // its attachments / card, sending null / []).
   if (message.status === 'hidden') return HIDDEN_MESSAGE_PLACEHOLDER;
   if (message.body !== null) return message.body;
-  // body === null: an image-only active message renders no text line; a
-  // text-less message with nothing to show at all falls back to the
-  // placeholder (a withheld body with no attachments — the pre-image case).
-  return (message.attachments?.length ?? 0) > 0
-    ? null
-    : HIDDEN_MESSAGE_PLACEHOLDER;
+  // body === null: an image-only active message, or an active training card,
+  // renders no text line; a text-less message with nothing to show at all
+  // falls back to the placeholder (a withheld body — the pre-image case).
+  if ((message.attachments?.length ?? 0) > 0) return null;
+  if (message.trainingCard != null) return null;
+  return HIDDEN_MESSAGE_PLACEHOLDER;
 }
 
 /**

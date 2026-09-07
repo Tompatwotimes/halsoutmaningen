@@ -16,6 +16,7 @@ import { ImageIcon, CloseIcon } from '@/components/icons';
 import { probeImage } from '@/features/challenge/heic';
 import type { UploadPhase } from '@/lib/media/image-processing';
 import { ChatImageGrid } from './ChatImageGrid';
+import { TrainingCard } from './TrainingCard';
 import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
@@ -470,7 +471,9 @@ export function ChatPanel({
                 message={entry.message}
                 isSelf={entry.message.senderUserId === userId}
                 moderation={
-                  isAdmin && entry.message.senderType === 'participant'
+                  isAdmin &&
+                  (entry.message.senderType === 'participant' ||
+                    entry.message.senderType === 'training_card')
                     ? renderModeration?.(entry.message)
                     : undefined
                 }
@@ -505,6 +508,35 @@ function MessageRow({
 }) {
   const isGameMaster = message.senderType === 'game_master';
   const text = displayBody(message);
+  const senderLabel = isSelf
+    ? 'Du'
+    : (message.senderDisplayName ?? 'Deltagare');
+
+  // An active training card renders its own self-contained layout (its own
+  // header + time), not a normal bubble. A hidden card falls through to the
+  // standard render: sender label + the "[Borttaget av administratör]"
+  // placeholder, exactly like a hidden participant message.
+  if (
+    message.senderType === 'training_card' &&
+    message.status === 'active' &&
+    message.trainingCard !== null
+  ) {
+    return (
+      <div
+        className={[styles.message, isSelf && styles.self]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        <TrainingCard
+          card={message.trainingCard}
+          senderName={senderLabel}
+          time={formatTime(message.createdAt)}
+        />
+        {moderation}
+      </div>
+    );
+  }
+
   return (
     <div
       className={[
@@ -521,9 +553,7 @@ function MessageRow({
             GAME MASTER
           </Badge>
         ) : (
-          <span className={styles.sender}>
-            {isSelf ? 'Du' : (message.senderDisplayName ?? 'Deltagare')}
-          </span>
+          <span className={styles.sender}>{senderLabel}</span>
         )}
         <time className={styles.time}>{formatTime(message.createdAt)}</time>
       </div>

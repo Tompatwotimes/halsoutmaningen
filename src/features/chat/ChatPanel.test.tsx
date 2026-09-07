@@ -47,6 +47,7 @@ vi.mock('./useChat', () => ({
   useMarkChatRead: () => useMarkChatReadMock(),
   usePostChatMessage: () => usePostChatMessageMock(),
   useChatImageUrls: () => ({ data: [], isLoading: false }),
+  useTrainingCardProofUrls: () => ({ data: [], isLoading: false }),
 }));
 
 vi.mock('@/features/challenge/heic', () => ({
@@ -66,6 +67,7 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     body: `body ${seq}`,
     status: 'active',
     attachments: [],
+    trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
     createdAt: '2026-09-05T12:00:00Z',
@@ -290,6 +292,78 @@ describe('ChatPanel', () => {
     prime({ messages: [row(1)] });
     const { container } = wrap(<ChatPanel {...BASE_PROPS} open={false} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders a training-card message as an activity card, not a text bubble', () => {
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'training_card',
+          senderUserId: 'u2',
+          senderDisplayName: 'Anna',
+          body: null,
+          trainingCard: {
+            entryId: 'e1',
+            activity: 'Löpning',
+            durationMinutes: 45,
+            note: 'skönt',
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.getByTestId('training-card')).toBeInTheDocument();
+    expect(screen.getByText(/Anna loggade ett pass/)).toBeInTheDocument();
+    expect(screen.getByText('Löpning')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-message-body')).not.toBeInTheDocument();
+  });
+
+  it('renders a hidden training card as the placeholder, no card', () => {
+    prime({
+      messages: [
+        row(6, {
+          senderType: 'training_card',
+          status: 'hidden',
+          body: null,
+          trainingCard: null,
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(screen.queryByTestId('training-card')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('[Borttaget av administratör]'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers admins the moderation affordance on a training card', () => {
+    const renderModeration = vi.fn(() => <span data-testid="mod">dölj</span>);
+    prime({
+      messages: [
+        row(7, {
+          senderType: 'training_card',
+          body: null,
+          trainingCard: {
+            entryId: 'e1',
+            activity: null,
+            durationMinutes: 30,
+            note: null,
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        }),
+      ],
+    });
+    wrap(
+      <ChatPanel {...BASE_PROPS} isAdmin renderModeration={renderModeration} />,
+    );
+    expect(screen.getByTestId('mod')).toBeInTheDocument();
   });
 });
 

@@ -33,6 +33,7 @@ const {
   ChatError,
   sendChatMessage,
   markChatRead,
+  mapChatRow,
   fetchRecentChatMessages,
   fetchOlderChatMessages,
   fetchUnreadCount,
@@ -173,6 +174,143 @@ describe('mapChatRow attachments', () => {
     });
     expect(msg.attachments).toEqual([]);
     expect(msg.body).toBeNull();
+  });
+});
+
+describe('mapChatRow training_card', () => {
+  it('maps a training_card row from list_chat_messages', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        sender_type: 'training_card',
+        body: null,
+        training_card: {
+          entry_id: 'ent-1',
+          activity: 'Simning',
+          duration_minutes: 50,
+          note: 'skönt',
+          challenge_date: '2026-09-06',
+          entry_status: 'active',
+          trained_at: '2026-09-06T18:00:00Z',
+          proofs: [
+            { position: 2, path: 'c/u/d/2-b.jpg' },
+            { position: 1, path: 'c/u/d/1-a.jpg' },
+          ],
+        },
+      }),
+    );
+    expect(msg.senderType).toBe('training_card');
+    expect(msg.trainingCard).toEqual({
+      entryId: 'ent-1',
+      activity: 'Simning',
+      durationMinutes: 50,
+      note: 'skönt',
+      challengeDate: '2026-09-06',
+      entryStatus: 'active',
+      trainedAt: '2026-09-06T18:00:00Z',
+      proofs: [
+        { position: 1, path: 'c/u/d/1-a.jpg' },
+        { position: 2, path: 'c/u/d/2-b.jpg' },
+      ],
+    });
+  });
+
+  it('maps a withheld (hidden) training_card to trainingCard null', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        sender_type: 'training_card',
+        status: 'hidden',
+        body: null,
+        training_card: null,
+      }),
+    );
+    expect(msg.senderType).toBe('training_card');
+    expect(msg.trainingCard).toBeNull();
+  });
+
+  it('leaves trainingCard null for an ordinary message', () => {
+    expect(mapChatRow(rowFixture()).trainingCard).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Release-compatibility: the PR #8 frontend must run against the CURRENT
+// production `list_chat_messages`, which has NO `training_card` column and
+// whose rows can only be sender_type 'participant' / 'game_master'. This
+// models a CODE-FIRST rollout — new frontend live, old DB — so applying the
+// migration is not a hard prerequisite for the deploy.
+// ---------------------------------------------------------------------------
+describe('backwards compatibility with the pre-PR-8 list_chat_messages shape', () => {
+  /** Exactly the keys the CURRENT production RPC returns — no `training_card`. */
+  function preMigrationRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'old-1',
+      seq: 12,
+      challenge_id: 'c1',
+      sender_type: 'participant',
+      sender_user_id: 'u9',
+      sender_display_name: 'Erik',
+      body: 'hej från gamla världen',
+      status: 'active',
+      attachments: [],
+      created_at: '2026-09-05T12:00:00Z',
+      ...overrides,
+    };
+  }
+
+  it('maps a pre-migration participant row with no exception and trainingCard null', () => {
+    expect('training_card' in preMigrationRow()).toBe(false);
+    const msg = mapChatRow(preMigrationRow());
+    expect(msg.senderType).toBe('participant');
+    expect(msg.body).toBe('hej från gamla världen');
+    expect(msg.senderDisplayName).toBe('Erik');
+    expect(msg.attachments).toEqual([]);
+    expect(msg.status).toBe('active');
+    expect(msg.trainingCard).toBeNull();
+  });
+
+  it('maps a pre-migration Game Master row unchanged, trainingCard null', () => {
+    const msg = mapChatRow(
+      preMigrationRow({
+        sender_type: 'game_master',
+        sender_user_id: null,
+        sender_display_name: null,
+        body: 'Systemet observerar.',
+      }),
+    );
+    expect(msg.senderType).toBe('game_master');
+    expect(msg.body).toBe('Systemet observerar.');
+    expect(msg.trainingCard).toBeNull();
+  });
+
+  it('maps a pre-migration hidden row (withheld body) to the placeholder path', () => {
+    const msg = mapChatRow(preMigrationRow({ status: 'hidden', body: null }));
+    expect(msg.status).toBe('hidden');
+    expect(msg.body).toBeNull();
+    expect(msg.trainingCard).toBeNull();
+  });
+
+  it('fetchRecentChatMessages maps a whole pre-migration page without throwing', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        preMigrationRow({ id: 'a', seq: 3 }),
+        preMigrationRow({
+          id: 'b',
+          seq: 2,
+          sender_type: 'game_master',
+          sender_user_id: null,
+        }),
+        preMigrationRow({ id: 'c', seq: 1, status: 'hidden', body: null }),
+      ],
+      error: null,
+    });
+    const page = await fetchRecentChatMessages('c1', 50);
+    expect(page).toHaveLength(3);
+    expect(page.every((m) => m.trainingCard === null)).toBe(true);
+    expect(page.map((m) => m.senderType)).toEqual([
+      'participant',
+      'game_master',
+      'participant',
+    ]);
   });
 });
 
