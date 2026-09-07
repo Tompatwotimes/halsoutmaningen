@@ -65,6 +65,25 @@ describe('displayBody', () => {
       displayBody({ status: 'hidden', body: null, trainingCard: null }),
     ).toBe('[Borttaget av administratör]');
   });
+
+  it('is unchanged for a pre-PR-8 row where the trainingCard key is absent', () => {
+    // Release compatibility: the current production list_chat_messages has no
+    // training_card column, so `trainingCard` is simply not present.
+    expect(displayBody({ status: 'active', body: 'hej' })).toBe('hej');
+    expect(displayBody({ status: 'hidden', body: null })).toBe(
+      '[Borttaget av administratör]',
+    );
+    expect(displayBody({ status: 'active', body: null, attachments: [] })).toBe(
+      '[Borttaget av administratör]',
+    );
+    expect(
+      displayBody({
+        status: 'active',
+        body: null,
+        attachments: [{ position: 1, path: 'x' }],
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('chatDateSeparatorKey', () => {
