@@ -108,4 +108,53 @@ describe('ChatModerationSheet', () => {
       screen.queryByRole('button', { name: /dölj/i }),
     ).not.toBeInTheDocument();
   });
+
+  it('can moderate an automatic training card (its own copy)', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(
+      <ChatModerationSheet
+        message={message({
+          id: 'card-1',
+          senderType: 'training_card',
+          body: null,
+          trainingCard: {
+            entryId: 'e1',
+            activity: 'Löpning',
+            durationMinutes: 30,
+            note: null,
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        })}
+        challengeId="c1"
+        isAdmin
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Dölj' }));
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByRole('heading', { name: /passkortet/i }),
+    ).toBeInTheDocument();
+    await user.type(within(dialog).getByRole('textbox'), 'fejkat bevis');
+    await user.click(within(dialog).getByRole('button', { name: 'Dölj' }));
+    expect(hideMock.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'card-1', reason: 'fejkat bevis' }),
+      expect.anything(),
+    );
+  });
+
+  it('shows no trigger for a Game Master row', () => {
+    render(
+      <ChatModerationSheet
+        message={message({ senderType: 'game_master', senderUserId: null })}
+        challengeId="c1"
+        isAdmin
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: /dölj/i }),
+    ).not.toBeInTheDocument();
+  });
 });
