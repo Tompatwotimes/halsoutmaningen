@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 import { Badge } from '@/components/ui/Badge';
@@ -17,6 +18,8 @@ import { probeImage } from '@/features/challenge/heic';
 import type { UploadPhase } from '@/lib/media/image-processing';
 import { ChatImageGrid } from './ChatImageGrid';
 import { TrainingCard } from './TrainingCard';
+import { LikeBadge } from './LikeBadge';
+import { MessageActions } from './MessageActions';
 import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
@@ -24,14 +27,17 @@ import {
   CHAT_BODY_MAX_LENGTH,
   chatDateSeparatorKey,
   displayBody,
+  isInteractiveEventTarget,
   isNearBottom,
   isProgrammaticScroll,
   scrollAnchorAdjustment,
+  swedishPossessive,
 } from './chat';
 import {
   useChatMessages,
   useMarkChatRead,
   usePostChatMessage,
+  useSetChatMessageLike,
 } from './useChat';
 import type { ChatMessage } from './types';
 import styles from './ChatPanel.module.css';
@@ -45,6 +51,12 @@ export interface ChatPanelProps {
   isAdmin: boolean;
   /** Rendered under a participant message when the viewer is an admin (Task 9). */
   renderModeration?: (message: ChatMessage) => ReactNode;
+  /**
+   * Invoked when a viewer picks "Svara" on a message. The reply composer /
+   * quote UI is a later task (F/G) — Task E only exposes the affordance and
+   * this callback seam; unwired here it is a no-op.
+   */
+  onReplyToMessage?: (message: ChatMessage) => void;
 }
 
 function formatTime(iso: string): string {
@@ -66,10 +78,14 @@ export function ChatPanel({
   timeZone,
   isAdmin,
   renderModeration,
+  onReplyToMessage,
 }: ChatPanelProps) {
   const query = useChatMessages(open ? challengeId : null);
   const { mutate: markRead } = useMarkChatRead();
   const post = usePostChatMessage();
+  const { setLike, isPending: isLikePending } = useSetChatMessageLike(
+    open ? challengeId : null,
+  );
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -325,6 +341,11 @@ export function ChatPanel({
     setImageError(null);
   }
 
+  const handleReply = useCallback(
+    (message: ChatMessage) => onReplyToMessage?.(message),
+    [onReplyToMessage],
+  );
+
   function jumpToLatest() {
     stickToBottom.current = true;
     pinToBottom();
@@ -470,6 +491,9 @@ export function ChatPanel({
                 key={entry.message.id}
                 message={entry.message}
                 isSelf={entry.message.senderUserId === userId}
+                onSetLike={setLike}
+                isLikePending={isLikePending}
+                onReply={handleReply}
                 moderation={
                   isAdmin &&
                   (entry.message.senderType === 'participant' ||
@@ -501,37 +525,99 @@ function MessageRow({
   message,
   isSelf,
   moderation,
+  onSetLike,
+  isLikePending,
+  onReply,
 }: {
   message: ChatMessage;
   isSelf: boolean;
   moderation: ReactNode;
+  onSetLike: (vars: { messageId: string; liked: boolean }) => void;
+  isLikePending: (messageId: string) => boolean;
+  onReply: (message: ChatMessage) => void;
 }) {
   const isGameMaster = message.senderType === 'game_master';
+  const isCard =
+    message.senderType === 'training_card' &&
+    message.status === 'active' &&
+    message.trainingCard !== null;
   const text = displayBody(message);
   const senderLabel = isSelf
     ? 'Du'
     : (message.senderDisplayName ?? 'Deltagare');
 
+  // Social affordances only on a live chat item — never on the
+  // "[Borttaget av administratör]" placeholder (design §7.1).
+  const showSocial = message.status === 'active';
+  const likePending = isLikePending(message.id);
+  const badgeSubject = isCard ? 'passet' : 'meddelandet';
+  const likeLabel = message.likedByMe
+    ? 'Ta bort gilla-markering'
+    : `Gilla ${badgeSubject}`;
+  const replyNoun = isCard ? 'pass' : 'meddelande';
+  const replyName = isGameMaster
+    ? 'Game Master'
+    : (message.senderDisplayName ?? 'deltagaren');
+  const replyLabel = isSelf
+    ? `Svara på ditt ${replyNoun}`
+    : `Svara på ${swedishPossessive(replyName)} ${replyNoun}`;
+
+  const toggleLike = useCallback(() => {
+    onSetLike({ messageId: message.id, liked: !message.likedByMe });
+  }, [onSetLike, message.id, message.likedByMe]);
+
+  const handleDoubleClick = useCallback(
+    (event: ReactMouseEvent) => {
+      // Double-click LIKES — it never unlikes, and never fires from an
+      // interactive child (image, badge, action / moderation button).
+      if (message.likedByMe || likePending) return;
+      if (isInteractiveEventTarget(event.target)) return;
+      onSetLike({ messageId: message.id, liked: true });
+    },
+    [message.likedByMe, message.id, likePending, onSetLike],
+  );
+
+  const handleReply = useCallback(() => onReply(message), [onReply, message]);
+
+  const social = showSocial ? (
+    <>
+      <MessageActions
+        likedByMe={message.likedByMe}
+        likeLabel={likeLabel}
+        replyLabel={replyLabel}
+        likeDisabled={likePending}
+        onLike={toggleLike}
+        onReply={handleReply}
+      />
+      <LikeBadge
+        likeCount={message.likeCount}
+        likedByMe={message.likedByMe}
+        subject={badgeSubject}
+        onToggle={toggleLike}
+        disabled={likePending}
+      />
+    </>
+  ) : null;
+
   // An active training card renders its own self-contained layout (its own
   // header + time), not a normal bubble. A hidden card falls through to the
   // standard render: sender label + the "[Borttaget av administratör]"
   // placeholder, exactly like a hidden participant message.
-  if (
-    message.senderType === 'training_card' &&
-    message.status === 'active' &&
-    message.trainingCard !== null
-  ) {
+  if (isCard && message.trainingCard !== null) {
     return (
       <div
         className={[styles.message, isSelf && styles.self]
           .filter(Boolean)
           .join(' ')}
+        data-seq={message.seq}
+        onDoubleClick={handleDoubleClick}
       >
         <TrainingCard
           card={message.trainingCard}
           senderName={senderLabel}
           time={formatTime(message.createdAt)}
         />
+        {social}
         {moderation}
       </div>
     );
@@ -546,6 +632,8 @@ function MessageRow({
       ]
         .filter(Boolean)
         .join(' ')}
+      data-seq={message.seq}
+      onDoubleClick={handleDoubleClick}
     >
       <div className={styles.messageHead}>
         {isGameMaster ? (
@@ -568,6 +656,7 @@ function MessageRow({
           attachments={message.attachments}
         />
       )}
+      {social}
       {moderation}
     </div>
   );

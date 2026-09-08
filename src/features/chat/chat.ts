@@ -67,6 +67,52 @@ export function sortBySeq(messages: readonly ChatMessage[]): ChatMessage[] {
   return [...messages].sort((a, b) => a.seq - b.seq);
 }
 
+/**
+ * Swedish possessive of a display name for the reply action label: `Anna` →
+ * `Annas`, but a name already ending in an s/x/z sound stays as-is
+ * (`Tomas` → `Tomas`, `Max` → `Max`).
+ */
+export function swedishPossessive(name: string): string {
+  return /[sxz]$/i.test(name) ? name : `${name}s`;
+}
+
+/**
+ * Does an event target sit inside an interactive control (a button, link,
+ * form field, or an explicitly-marked interactive region)? Used to stop a
+ * double-click on the chat image, the badge, an action button etc. from also
+ * liking the whole message.
+ */
+export function isInteractiveEventTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'button, a, input, textarea, select, [role="button"], [data-chat-interactive]',
+    ) !== null
+  );
+}
+
+/**
+ * The accessible label for the reaction micro-badge (design §7.3 / §26). Empty
+ * string when there is nothing to announce (0 likes → the badge is not
+ * rendered). `subject` is `meddelandet` for a message, `passet` for a training
+ * card.
+ */
+export function likeBadgeAriaLabel(
+  likeCount: number,
+  likedByMe: boolean,
+  subject: 'meddelandet' | 'passet' = 'meddelandet',
+): string {
+  const n = Math.max(0, Math.trunc(likeCount));
+  if (n === 0) return '';
+  if (likedByMe) {
+    const others = n - 1;
+    if (others === 0) return `Du gillar ${subject}`;
+    if (others === 1) return `Du och 1 annan gillar ${subject}`;
+    return `Du och ${others} andra gillar ${subject}`;
+  }
+  return `${n} ${n === 1 ? 'person' : 'personer'} gillar ${subject}`;
+}
+
 // ---------------------------------------------------------------------------
 // Scroll positioning (B1 — chat opens at the latest message)
 // ---------------------------------------------------------------------------

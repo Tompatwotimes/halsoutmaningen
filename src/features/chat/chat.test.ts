@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   chatDateSeparatorKey,
   displayBody,
+  isInteractiveEventTarget,
   isNearBottom,
   isProgrammaticScroll,
   isWithinRateLimitWindow,
+  likeBadgeAriaLabel,
   scrollAnchorAdjustment,
   shouldFollowNewMessage,
   sortBySeq,
+  swedishPossessive,
 } from './chat';
 import type { ChatMessage } from './types';
 
@@ -203,5 +206,62 @@ describe('isProgrammaticScroll', () => {
   it('honours a custom tolerance', () => {
     expect(isProgrammaticScroll(1195, 1200, 2)).toBe(false);
     expect(isProgrammaticScroll(1195, 1200, 8)).toBe(true);
+  });
+});
+
+describe('likeBadgeAriaLabel', () => {
+  it('is empty when there is nothing to announce', () => {
+    expect(likeBadgeAriaLabel(0, false)).toBe('');
+    expect(likeBadgeAriaLabel(0, true)).toBe('');
+    expect(likeBadgeAriaLabel(-2, false)).toBe('');
+  });
+  it('counts other people in singular / plural', () => {
+    expect(likeBadgeAriaLabel(1, false)).toBe('1 person gillar meddelandet');
+    expect(likeBadgeAriaLabel(3, false)).toBe('3 personer gillar meddelandet');
+  });
+  it('names the viewer when they liked', () => {
+    expect(likeBadgeAriaLabel(1, true)).toBe('Du gillar meddelandet');
+    expect(likeBadgeAriaLabel(2, true)).toBe(
+      'Du och 1 annan gillar meddelandet',
+    );
+    expect(likeBadgeAriaLabel(4, true)).toBe(
+      'Du och 3 andra gillar meddelandet',
+    );
+  });
+  it('uses the given subject noun for a training card', () => {
+    expect(likeBadgeAriaLabel(2, false, 'passet')).toBe(
+      '2 personer gillar passet',
+    );
+    expect(likeBadgeAriaLabel(3, true, 'passet')).toBe(
+      'Du och 2 andra gillar passet',
+    );
+  });
+});
+
+describe('swedishPossessive', () => {
+  it('adds -s to an ordinary name', () => {
+    expect(swedishPossessive('Anna')).toBe('Annas');
+    expect(swedishPossessive('Game Master')).toBe('Game Masters');
+  });
+  it('leaves a name ending in s / x / z unchanged', () => {
+    expect(swedishPossessive('Tomas')).toBe('Tomas');
+    expect(swedishPossessive('Max')).toBe('Max');
+  });
+});
+
+describe('isInteractiveEventTarget', () => {
+  it('is false for a plain element and for a null target', () => {
+    expect(isInteractiveEventTarget(null)).toBe(false);
+    const div = document.createElement('div');
+    expect(isInteractiveEventTarget(div)).toBe(false);
+  });
+  it('is true for a button, a link, or a node inside one', () => {
+    const button = document.createElement('button');
+    const span = document.createElement('span');
+    button.append(span);
+    expect(isInteractiveEventTarget(button)).toBe(true);
+    expect(isInteractiveEventTarget(span)).toBe(true);
+    const a = document.createElement('a');
+    expect(isInteractiveEventTarget(a)).toBe(true);
   });
 });

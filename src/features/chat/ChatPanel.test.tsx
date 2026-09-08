@@ -394,7 +394,9 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
   it('shows NO LikeBadge when a message has zero likes', () => {
     prime({ messages: [row(5, { likeCount: 0 })] });
     wrap(<ChatPanel {...BASE_PROPS} />);
-    expect(screen.queryByRole('button', { name: /gillar meddelandet/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /gillar meddelandet/ }),
+    ).toBeNull();
   });
 
   it('shows a LikeBadge on a training card with likes', () => {
@@ -442,14 +444,18 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
   });
 
   it('shows NEITHER a badge NOR actions on a hidden message', () => {
-    prime({ messages: [row(5, { status: 'hidden', body: null, likeCount: 0 })] });
+    prime({
+      messages: [row(5, { status: 'hidden', body: null, likeCount: 0 })],
+    });
     wrap(<ChatPanel {...BASE_PROPS} />);
-    expect(screen.getByText('[Borttaget av administratör]')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /gillar/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Gilla meddelandet' })).toBeNull();
     expect(
-      screen.queryByRole('button', { name: /^Svara på/ }),
+      screen.getByText('[Borttaget av administratör]'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /gillar/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Gilla meddelandet' }),
     ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Svara på/ })).toBeNull();
   });
 
   it('gives an active message a keyboard-reachable like + reply action row', () => {
@@ -514,7 +520,9 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
     isLikePendingMock.mockImplementation((id: string) => id === 'm5');
     prime({ messages: [row(5), row(6)] });
     wrap(<ChatPanel {...BASE_PROPS} />);
-    const buttons = screen.getAllByRole('button', { name: 'Gilla meddelandet' });
+    const buttons = screen.getAllByRole('button', {
+      name: 'Gilla meddelandet',
+    });
     // row 5 pending → disabled; row 6 not pending → enabled
     expect(buttons[0]).toBeDisabled();
     expect(buttons[1]).toBeEnabled();
@@ -522,16 +530,16 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
 
   it('double-click on an unliked message card likes it (desired state true, not a toggle)', () => {
     prime({ messages: [row(5, { likedByMe: false })] });
-    const { container } = wrap(<ChatPanel {...BASE_PROPS} />);
-    const card = container.querySelector('[data-seq="5"]')!;
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const card = document.body.querySelector('[data-seq="5"]')!;
     fireEvent.dblClick(card);
     expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
   });
 
   it('double-click on an already-liked message does NOT unlike', () => {
     prime({ messages: [row(5, { likedByMe: true, likeCount: 3 })] });
-    const { container } = wrap(<ChatPanel {...BASE_PROPS} />);
-    fireEvent.dblClick(container.querySelector('[data-seq="5"]')!);
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    fireEvent.dblClick(document.body.querySelector('[data-seq="5"]')!);
     expect(setLikeMock).not.toHaveBeenCalled();
   });
 
@@ -561,8 +569,8 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
 
   it('carries data-seq on the message row for later jump-to-original', () => {
     prime({ messages: [row(42)] });
-    const { container } = wrap(<ChatPanel {...BASE_PROPS} />);
-    expect(container.querySelector('[data-seq="42"]')).toBeInTheDocument();
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(document.body.querySelector('[data-seq="42"]')).toBeInTheDocument();
   });
 
   it('leaves the message body, attachments and moderation affordance intact', () => {
@@ -588,9 +596,7 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
   it('the "Svara" action calls onReplyToMessage with the message', async () => {
     const onReplyToMessage = vi.fn();
     prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
-    wrap(
-      <ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />,
-    );
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
     await userEvent.click(
       screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
     );
