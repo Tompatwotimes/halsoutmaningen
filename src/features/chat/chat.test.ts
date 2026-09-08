@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DOUBLE_TAP_MS,
+  REPLY_SWIPE_ARM_PX,
+  REPLY_SWIPE_MAX_PX,
   chatDateSeparatorKey,
+  classifyPointerMove,
+  clampSwipeDx,
   displayBody,
+  isChatImageTarget,
   isInteractiveEventTarget,
   isNearBottom,
   isProgrammaticScroll,
+  isSwipeArmed,
   isWithinRateLimitWindow,
   likeBadgeAriaLabel,
   scrollAnchorAdjustment,
@@ -263,5 +270,75 @@ describe('isInteractiveEventTarget', () => {
     expect(isInteractiveEventTarget(span)).toBe(true);
     const a = document.createElement('a');
     expect(isInteractiveEventTarget(a)).toBe(true);
+  });
+});
+
+describe('isChatImageTarget', () => {
+  it('is true for a node inside a [data-chat-image] element', () => {
+    const btn = document.createElement('button');
+    btn.setAttribute('data-chat-image', '');
+    const img = document.createElement('img');
+    btn.append(img);
+    expect(isChatImageTarget(img)).toBe(true);
+    expect(isChatImageTarget(btn)).toBe(true);
+  });
+  it('is false for a plain button, a null target, and a non-Element', () => {
+    expect(isChatImageTarget(null)).toBe(false);
+    expect(isChatImageTarget(document.createElement('button'))).toBe(false);
+  });
+});
+
+describe('classifyPointerMove', () => {
+  it('is idle for a tiny movement', () => {
+    expect(classifyPointerMove({ dx: 5, dy: 3 })).toBe('idle');
+    expect(classifyPointerMove({ dx: 0, dy: 0 })).toBe('idle');
+  });
+  it('is vscroll for a dominant vertical move (either direction)', () => {
+    expect(classifyPointerMove({ dx: 2, dy: 20 })).toBe('vscroll');
+    expect(classifyPointerMove({ dx: -2, dy: -30 })).toBe('vscroll');
+    expect(classifyPointerMove({ dx: 15, dy: 14 })).toBe('vscroll');
+  });
+  it('is swipe only for a dominant RIGHTWARD move', () => {
+    expect(classifyPointerMove({ dx: 30, dy: 5 })).toBe('swipe');
+    expect(classifyPointerMove({ dx: 40, dy: -8 })).toBe('swipe');
+  });
+  it('is never swipe for a leftward move', () => {
+    expect(classifyPointerMove({ dx: -30, dy: 5 })).toBe('idle');
+    expect(classifyPointerMove({ dx: -80, dy: 2 })).toBe('idle');
+  });
+  it('does not arm on an ambiguous diagonal (dx not clearly dominant)', () => {
+    expect(classifyPointerMove({ dx: 12, dy: 9 })).toBe('idle');
+    expect(classifyPointerMove({ dx: 20, dy: 15 })).toBe('vscroll');
+  });
+});
+
+describe('isSwipeArmed', () => {
+  it('is false below the arm threshold', () => {
+    expect(isSwipeArmed(0)).toBe(false);
+    expect(isSwipeArmed(REPLY_SWIPE_ARM_PX - 1)).toBe(false);
+  });
+  it('is true at or past the arm threshold', () => {
+    expect(isSwipeArmed(REPLY_SWIPE_ARM_PX)).toBe(true);
+    expect(isSwipeArmed(REPLY_SWIPE_ARM_PX + 40)).toBe(true);
+  });
+});
+
+describe('clampSwipeDx', () => {
+  it('never returns a negative follow distance', () => {
+    expect(clampSwipeDx(-40)).toBe(0);
+    expect(clampSwipeDx(0)).toBe(0);
+  });
+  it('clamps to REPLY_SWIPE_MAX_PX so a card cannot slide off-screen', () => {
+    expect(clampSwipeDx(30)).toBe(30);
+    expect(clampSwipeDx(REPLY_SWIPE_MAX_PX + 500)).toBe(REPLY_SWIPE_MAX_PX);
+  });
+});
+
+describe('gesture constants', () => {
+  it('exports a sane double-tap window and swipe thresholds', () => {
+    expect(DOUBLE_TAP_MS).toBe(260);
+    expect(REPLY_SWIPE_ARM_PX).toBe(64);
+    expect(REPLY_SWIPE_MAX_PX).toBe(96);
+    expect(REPLY_SWIPE_ARM_PX).toBeLessThan(REPLY_SWIPE_MAX_PX);
   });
 });

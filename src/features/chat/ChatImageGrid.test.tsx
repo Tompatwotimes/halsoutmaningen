@@ -55,4 +55,39 @@ describe('ChatImageGrid', () => {
       await screen.findByLabelText('Bilden kunde inte laddas'),
     ).toBeInTheDocument();
   });
+
+  it('marks each thumbnail with data-chat-image so a double-tap can still like the message', async () => {
+    signed.mockResolvedValue('https://x/y');
+    wrap(<ChatImageGrid messageId="m" attachments={atts(2)} />);
+    const thumbs = await screen.findAllByRole('button', { name: /Öppna bild/ });
+    for (const t of thumbs) expect(t).toHaveAttribute('data-chat-image');
+  });
+
+  it('registers a close-lightbox callback while the lightbox is open and clears it when closed', async () => {
+    const user = userEvent.setup();
+    signed.mockResolvedValue('https://x/y');
+    const register = vi.fn();
+    wrap(
+      <ChatImageGrid
+        messageId="m"
+        attachments={atts(1)}
+        registerLightboxClose={register}
+      />,
+    );
+    const [thumb] = await screen.findAllByRole('button', { name: /Öppna bild/ });
+    await user.click(thumb!);
+    // opened → a close fn was registered
+    const lastFn = register.mock.calls.at(-1)?.[0];
+    expect(typeof lastFn).toBe('function');
+    expect(
+      screen.getByRole('dialog', { name: 'Bildvisning' }),
+    ).toBeInTheDocument();
+    // calling it closes the lightbox and de-registers
+    register.mockClear();
+    lastFn();
+    expect(
+      screen.queryByRole('dialog', { name: 'Bildvisning' }),
+    ).not.toBeInTheDocument();
+    expect(register).toHaveBeenLastCalledWith(null);
+  });
 });

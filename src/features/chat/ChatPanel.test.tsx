@@ -606,6 +606,203 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
   });
 });
 
+describe('ChatPanel — mobile gestures (Task F)', () => {
+  function card(seq: number): HTMLElement {
+    return document.body.querySelector(`[data-seq="${seq}"]`)!;
+  }
+  function swipeRight(el: HTMLElement, toX: number) {
+    fireEvent.pointerDown(el, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerMove(el, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: toX,
+      clientY: 2,
+    });
+    fireEvent.pointerUp(el, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: toX,
+      clientY: 2,
+    });
+  }
+  function doubleTap(el: HTMLElement, target?: Element) {
+    const t = target ?? el;
+    fireEvent.pointerDown(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerUp(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerDown(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerUp(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+  }
+
+  it('swiping a participant message right past the threshold arms reply', () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5' }),
+    );
+  });
+
+  it('a short right drag below the threshold does NOT arm reply', () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5)] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 30);
+    expect(onReplyToMessage).not.toHaveBeenCalled();
+  });
+
+  it('swiping a training card right arms reply with the training-card message', () => {
+    const onReplyToMessage = vi.fn();
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'training_card',
+          body: null,
+          trainingCard: {
+            entryId: 'e1',
+            activity: 'Löpning',
+            durationMinutes: 45,
+            note: null,
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5', senderType: 'training_card' }),
+    );
+  });
+
+  it('swiping a Game Master message right arms reply with the GM message', () => {
+    const onReplyToMessage = vi.fn();
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'game_master',
+          senderUserId: null,
+          senderDisplayName: null,
+          body: 'GAME MASTER: kör hårt',
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5', senderType: 'game_master' }),
+    );
+  });
+
+  it('a hidden message cannot be swipe-replied', () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5, { status: 'hidden', body: null })] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).not.toHaveBeenCalled();
+  });
+
+  it('a touch double-tap on an unliked message likes it (make liked, never a toggle)', () => {
+    vi.useFakeTimers();
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+    expect(setLikeMock).toHaveBeenCalledTimes(1);
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('a touch double-tap on an already-liked message does NOT unlike', () => {
+    vi.useFakeTimers();
+    prime({ messages: [row(5, { likedByMe: true, likeCount: 3 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('a hidden message cannot be double-tap-liked', () => {
+    vi.useFakeTimers();
+    prime({ messages: [row(5, { status: 'hidden', body: null })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('a touch double-tap while pending does nothing', () => {
+    vi.useFakeTimers();
+    isLikePendingMock.mockReturnValue(true);
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('keeps data-seq on the row', () => {
+    prime({ messages: [row(42)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(document.body.querySelector('[data-seq="42"]')).toBeInTheDocument();
+  });
+
+  it('the Task E explicit heart action still works alongside gestures', async () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Gilla meddelandet' }),
+    );
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+  });
+
+  it('the Task E desktop double-click still likes (mouse path unchanged)', () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    fireEvent.dblClick(card(5));
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+    expect(setLikeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Task E desktop double-click on an already-liked message still no-ops', () => {
+    prime({ messages: [row(5, { likedByMe: true, likeCount: 2 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    fireEvent.dblClick(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('ChatPanel scroll behaviour (B1)', () => {
   function openWithMessages(
     initial: ChatMessage[],
