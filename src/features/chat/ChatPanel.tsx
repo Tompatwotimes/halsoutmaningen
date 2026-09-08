@@ -34,9 +34,11 @@ import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import {
   CHAT_BODY_MAX_LENGTH,
   HIDDEN_REPLY_TARGET_MESSAGE,
+  REPLY_JUMP_MAX_PAGES,
   REPLY_SWIPE_ARM_PX,
   chatDateSeparatorKey,
   displayBody,
+  findLoadedSeq,
   isInteractiveEventTarget,
   isNearBottom,
   isProgrammaticScroll,
@@ -142,6 +144,21 @@ export function ChatPanel({
   const markedSeq = useRef(0);
   const [showNewMessages, setShowNewMessages] = useState(false);
 
+  // --- jump-to-original from a reply quote (design §5.6) ------------------
+  // The seq currently outlined by a jump (cleared after ~1.2 s), a one-line
+  // "not in history" notice, and the in-progress jump request. `jumpTick`
+  // re-runs the driver effect after each bounded `fetchNextPage`.
+  const [highlightSeq, setHighlightSeq] = useState<number | null>(null);
+  const [jumpNotice, setJumpNotice] = useState<string | null>(null);
+  const jumpRequest = useRef<{
+    seq: number;
+    pagesFetched: number;
+    fetching: boolean;
+  } | null>(null);
+  const [jumpTick, setJumpTick] = useState(0);
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
   // Pin the viewport to the bottom, recording where the resulting scroll lands
   // so the scroll listener does not read it back as a user gesture.
   const pinToBottom = useCallback(() => {
@@ -176,6 +193,10 @@ export function ChatPanel({
     setShowNewMessages(false);
     // A reply target from a previous open / room is stale (design §5.8).
     setReplyTarget(null);
+    // Any pending / lingering jump belongs to the previous room.
+    jumpRequest.current = null;
+    setHighlightSeq(null);
+    setJumpNotice(null);
   }, [challengeId, open]);
 
   // Track user intent from the scroll position; auto-load older history near
@@ -387,6 +408,69 @@ export function ChatPanel({
     [onReplyToMessage, userId],
   );
 
+  // Tap a reply quote → bring its original into view (design §5.6). Cheap
+  // request-setter; the driver effect below does the bounded work.
+  const jumpToMessage = useCallback((seq: number) => {
+    jumpRequest.current = { seq, pagesFetched: 0, fetching: false };
+    setHighlightSeq(null);
+    setJumpNotice(null);
+    setJumpTick((n) => n + 1);
+  }, []);
+
+  // Jump driver: scroll to the target if it is loaded (+ brief highlight,
+  // WITHOUT disturbing the follow-the-bottom latch — the recorded
+  // `programmaticScrollTo` makes the scroll listener ignore the resulting
+  // event). Otherwise page upward through the EXISTING `fetchNextPage`
+  // mechanism, at most `REPLY_JUMP_MAX_PAGES` times, re-checking after each
+  // page. If the target never appears, show a one-line notice and stop — no
+  // unbounded loop.
+  useEffect(() => {
+    const req = jumpRequest.current;
+    if (!req || req.fetching) return;
+
+    if (findLoadedSeq(messages, req.seq)) {
+      jumpRequest.current = null;
+      const node = listRef.current?.querySelector<HTMLElement>(
+        `[data-seq="${String(req.seq)}"]`,
+      );
+      if (node) {
+        node.scrollIntoView({ block: 'center' });
+        const el = scrollRef.current;
+        if (el) programmaticScrollTo.current = el.scrollTop;
+        setHighlightSeq(req.seq);
+        window.setTimeout(() => {
+          setHighlightSeq((s) => (s === req.seq ? null : s));
+        }, 1200);
+      }
+      return;
+    }
+
+    if (
+      req.pagesFetched >= REPLY_JUMP_MAX_PAGES ||
+      !queryRef.current.hasNextPage
+    ) {
+      jumpRequest.current = null;
+      setJumpNotice('Kunde inte hitta meddelandet i historiken.');
+      return;
+    }
+
+    req.fetching = true;
+    req.pagesFetched += 1;
+    const el = scrollRef.current;
+    if (el) pendingAnchorHeight.current = el.scrollHeight;
+    void queryRef.current.fetchNextPage().finally(() => {
+      if (jumpRequest.current) jumpRequest.current.fetching = false;
+      setJumpTick((n) => n + 1);
+    });
+  }, [jumpTick, messages]);
+
+  // Auto-dismiss the "not in history" notice after a few seconds (toast-like).
+  useEffect(() => {
+    if (jumpNotice === null) return;
+    const t = window.setTimeout(() => setJumpNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [jumpNotice]);
+
   function jumpToLatest() {
     stickToBottom.current = true;
     pinToBottom();
@@ -558,9 +642,11 @@ export function ChatPanel({
                 message={entry.message}
                 isSelf={entry.message.senderUserId === userId}
                 viewerUserId={userId}
+                isJumpHighlighted={entry.message.seq === highlightSeq}
                 onSetLike={setLike}
                 isLikePending={isLikePending}
                 onReply={handleReply}
+                onJumpToMessage={jumpToMessage}
                 moderation={
                   isAdmin &&
                   (entry.message.senderType === 'participant' ||
@@ -583,6 +669,19 @@ export function ChatPanel({
             Nya meddelanden ↓
           </button>
         )}
+
+        {jumpNotice && (
+          <div className={styles.jumpNotice} role="status">
+            <span>{jumpNotice}</span>
+            <button
+              type="button"
+              onClick={() => setJumpNotice(null)}
+              aria-label="Stäng"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        )}
       </div>
     </Sheet>
   );
@@ -592,18 +691,22 @@ function MessageRow({
   message,
   isSelf,
   viewerUserId,
+  isJumpHighlighted,
   moderation,
   onSetLike,
   isLikePending,
   onReply,
+  onJumpToMessage,
 }: {
   message: ChatMessage;
   isSelf: boolean;
   viewerUserId: string;
+  isJumpHighlighted: boolean;
   moderation: ReactNode;
   onSetLike: (vars: { messageId: string; liked: boolean }) => void;
   isLikePending: (messageId: string) => boolean;
   onReply: (message: ChatMessage) => void;
+  onJumpToMessage: (seq: number) => void;
 }) {
   const isGameMaster = message.senderType === 'game_master';
   const isCard =
@@ -720,6 +823,7 @@ function MessageRow({
           .filter(Boolean)
           .join(' ')}
         data-seq={message.seq}
+        data-jump-highlight={isJumpHighlighted || undefined}
         style={wrapperStyle}
         onDoubleClick={handleDoubleClick}
         {...gestures.handlers}
@@ -746,6 +850,7 @@ function MessageRow({
         .filter(Boolean)
         .join(' ')}
       data-seq={message.seq}
+      data-jump-highlight={isJumpHighlighted || undefined}
       style={wrapperStyle}
       onDoubleClick={handleDoubleClick}
       {...gestures.handlers}
@@ -765,6 +870,7 @@ function MessageRow({
         <ReplyQuote
           preview={message.replyPreview}
           viewerUserId={viewerUserId}
+          onJump={onJumpToMessage}
         />
       )}
       {text !== null && (

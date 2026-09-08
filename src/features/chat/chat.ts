@@ -128,6 +128,26 @@ export const SWIPE_DEADZONE_PX = 10;
 /** Two taps closer together than this (ms) are a double-tap. */
 export const DOUBLE_TAP_MS = 260;
 
+// ---------------------------------------------------------------------------
+// Jump-to-original from a reply quote (design §5.6 / §19.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Hard cap on how many older pages jump-to-original will fetch before giving
+ * up. 10 pages × 50 messages = 500 messages — deep enough to reach almost any
+ * real reply target, bounded so a quote pointing at a purged / unreachable
+ * message can never spin the pager forever.
+ */
+export const REPLY_JUMP_MAX_PAGES = 10;
+
+/** Is a message with this `seq` among the ones currently loaded? */
+export function findLoadedSeq(
+  messages: readonly { seq: number }[],
+  seq: number,
+): boolean {
+  return messages.some((m) => m.seq === seq);
+}
+
 export type PointerMovePhase = 'idle' | 'vscroll' | 'swipe';
 
 /**
