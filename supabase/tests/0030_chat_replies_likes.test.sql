@@ -410,21 +410,21 @@ values
 -- mB1 participant text in TaskB-B (Vega) — the cross-challenge target.
 insert into public.chat_messages (id, challenge_id, sender_type, sender_user_id, body)
 values
-  ('00000000-0000-0000-0000-0000000b0m01', '00000000-0000-0000-0000-0000000b0f11', 'participant', '00000000-0000-0000-0000-00000000b002', 'HEMLIG-PARENT-TEXT hej alla'),
-  ('00000000-0000-0000-0000-0000000b0m02', '00000000-0000-0000-0000-0000000b0f11', 'participant', '00000000-0000-0000-0000-00000000b003', null),
-  ('00000000-0000-0000-0000-0000000b0m03', '00000000-0000-0000-0000-0000000b0f11', 'participant', '00000000-0000-0000-0000-00000000b003', 'snart dold'),
-  ('00000000-0000-0000-0000-0000000b0mgm', '00000000-0000-0000-0000-0000000b0f11', 'game_master', null, 'GAME MASTER: kör hårt'),
-  ('00000000-0000-0000-0000-0000000b0mb1', '00000000-0000-0000-0000-0000000b0f12', 'participant', '00000000-0000-0000-0000-00000000b004', 'b-rummet');
+  ('00000000-0000-0000-0000-0000000b0a01', '00000000-0000-0000-0000-0000000b0f11', 'participant', '00000000-0000-0000-0000-00000000b002', 'HEMLIG-PARENT-TEXT hej alla'),
+  ('00000000-0000-0000-0000-0000000b0a02', '00000000-0000-0000-0000-0000000b0f11', 'participant', '00000000-0000-0000-0000-00000000b003', null),
+  ('00000000-0000-0000-0000-0000000b0a03', '00000000-0000-0000-0000-0000000b0f11', 'participant', '00000000-0000-0000-0000-00000000b003', 'snart dold'),
+  ('00000000-0000-0000-0000-0000000b0a90', '00000000-0000-0000-0000-0000000b0f11', 'game_master', null, 'GAME MASTER: kör hårt'),
+  ('00000000-0000-0000-0000-0000000b0b01', '00000000-0000-0000-0000-0000000b0f12', 'participant', '00000000-0000-0000-0000-00000000b004', 'b-rummet');
 
 insert into storage.objects (bucket_id, name)
-values ('chat-media', '00000000-0000-0000-0000-0000000b0f11/00000000-0000-0000-0000-00000000b003/00000000-0000-0000-0000-0000000b0m02/1-x.jpg');
+values ('chat-media', '00000000-0000-0000-0000-0000000b0f11/00000000-0000-0000-0000-00000000b003/00000000-0000-0000-0000-0000000b0a02/1-x.jpg');
 insert into public.chat_message_attachments (message_id, challenge_id, position, storage_path, mime_type, size_bytes)
-values ('00000000-0000-0000-0000-0000000b0m02', '00000000-0000-0000-0000-0000000b0f11', 1,
-        '00000000-0000-0000-0000-0000000b0f11/00000000-0000-0000-0000-00000000b003/00000000-0000-0000-0000-0000000b0m02/1-x.jpg',
+values ('00000000-0000-0000-0000-0000000b0a02', '00000000-0000-0000-0000-0000000b0f11', 1,
+        '00000000-0000-0000-0000-0000000b0f11/00000000-0000-0000-0000-00000000b003/00000000-0000-0000-0000-0000000b0a02/1-x.jpg',
         'image/jpeg', 1000);
 
 insert into public.training_entries (id, challenge_id, user_id, challenge_date, session_seq, duration_minutes, activity, note)
-values ('00000000-0000-0000-0000-0000000b0te1', '00000000-0000-0000-0000-0000000b0f11',
+values ('00000000-0000-0000-0000-0000000b07e1', '00000000-0000-0000-0000-0000000b0f11',
         '00000000-0000-0000-0000-00000000b002', current_date - 2, 1, 45, 'Löpning', 'HEMLIG-NOTE');
 
 -- ========================================================================
@@ -453,10 +453,10 @@ select lives_ok(
   'legacy post_chat_message(challenge, body) still creates a message');
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'legacy 4-arg',
-      '00000000-0000-0000-0000-0000000b0l04'::uuid, '[]'::jsonb)$$,
+      '00000000-0000-0000-0000-0000000b0a04'::uuid, '[]'::jsonb)$$,
   'legacy post_chat_message(challenge, body, message_id, attachments) still works');
 select is(
-  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0l04'),
+  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0a04'),
   null, 'a non-reply message has reply_to_message_id = NULL (behaviour unchanged)');
 
 -- F3: the private helper is NOT callable by an ordinary authenticated user.
@@ -474,67 +474,67 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar-ett',
-      '00000000-0000-0000-0000-0000000b0r09'::uuid, null,
-      '00000000-0000-0000-0000-0000000b0m01'::uuid)$$,
+      '00000000-0000-0000-0000-0000000b0c09'::uuid, null,
+      '00000000-0000-0000-0000-0000000b0a01'::uuid)$$,
   'Rolf replies to a visible participant message');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar på bild',
-      '00000000-0000-0000-0000-0000000b0r12'::uuid, null,
-      '00000000-0000-0000-0000-0000000b0m02'::uuid)$$,
+      '00000000-0000-0000-0000-0000000b0c12'::uuid, null,
+      '00000000-0000-0000-0000-0000000b0a02'::uuid)$$,
   'a reply to an image message is accepted');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar på passkort',
-      '00000000-0000-0000-0000-0000000b0r13'::uuid, null,
-      (select id from public.chat_messages where training_entry_id = '00000000-0000-0000-0000-0000000b0te1'))$$,
+      '00000000-0000-0000-0000-0000000b0c13'::uuid, null,
+      (select id from public.chat_messages where training_entry_id = '00000000-0000-0000-0000-0000000b07e1'))$$,
   'a reply to a training_card is accepted');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar på GM',
-      '00000000-0000-0000-0000-0000000b0r14'::uuid, null,
-      '00000000-0000-0000-0000-0000000b0mgm'::uuid)$$,
+      '00000000-0000-0000-0000-0000000b0c14'::uuid, null,
+      '00000000-0000-0000-0000-0000000b0a90'::uuid)$$,
   'a reply to a game_master message is accepted');
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar-två',
-      '00000000-0000-0000-0000-0000000b0r15'::uuid, null,
-      '00000000-0000-0000-0000-0000000b0r09'::uuid)$$,
+      '00000000-0000-0000-0000-0000000b0c15'::uuid, null,
+      '00000000-0000-0000-0000-0000000b0c09'::uuid)$$,
   'a reply to a reply is accepted (flat, no thread)');
 select lives_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar på mig själv',
-      '00000000-0000-0000-0000-0000000b0r16'::uuid, null,
-      '00000000-0000-0000-0000-0000000b0m01'::uuid)$$,
+      '00000000-0000-0000-0000-0000000b0c16'::uuid, null,
+      '00000000-0000-0000-0000-0000000b0a01'::uuid)$$,
   'replying to your OWN earlier message is allowed (mA1 is Tia''s)');
 
 -- F10-F15: the reply row is an ordinary participant message.
 select is(
-  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0r09'),
-  '00000000-0000-0000-0000-0000000b0m01'::uuid, 'reply_to_message_id is persisted on the child');
+  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0c09'),
+  '00000000-0000-0000-0000-0000000b0a01'::uuid, 'reply_to_message_id is persisted on the child');
 select is(
-  (select sender_type from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0r09'),
+  (select sender_type from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0c09'),
   'participant', 'a reply is sender_type = participant');
 select is(
-  (select sender_user_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0r09'),
+  (select sender_user_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0c09'),
   '00000000-0000-0000-0000-00000000b003'::uuid, 'a reply''s sender is auth.uid() — not spoofable');
 select is(
-  (select sender_type from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0r14'),
+  (select sender_type from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0c14'),
   'participant', 'a reply TO a game_master message is still sender_type = participant (no spoof)');
 select ok(
   (select r.seq > m.seq
    from public.chat_messages r, public.chat_messages m
-   where r.id = '00000000-0000-0000-0000-0000000b0r09' and m.id = '00000000-0000-0000-0000-0000000b0m01'),
+   where r.id = '00000000-0000-0000-0000-0000000b0c09' and m.id = '00000000-0000-0000-0000-0000000b0a01'),
   'a reply gets a normal seq, later than its parent');
 select is(
-  (select training_entry_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0r13'),
+  (select training_entry_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0c13'),
   null, 'a reply to a training card does NOT copy training_entry_id');
 
 -- F16-F18: reply-target validation (the RPC is the first line of defence).
 select throws_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'korsutmaning',
-      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0mb1'::uuid)$$,
+      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0b01'::uuid)$$,
   null, 'Meddelandet du svarar på tillhör en annan utmaning',
   'a reply whose parent is in another challenge is rejected (challenge from the row, not the caller)');
 select throws_ok(
@@ -550,13 +550,13 @@ select is(
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000030a1","role":"authenticated"}', true);
 select lives_ok(
-  $$select public.hide_chat_message('00000000-0000-0000-0000-0000000b0m03', 'olämpligt')$$,
+  $$select public.hide_chat_message('00000000-0000-0000-0000-0000000b0a03', 'olämpligt')$$,
   'an admin hides mA3');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select throws_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar på dold',
-      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0m03'::uuid)$$,
+      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0a03'::uuid)$$,
   null, 'Meddelandet går inte längre att svara på',
   'a NEW reply to an already-hidden message is rejected server-side');
 
@@ -565,14 +565,14 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b004","role":"authenticated"}', true);
 select throws_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'utomstående',
-      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0m01'::uuid)$$,
+      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0a01'::uuid)$$,
   null, 'Du är inte aktiv deltagare i den här utmaningen',
   'a non-member cannot post a reply into the challenge');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b005","role":"authenticated"}', true);
 select throws_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'inaktiv',
-      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0m01'::uuid)$$,
+      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0a01'::uuid)$$,
   null, 'Du är inte aktiv deltagare i den här utmaningen',
   'an INACTIVE member cannot post a reply');
 
@@ -587,7 +587,7 @@ begin
 end $$;
 select throws_ok(
   $$select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'siv reply 11',
-      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0m01'::uuid)$$,
+      gen_random_uuid(), null, '00000000-0000-0000-0000-0000000b0a01'::uuid)$$,
   null, 'För många meddelanden på kort tid. Vänta en liten stund.',
   'the 11th message in the window — a REPLY — is refused (replies use the same rate limit)');
 
@@ -602,72 +602,72 @@ select is(
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', true) ->> 'liked'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', true) ->> 'liked'),
   'true', 'liked=true returns liked:true');
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', true) ->> 'like_count'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', true) ->> 'like_count'),
   '1', 'liked=true a second time is a no-op — still one like (retry-safe)');
 select is(
   (select count(*)::int from public.chat_message_likes
-   where message_id = '00000000-0000-0000-0000-0000000b0m01'
+   where message_id = '00000000-0000-0000-0000-0000000b0a01'
      and user_id = '00000000-0000-0000-0000-00000000b002'),
   1, 'exactly one like row for (message, user)');
 
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', true) ->> 'like_count'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', true) ->> 'like_count'),
   '2', 'a second user liking the same message -> like_count 2');
 
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', false) ->> 'liked'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', false) ->> 'liked'),
   'false', 'liked=false returns liked:false');
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', false) ->> 'like_count'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', false) ->> 'like_count'),
   '1', 'liked=false a second time is a no-op — still one like left (retry-safe)');
 select is(
-  (select user_id from public.chat_message_likes where message_id = '00000000-0000-0000-0000-0000000b0m01'),
+  (select user_id from public.chat_message_likes where message_id = '00000000-0000-0000-0000-0000000b0a01'),
   '00000000-0000-0000-0000-00000000b003'::uuid,
   'unlike removed ONLY the caller''s row — the other user''s like survives');
 
 -- likes on every supported target kind, and self-like.
 select is(
   (select public.set_chat_message_like(
-     (select id from public.chat_messages where training_entry_id = '00000000-0000-0000-0000-0000000b0te1'),
+     (select id from public.chat_messages where training_entry_id = '00000000-0000-0000-0000-0000000b07e1'),
      true) ->> 'liked'),
   'true', 'a participant can like a training_card');
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0mgm', true) ->> 'liked'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a90', true) ->> 'liked'),
   'true', 'a participant can like a game_master message');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select is(
-  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m02', true) ->> 'liked'),
+  (select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a02', true) ->> 'liked'),
   'true', 'a participant can like their OWN message (no special-casing)');
 
 -- authorization failures (the RPC body enforces these regardless of SQL role).
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b004","role":"authenticated"}', true);
 select throws_ok(
-  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', true)$$,
+  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', true)$$,
   null, 'Du är inte aktiv deltagare i den här utmaningen',
   'a non-member of the message''s challenge cannot like it (cross-challenge blocked)');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b005","role":"authenticated"}', true);
 select throws_ok(
-  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', true)$$,
+  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', true)$$,
   null, 'Du är inte aktiv deltagare i den här utmaningen',
   'an INACTIVE member cannot like');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select throws_ok(
-  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m03', true)$$,
+  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a03', true)$$,
   null, 'Det går inte att gilla ett dolt meddelande',
   'a NEW like on a hidden message is rejected');
 select throws_ok(
-  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m03', false)$$,
+  $$select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a03', false)$$,
   null, 'Det går inte att gilla ett dolt meddelande',
   'unliking a hidden message is also rejected — the surface is frozen');
 select throws_ok(
@@ -688,7 +688,7 @@ begin
     (select max(seq) from public.chat_messages where challenge_id = '00000000-0000-0000-0000-0000000b0f11'));
   v_unread_before := public.unread_chat_count('00000000-0000-0000-0000-0000000b0f11');
 
-  perform public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m01', true);
+  perform public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a01', true);
 
   if (select count(*) from public.chat_messages) <> v_msgs_before then
     raise exception 'like inserted a chat_messages row';
@@ -706,23 +706,23 @@ select ok(true, 'a like allocates no seq, inserts no chat_messages row, and does
 -- so detect the bump by deleting the signal row and checking whether it returns).
 delete from public.chat_activity
 where challenge_id = '00000000-0000-0000-0000-0000000b0f11'
-  and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0m02');
+  and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0a02');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
-select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m02', true);  -- Tia not yet liking m02 -> real change
+select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a02', true);  -- Tia not yet liking m02 -> real change
 select ok(
   exists (select 1 from public.chat_activity
           where challenge_id = '00000000-0000-0000-0000-0000000b0f11'
-            and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0m02')),
+            and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0a02')),
   'an actual like state change bumps the chat_activity signal row');
 delete from public.chat_activity
 where challenge_id = '00000000-0000-0000-0000-0000000b0f11'
-  and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0m02');
-select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0m02', true);  -- already liked -> no-op
+  and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0a02');
+select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0a02', true);  -- already liked -> no-op
 select ok(
   not exists (select 1 from public.chat_activity
              where challenge_id = '00000000-0000-0000-0000-0000000b0f11'
-               and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0m02')),
+               and seq = (select seq from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0a02')),
   'a no-op same-state request does NOT bump chat_activity');
 
 -- ========================================================================
@@ -730,47 +730,47 @@ select ok(
 -- ========================================================================
 -- mCnt: a fresh active message with a known like set (Tia + Rolf).
 insert into public.chat_messages (id, challenge_id, sender_type, sender_user_id, body)
-values ('00000000-0000-0000-0000-0000000b0cnt', '00000000-0000-0000-0000-0000000b0f11',
+values ('00000000-0000-0000-0000-0000000b0c0e', '00000000-0000-0000-0000-0000000b0f11',
         'participant', '00000000-0000-0000-0000-00000000b002', 'räkna mig');
 
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select is(
   (select like_count from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt'),
+   where id = '00000000-0000-0000-0000-0000000b0c0e'),
   0, 'like_count is 0 for a message with no likes');
 select is(
   (select liked_by_me from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt')::text,
+   where id = '00000000-0000-0000-0000-0000000b0c0e')::text,
   'false', 'liked_by_me is false when the viewer has not liked');
 
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
-select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0cnt', true);
+select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0c0e', true);
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
-select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0cnt', true);
+select public.set_chat_message_like('00000000-0000-0000-0000-0000000b0c0e', true);
 
 select is(
   (select like_count from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt'),
+   where id = '00000000-0000-0000-0000-0000000b0c0e'),
   2, 'like_count aggregates all likers');
 select is(
   (select liked_by_me from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt')::text,
+   where id = '00000000-0000-0000-0000-0000000b0c0e')::text,
   'true', 'liked_by_me is true for a viewer who liked (Rolf)');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b002","role":"authenticated"}', true);
 select is(
   (select liked_by_me from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt')::text,
+   where id = '00000000-0000-0000-0000-0000000b0c0e')::text,
   'true', 'liked_by_me is true for the other viewer who liked (Tia)');
 
 -- additive on existing rows: GM message + training card carry the new fields.
 select ok(
   (select like_count >= 0 and reply_preview is null
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0mgm'),
+   where id = '00000000-0000-0000-0000-0000000b0a90'),
   'a game_master row gains like_count and a NULL reply_preview safely');
 select ok(
   (select like_count >= 0 and reply_preview is null
@@ -783,105 +783,105 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select is(
   (select reply_preview ->> 'kind' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   'text', 'reply to a text message -> reply_preview.kind = text');
 select is(
   (select reply_preview ->> 'text' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   'HEMLIG-PARENT-TEXT hej alla', 'reply_preview carries a short parent-text excerpt');
 select is(
   (select reply_preview ->> 'message_id' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
-  '00000000-0000-0000-0000-0000000b0m01', 'reply_preview identifies the parent message');
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
+  '00000000-0000-0000-0000-0000000b0a01', 'reply_preview identifies the parent message');
 select is(
   (select reply_preview ->> 'kind' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r12'),
+   where id = '00000000-0000-0000-0000-0000000b0c12'),
   'image', 'reply to an image-only message -> reply_preview.kind = image');
 select ok(
   (select (reply_preview ->> 'text') is null and (reply_preview ->> 'has_image') = 'true'
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r12'),
+   where id = '00000000-0000-0000-0000-0000000b0c12'),
   'an image parent preview has has_image=true and no text');
 select ok(
   (select reply_preview::text not like '%1-x.jpg%' and reply_preview::text not like '%storage%'
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r12'),
+   where id = '00000000-0000-0000-0000-0000000b0c12'),
   'the image reply_preview payload contains no chat-media path / signed URL');
 select is(
   (select reply_preview ->> 'kind' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r13'),
+   where id = '00000000-0000-0000-0000-0000000b0c13'),
   'training_card', 'reply to a training card -> reply_preview.kind = training_card');
 select is(
   (select reply_preview -> 'training' ->> 'activity' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r13'),
+   where id = '00000000-0000-0000-0000-0000000b0c13'),
   'Löpning', 'a training-card preview carries the activity');
 select is(
   (select reply_preview -> 'training' ->> 'duration_minutes' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r13'),
+   where id = '00000000-0000-0000-0000-0000000b0c13'),
   '45', 'a training-card preview carries the duration');
 select ok(
   (select reply_preview::text not like '%HEMLIG-NOTE%' and reply_preview::text not like '%proof%'
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r13'),
+   where id = '00000000-0000-0000-0000-0000000b0c13'),
   'a training-card preview does NOT leak the note or any proof reference');
 select is(
   (select reply_preview ->> 'kind' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r14'),
+   where id = '00000000-0000-0000-0000-0000000b0c14'),
   'game_master', 'reply to a GM message -> reply_preview.kind = game_master');
 select is(
   (select reply_preview ->> 'text' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r14'),
+   where id = '00000000-0000-0000-0000-0000000b0c14'),
   'GAME MASTER: kör hårt', 'a GM preview carries the visible message text only');
 
 -- one level only: reply-to-a-reply previews its DIRECT parent, never the grandparent.
 select is(
   (select reply_preview ->> 'message_id' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r15'),
-  '00000000-0000-0000-0000-0000000b0r09', 'reply-to-reply previews the direct parent (r09)');
+   where id = '00000000-0000-0000-0000-0000000b0c15'),
+  '00000000-0000-0000-0000-0000000b0c09', 'reply-to-reply previews the direct parent (r09)');
 select is(
   (select reply_preview ->> 'text' from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r15'),
+   where id = '00000000-0000-0000-0000-0000000b0c15'),
   'svar-ett', 'reply-to-reply preview text is the direct parent''s body');
 select ok(
   (select reply_preview::text not like '%HEMLIG-PARENT-TEXT%'
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r15'),
+   where id = '00000000-0000-0000-0000-0000000b0c15'),
   'reply-to-reply preview contains NOTHING from the grandparent (no recursion)');
 
 -- physical parent delete -> child survives, reply_preview NULL.
 insert into public.chat_messages (id, challenge_id, sender_type, sender_user_id, body)
-values ('00000000-0000-0000-0000-0000000b0md1', '00000000-0000-0000-0000-0000000b0f11',
+values ('00000000-0000-0000-0000-0000000b0dd1', '00000000-0000-0000-0000-0000000b0f11',
         'participant', '00000000-0000-0000-0000-00000000b002', 'ska raderas fysiskt');
 select public.post_chat_message('00000000-0000-0000-0000-0000000b0f11'::uuid, 'svar på raderad',
-  '00000000-0000-0000-0000-0000000b0rd1'::uuid, null, '00000000-0000-0000-0000-0000000b0md1'::uuid);
+  '00000000-0000-0000-0000-0000000b0cd1'::uuid, null, '00000000-0000-0000-0000-0000000b0dd1'::uuid);
 select ok(
   (select reply_preview is not null from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0rd1'),
+   where id = '00000000-0000-0000-0000-0000000b0cd1'),
   'the reply has a preview while its parent exists');
-delete from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0md1';
+delete from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0dd1';
 select ok(
   (select count(*)::int from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0rd1') = 1,
+   where id = '00000000-0000-0000-0000-0000000b0cd1') = 1,
   'the child reply survives a physical parent delete');
 select ok(
   (select reply_preview is null from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0rd1'),
+   where id = '00000000-0000-0000-0000-0000000b0cd1'),
   'a physically-deleted parent -> reply_preview is NULL (FK SET NULL, graceful)');
 select is(
-  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0rd1'),
+  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0cd1'),
   null, 'the FK SET NULL cleared the child''s reply_to_message_id column');
 
 -- hidden parent -> tombstone; child row unchanged; secret text absent.
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000030a1","role":"authenticated"}', true);
 select lives_ok(
-  $$select public.hide_chat_message('00000000-0000-0000-0000-0000000b0m01', 'modererad')$$,
+  $$select public.hide_chat_message('00000000-0000-0000-0000-0000000b0a01', 'modererad')$$,
   'an admin hides the parent message mA1');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select is(
   (select reply_preview from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   '{"deleted": true}'::jsonb,
   'once the parent is hidden, an ordinary member''s reply_preview is exactly {"deleted": true}');
 select ok(
@@ -889,52 +889,52 @@ select ok(
         and not (reply_preview ? 'sender_display_name') and not (reply_preview ? 'kind')
         and not (reply_preview ? 'training')
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   'the tombstone preview has NO message_id / text / sender / kind / training key');
 select ok(
   (select reply_preview::text not like '%HEMLIG-PARENT-TEXT%'
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   'the now-hidden parent''s body text is absent from the child payload');
 select ok(
   (select body = 'svar-ett' and status = 'active'
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   'the child reply itself is untouched — still visible with its own body');
 select is(
-  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0r09'),
-  '00000000-0000-0000-0000-0000000b0m01'::uuid,
+  (select reply_to_message_id from public.chat_messages where id = '00000000-0000-0000-0000-0000000b0c09'),
+  '00000000-0000-0000-0000-0000000b0a01'::uuid,
   'hiding the parent did not modify the child row (link intact)');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000030a1","role":"authenticated"}', true);
 select ok(
   (select (reply_preview ? 'message_id')
    from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0r09'),
+   where id = '00000000-0000-0000-0000-0000000b0c09'),
   'an ADMIN still resolves the real parent in reply_preview (moderation context)');
 
 -- hidden message -> neutral reaction metadata for a non-admin, real for admin.
 select lives_ok(
-  $$select public.hide_chat_message('00000000-0000-0000-0000-0000000b0cnt', 'räknat och dolt')$$,
+  $$select public.hide_chat_message('00000000-0000-0000-0000-0000000b0c0e', 'räknat och dolt')$$,
   'an admin hides mCnt (which has 2 likes)');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000b003","role":"authenticated"}', true);
 select is(
   (select like_count from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt'),
+   where id = '00000000-0000-0000-0000-0000000b0c0e'),
   0, 'a hidden message exposes like_count = 0 to a non-admin (no leak)');
 select is(
   (select liked_by_me from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt')::text,
+   where id = '00000000-0000-0000-0000-0000000b0c0e')::text,
   'false', 'a hidden message exposes liked_by_me = false to a non-admin');
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000030a1","role":"authenticated"}', true);
 select is(
   (select like_count from public.list_chat_messages('00000000-0000-0000-0000-0000000b0f11')
-   where id = '00000000-0000-0000-0000-0000000b0cnt'),
+   where id = '00000000-0000-0000-0000-0000000b0c0e'),
   2, 'an admin still sees the hidden message''s real like_count (moderation)');
 select is(
-  (select count(*)::int from public.chat_message_likes where message_id = '00000000-0000-0000-0000-0000000b0cnt'),
+  (select count(*)::int from public.chat_message_likes where message_id = '00000000-0000-0000-0000-0000000b0c0e'),
   2, 'the like rows are RETAINED when a message is hidden');
 
 -- ========================================================================
