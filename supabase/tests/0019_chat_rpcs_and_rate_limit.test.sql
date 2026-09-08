@@ -58,10 +58,13 @@ values
 -- client-supplied message id and an optional attachments array — but NO sender
 -- field: a client can never set sender_user_id / sender_type (chat images,
 -- 20260906120200).
+-- (20260908120000 added a 5th additive DEFAULT NULL reply param — still no
+--  sender field, and old {challenge, body}[, message_id, attachments] callers
+--  still resolve.)
 select is(
-  pg_get_function_arguments('public.post_chat_message(uuid, text, uuid, jsonb)'::regprocedure),
-  'p_challenge_id uuid, p_body text DEFAULT NULL::text, p_message_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb',
-  'post_chat_message takes challenge/body/message_id/attachments — no sender field');
+  pg_get_function_arguments('public.post_chat_message(uuid, text, uuid, jsonb, uuid)'::regprocedure),
+  'p_challenge_id uuid, p_body text DEFAULT NULL::text, p_message_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb, p_reply_to_message_id uuid DEFAULT NULL::uuid',
+  'post_chat_message takes challenge/body/message_id/attachments/reply_to — no sender field');
 
 set local role authenticated;
 select set_config('request.jwt.claims',
