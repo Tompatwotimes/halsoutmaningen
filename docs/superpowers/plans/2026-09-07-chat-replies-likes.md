@@ -29,7 +29,7 @@ build and prove the DB; C–I build the frontend against it; J is the rollout.
 | Task | Area | Depends on |
 | ---- | ---- | ---------- |
 | A | DB — schema (column, table, FK, indexes, RLS) | — |
-| B | DB — RPC/read model (`_create_chat_message` helper, `post_chat_message` wrapper, `toggle_chat_message_like`, `list_chat_messages` v4) + pgTAP `0030` | A |
+| B | DB — RPC/read model (`_create_chat_message` helper, `post_chat_message` wrapper, `set_chat_message_like`, `list_chat_messages` v4) + pgTAP `0030` | A |
 | C | Frontend — types + `chat-api` mapping + backwards-compat | B (shape only; no live DB needed for unit tests) |
 | D | Frontend — likes data layer (`useToggleChatMessageLike`, optimistic cache) | C |
 | E | Frontend — `<LikeBadge>` + message action row + double-click like | D |
@@ -102,7 +102,7 @@ create table public.chat_message_likes (
 );
 
 comment on table public.chat_message_likes is
-  'One heart per (message, user). Written only by toggle_chat_message_like. '
+  'One heart per (message, user). Written only by set_chat_message_like. '
   'Base SELECT admin-only; members read like_count/liked_by_me via '
   'list_chat_messages. Not Realtime-published.';
 
@@ -140,7 +140,7 @@ Add the full pgTAP body from design §24 (tests 1–51). Fixtures: an admin; Pia
 Rune active members of challenge A; Vera an active member of challenge B; a GM
 message and a training card in A (insert a `training_entries` row → the
 `AFTER INSERT` trigger materialises the card). Run the DB test job → fails
-(`function toggle_chat_message_like does not exist`, `post_chat_message(...,
+(`function set_chat_message_like does not exist`, `post_chat_message(...,
 uuid) does not exist`, `column like_count does not exist`, …). Record output.
 
 **Implementation** (`<MIG>` part 2)
@@ -201,15 +201,21 @@ uuid) does not exist`, `column like_count does not exist`, …). Record output.
      to authenticated;
    ```
 
-3. **`toggle_chat_message_like(p_message_id uuid) returns jsonb`** — exactly as
-   design §10.2 (auth check, message lookup, active-membership check, `status =
-   'active'` check, `insert ... on conflict do nothing` / `if found` flip,
-   `count(*)`, `chat_activity` upsert touch, `return jsonb_build_object('liked',
-   ..., 'like_count', ...)`).
+3. **`set_chat_message_like(p_message_id uuid, p_liked boolean) returns jsonb`**
+   — *implemented as an idempotent state-setter, not the blind toggle design
+   §10.2 sketched.* The approved product requirement is retry-safe: a
+   dropped-response retry must never flip the user's intent. `p_liked = true` →
+   `insert … on conflict do nothing`; `p_liked = false` → `delete … where
+   user_id = auth.uid()`; repeating either is a no-op. Same guards as §10.2
+   (auth, message lookup, **active** membership in the message's challenge,
+   `status = 'active'` — both a new like and an unlike are refused on a hidden
+   message). `chat_activity` is bumped **only when the stored state actually
+   changed** (`if found` after the insert/delete). Returns
+   `jsonb_build_object('liked', <committed state>, 'like_count', <count>)`.
 
    ```sql
-   revoke all on function public.toggle_chat_message_like(uuid) from public, anon;
-   grant execute on function public.toggle_chat_message_like(uuid) to authenticated;
+   revoke all on function public.set_chat_message_like(uuid, boolean) from public, anon;
+   grant execute on function public.set_chat_message_like(uuid, boolean) to authenticated;
    ```
 
 4. **`list_chat_messages` v4** — `drop function` + recreate (same pattern as
@@ -230,7 +236,7 @@ uuid) does not exist`, `column like_count does not exist`, …). Record output.
 
 **Commit**
 
-`feat(chat): reply-aware post_chat_message + toggle_chat_message_like + list v4`
+`feat(chat): reply-aware post_chat_message + set_chat_message_like + list v4`
 
 ---
 
@@ -303,9 +309,11 @@ Run → fail (fields undefined on the type / not mapped). Record.
 
 **Files**
 
-- `src/features/chat/chat-api.ts` — `toggleChatMessageLike(messageId): Promise<{
-  liked: boolean; likeCount: number }>` via `chatRpc('toggle_chat_message_like',
-  { p_message_id })`; Swedish error mapping (`chatMessageError`).
+- `src/features/chat/chat-api.ts` — `setChatMessageLike(messageId, liked): Promise<{
+  liked: boolean; likeCount: number }>` via `chatRpc('set_chat_message_like',
+  { p_message_id, p_liked })` — the Task B RPC is an **idempotent state-setter**
+  (`set_chat_message_like(uuid, boolean)`), not a toggle; the client passes the
+  desired state so a retry is safe. Swedish error mapping (`chatMessageError`).
 - `src/features/chat/useChat.ts` — `useToggleChatMessageLike(challengeId)`:
   a mutation with
   - `onMutate(messageId)`: cancel `chatKeys.messages`, snapshot, optimistically
@@ -605,7 +613,7 @@ pauses unless an unexpected blocker appears.
      the right `ON DELETE` actions; `chat_messages_reply_to_idx` present.
    - `chat_message_likes` exists; PK `(message_id, user_id)`; RLS on;
      `chat_message_likes_select` policy is `is_admin()`.
-   - `toggle_chat_message_like(uuid)` exists, EXECUTE = `authenticated` only.
+   - `set_chat_message_like(uuid, boolean)` exists, EXECUTE = `authenticated` only.
    - `post_chat_message` has **one** overload, arity 5; `_create_chat_message`
      exists and is **not** granted to `authenticated`.
    - `list_chat_messages` return type includes `like_count`, `liked_by_me`,
@@ -631,7 +639,7 @@ pauses unless an unexpected blocker appears.
    supabase gen types typescript --linked --schema public --schema
    graphql_public > src/types/database.ts`. `git diff --stat` must show an
    **additive** diff only (new table types, `reply_to_message_id`,
-   `toggle_chat_message_like`, `list_chat_messages` return fields,
+   `set_chat_message_like`, `list_chat_messages` return fields,
    `post_chat_message` 5th arg). If it shows mass deletions → restore the
    backup and retry (known CLI-2.116 footgun).
 9. **Final gates on `main`** — `typecheck`, `lint`, `test`, `build` green with
@@ -679,7 +687,7 @@ src/features/chat/replyPreview.ts          + .test.ts
 src/components/icons.tsx                   (HeartIcon, HeartFilledIcon, ReplyIcon)
 src/features/chat/types.ts                 (ReplyPreview, ChatMessage fields)
 src/features/chat/chat.ts                  (gesture constants + pure helpers, REPLY_JUMP_MAX_PAGES)
-src/features/chat/chat-api.ts              (mapChatRow, narrowReplyPreview, sendChatMessage, toggleChatMessageLike)
+src/features/chat/chat-api.ts              (mapChatRow, narrowReplyPreview, sendChatMessage, setChatMessageLike)
 src/features/chat/useChat.ts               (useToggleChatMessageLike, PostVars.replyToMessageId)
 src/features/chat/ChatPanel.tsx            (MessageRow: quote + badge + actions + gestures; composer reply mode; jumpToMessage)
 src/features/chat/ChatPanel.module.css     (touch-action, overscroll, swipe, pop, jumpHighlight)

@@ -792,7 +792,23 @@ overload ambiguity**. The precedent is `20260906120200`, which dropped the
 A pgTAP test (§24) explicitly exercises **both** a `{p_challenge_id, p_body}`
 call and a full 5-arg call to lock this.
 
-### 10.2 `toggle_chat_message_like(p_message_id uuid) returns jsonb`
+### 10.2 the like write RPC
+
+> **Task B implementation note (2026-09-08).** Shipped as an **idempotent
+> state-setter**, not the toggle sketched below:
+> `set_chat_message_like(p_message_id uuid, p_liked boolean) returns jsonb`.
+> `p_liked = true` → `insert … on conflict do nothing`; `p_liked = false` →
+> `delete … where user_id = auth.uid()`; repeating either call is a no-op, so a
+> dropped-response retry can never flip the user's intent. Same guards
+> (auth · **active** membership in the message's challenge · target exists ·
+> `status = 'active'` — a new like *and* an unlike are refused on a hidden
+> message). `chat_activity` is bumped **only when the stored state actually
+> changed** (`if found` after the insert/delete). Returns
+> `{ "liked": <committed state>, "like_count": <int> }`. The frontend passes
+> the desired state (`setChatMessageLike(messageId, liked)`), which also removes
+> the client-side "flip based on current cache" step from §18.1.
+
+The original toggle sketch (superseded):
 
 ```sql
 create function public.toggle_chat_message_like(p_message_id uuid)
