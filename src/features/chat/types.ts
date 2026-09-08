@@ -60,6 +60,44 @@ export interface ChatAttachment {
   path: string;
 }
 
+/** The kind of message a reply is quoting — drives how the quote chip renders. */
+export type ReplyPreviewKind =
+  'text' | 'image' | 'training_card' | 'game_master';
+
+/**
+ * A compact, one-level quote of the message a reply is replying to — from
+ * `list_chat_messages`' `reply_preview` jsonb (migration 20260908120000).
+ * Resolved LIVE from the parent's CURRENT state, so moderating the parent later
+ * flips this to the tombstone automatically. Never a stored snapshot.
+ *
+ * `deleted === true` is the **tombstone**: the parent is hidden (or otherwise
+ * withheld) from this viewer. In that state every other field is `null` /
+ * `false` — the server sends only `{ "deleted": true }` and the mapper refuses
+ * to read anything else — and the UI later renders the fixed
+ * `HIDDEN_MESSAGE_PLACEHOLDER`. When `deleted === false` the parent is visible
+ * and the descriptive fields are populated.
+ *
+ * There is deliberately NO storage path, signed URL, attachment list, full
+ * note, proof reference or Game Master internal here: an image parent is only
+ * `hasImage: true`; a training-card parent is only `training.activity` +
+ * `training.durationMinutes`. Identity is left neutral — the viewer-relative
+ * "Du" is applied later, in rendering, never baked in here.
+ */
+export interface ReplyPreview {
+  deleted: boolean;
+  /** The parent message id — `null` on the tombstone (withheld from the viewer). */
+  messageId: string | null;
+  seq: number | null;
+  senderType: ChatSenderType | null;
+  senderUserId: string | null;
+  senderDisplayName: string | null;
+  kind: ReplyPreviewKind | null;
+  /** ≤ 140 chars, already truncated server-side. `null` for an image-only / card / tombstone parent. */
+  text: string | null;
+  hasImage: boolean;
+  training: { activity: string | null; durationMinutes: number } | null;
+}
+
 export interface ChatMessage {
   id: string;
   seq: number;
@@ -104,6 +142,34 @@ export interface ChatMessage {
    * kept in the type from day one so no shape change is needed later.
    */
   gameMasterEventId: string | null;
+  /**
+   * The message this one is replying to, or `null` for a normal message.
+   * Derived from `replyPreview`: for a visible parent it is
+   * `replyPreview.messageId`; for the tombstone (hidden parent) it is `null` —
+   * the server withholds the parent id from an ordinary viewer, and
+   * `list_chat_messages` exposes no raw `reply_to_message_id` column.
+   */
+  replyToMessageId: string | null;
+  /**
+   * A compact quote of the parent when this message is a reply, else `null`.
+   * See {@link ReplyPreview} — `deleted === true` is the hidden-parent
+   * tombstone. `null` for a normal message, a pre-migration row, or a
+   * physically-deleted parent (FK SET NULL).
+   */
+  replyPreview: ReplyPreview | null;
+  /**
+   * Number of hearts on this message. `0` when there are none, when the server
+   * withholds reaction metadata (a hidden message seen by a non-admin), and for
+   * a pre-migration `list_chat_messages` row with no `like_count` key. Always a
+   * non-negative integer — normalised once, here at the adapter boundary, so no
+   * caller needs `message.likeCount ?? 0`.
+   */
+  likeCount: number;
+  /**
+   * Whether the current viewer has hearted this message. `false` when they have
+   * not, when the server withholds it, and for a pre-migration row.
+   */
+  likedByMe: boolean;
   /** DISPLAY ONLY — date separators, "sent at HH:MM". Never an ordering key. */
   createdAt: string;
 }

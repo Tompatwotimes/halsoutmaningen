@@ -257,14 +257,18 @@ describe('mapChatRow — like_count / liked_by_me', () => {
   });
   it('fails a non-integer like_count closed to 0', () => {
     expect(mapChatRow(rowFixture({ like_count: 2.5 })).likeCount).toBe(0);
-    expect(mapChatRow(rowFixture({ like_count: Number.NaN })).likeCount).toBe(0);
+    expect(mapChatRow(rowFixture({ like_count: Number.NaN })).likeCount).toBe(
+      0,
+    );
   });
 
   it('maps liked_by_me true', () => {
     expect(mapChatRow(rowFixture({ liked_by_me: true })).likedByMe).toBe(true);
   });
   it('maps liked_by_me false', () => {
-    expect(mapChatRow(rowFixture({ liked_by_me: false })).likedByMe).toBe(false);
+    expect(mapChatRow(rowFixture({ liked_by_me: false })).likedByMe).toBe(
+      false,
+    );
   });
   it('never treats a "false" string as true (no Boolean() coercion)', () => {
     expect(mapChatRow(rowFixture({ liked_by_me: 'false' })).likedByMe).toBe(
@@ -418,11 +422,19 @@ describe('mapChatRow — reply_preview', () => {
   });
 
   it('maps a null / absent / malformed reply_preview to null (no quote)', () => {
-    expect(mapChatRow(rowFixture({ reply_preview: null })).replyPreview).toBeNull();
+    expect(
+      mapChatRow(rowFixture({ reply_preview: null })).replyPreview,
+    ).toBeNull();
     expect(mapChatRow(rowFixture()).replyPreview).toBeNull(); // key absent
-    expect(mapChatRow(rowFixture({ reply_preview: 'boom' })).replyPreview).toBeNull();
-    expect(mapChatRow(rowFixture({ reply_preview: 42 })).replyPreview).toBeNull();
-    expect(mapChatRow(rowFixture({ reply_preview: [] })).replyPreview).toBeNull();
+    expect(
+      mapChatRow(rowFixture({ reply_preview: 'boom' })).replyPreview,
+    ).toBeNull();
+    expect(
+      mapChatRow(rowFixture({ reply_preview: 42 })).replyPreview,
+    ).toBeNull();
+    expect(
+      mapChatRow(rowFixture({ reply_preview: [] })).replyPreview,
+    ).toBeNull();
   });
 
   it('maps a visible preview with no message_id to null (malformed → no quote)', () => {
@@ -490,7 +502,11 @@ describe('narrowReplyPreview (unit)', () => {
   });
 
   it('returns a visible preview for a well-formed object', () => {
-    const p = narrowReplyPreview({ message_id: 'p', kind: 'text', text: 'hej' });
+    const p = narrowReplyPreview({
+      message_id: 'p',
+      kind: 'text',
+      text: 'hej',
+    });
     expect(p?.deleted).toBe(false);
     expect(p?.messageId).toBe('p');
     expect(p?.kind).toBe('text');
@@ -633,7 +649,7 @@ describe('backwards compatibility — current (pre-replies-likes) list_chat_mess
     const page = await fetchRecentChatMessages('c1', 50);
     expect(page).toHaveLength(4);
     expect(page.every((m) => m.likeCount === 0)).toBe(true);
-    expect(page.every((m) => m.likedByMe === false)).toBe(true);
+    expect(page.every((m) => !m.likedByMe)).toBe(true);
     expect(page.every((m) => m.replyPreview === null)).toBe(true);
     expect(page.every((m) => m.replyToMessageId === null)).toBe(true);
     expect(page.map((m) => m.senderType)).toEqual([
@@ -771,7 +787,10 @@ describe('sendChatMessage — reply threading', () => {
 
 describe('setChatMessageLike', () => {
   it('calls set_chat_message_like with the message id and liked=true', async () => {
-    rpc.mockResolvedValue({ data: { liked: true, like_count: 1 }, error: null });
+    rpc.mockResolvedValue({
+      data: { liked: true, like_count: 1 },
+      error: null,
+    });
     await setChatMessageLike('m1', true);
     expect(rpc).toHaveBeenCalledWith('set_chat_message_like', {
       p_message_id: 'm1',
@@ -785,7 +804,10 @@ describe('setChatMessageLike', () => {
   });
 
   it('calls set_chat_message_like with liked=false', async () => {
-    rpc.mockResolvedValue({ data: { liked: false, like_count: 0 }, error: null });
+    rpc.mockResolvedValue({
+      data: { liked: false, like_count: 0 },
+      error: null,
+    });
     await setChatMessageLike('m1', false);
     expect(rpc).toHaveBeenCalledWith('set_chat_message_like', {
       p_message_id: 'm1',
@@ -794,7 +816,10 @@ describe('setChatMessageLike', () => {
   });
 
   it('maps { liked, like_count } to { liked, likeCount }', async () => {
-    rpc.mockResolvedValue({ data: { liked: true, like_count: 4 }, error: null });
+    rpc.mockResolvedValue({
+      data: { liked: true, like_count: 4 },
+      error: null,
+    });
     expect(await setChatMessageLike('m1', true)).toEqual({
       liked: true,
       likeCount: 4,

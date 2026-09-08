@@ -25,6 +25,10 @@ function msg(overrides: Partial<ChatMessage>): ChatMessage {
     trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
+    replyToMessageId: null,
+    replyPreview: null,
+    likeCount: 0,
+    likedByMe: false,
     createdAt: '2026-09-05T12:00:00Z',
     ...overrides,
   };
