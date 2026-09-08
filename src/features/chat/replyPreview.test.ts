@@ -141,8 +141,15 @@ describe('replyQuoteText', () => {
 
 describe('deriveReplyTarget', () => {
   it('carries the message id and a viewer-relative label + line for a text message', () => {
-    const t = deriveReplyTarget(message({ id: 'm7', body: 'Hej på dig' }), 'u1');
-    expect(t).toEqual({ messageId: 'm7', senderLabel: 'Anna', line: 'Hej på dig' });
+    const t = deriveReplyTarget(
+      message({ id: 'm7', body: 'Hej på dig' }),
+      'u1',
+    );
+    expect(t).toEqual({
+      messageId: 'm7',
+      senderLabel: 'Anna',
+      line: 'Hej på dig',
+    });
   });
 
   it('labels the viewer’s own message as "Du"', () => {
@@ -152,7 +159,10 @@ describe('deriveReplyTarget', () => {
 
   it('summarises an image-only message as 📷 Bild', () => {
     const t = deriveReplyTarget(
-      message({ body: null, attachments: [{ position: 1, path: 'c/u/m/1.jpg' }] }),
+      message({
+        body: null,
+        attachments: [{ position: 1, path: 'c/u/m/1.jpg' }],
+      }),
       'u1',
     );
     expect(t.line).toBe('📷 Bild');

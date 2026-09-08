@@ -15,6 +15,7 @@ import {
   type ResizeObserverMockHandle,
 } from '@/test/resize-observer-mock';
 import type { ChatMessage } from './types';
+import { ChatError } from './chat-error';
 
 // jsdom has no scrollIntoView / createObjectURL / ResizeObserver — stub them.
 let roMock: ResizeObserverMockHandle;
@@ -637,10 +638,27 @@ describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
   it('arming a reply via a right swipe shows the same composer strip', () => {
     prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
     wrap(<ChatPanel {...BASE_PROPS} />);
-    const cardEl = document.body.querySelector('[data-seq="5"]')! as HTMLElement;
-    fireEvent.pointerDown(cardEl, { pointerType: 'touch', pointerId: 1, clientX: 0, clientY: 0 });
-    fireEvent.pointerMove(cardEl, { pointerType: 'touch', pointerId: 1, clientX: 80, clientY: 2 });
-    fireEvent.pointerUp(cardEl, { pointerType: 'touch', pointerId: 1, clientX: 80, clientY: 2 });
+    const cardEl = document.body.querySelector(
+      '[data-seq="5"]',
+    )! as HTMLElement;
+    fireEvent.pointerDown(cardEl, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerMove(cardEl, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 80,
+      clientY: 2,
+    });
+    fireEvent.pointerUp(cardEl, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 80,
+      clientY: 2,
+    });
     expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
   });
 
@@ -717,7 +735,7 @@ describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
 
   it('a hidden-target server error drops reply mode, keeps the draft, and shows the Swedish message', async () => {
     const user = userEvent.setup({ delay: null });
-    const err = new Error('Meddelandet går inte längre att svara på');
+    const err = new ChatError('Meddelandet går inte längre att svara på');
     postMutate = vi.fn((_vars, opts?: { onError?: (e: unknown) => void }) =>
       opts?.onError?.(err),
     );
@@ -742,7 +760,10 @@ describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
     prime({
       messages: [
         row(9, {
-          replyPreview: replyPreview({ senderDisplayName: 'Anna', text: 'Golf räknas inte' }),
+          replyPreview: replyPreview({
+            senderDisplayName: 'Anna',
+            text: 'Golf räknas inte',
+          }),
           body: 'Det gör det visst',
         }),
       ],
@@ -762,20 +783,26 @@ describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
         row(2, {
           id: 'mB',
           body: 'B: svar på A',
-          replyPreview: replyPreview({ messageId: 'mA', senderDisplayName: 'Anna', text: 'A: ursprunget' }),
+          replyPreview: replyPreview({
+            messageId: 'mA',
+            senderDisplayName: 'Anna',
+            text: 'A: ursprunget',
+          }),
         }),
         row(3, {
           id: 'mC',
           body: 'C: svar på B',
-          replyPreview: replyPreview({ messageId: 'mB', senderDisplayName: 'Bo', text: 'B: svar på A' }),
+          replyPreview: replyPreview({
+            messageId: 'mB',
+            senderDisplayName: 'Bo',
+            text: 'B: svar på A',
+          }),
         }),
       ],
     });
     wrap(<ChatPanel {...BASE_PROPS} />);
     // Exactly two quote blocks (B quotes A, C quotes B) — no recursive expansion.
-    expect(
-      screen.getAllByRole('button', { name: /^Svar på/ }),
-    ).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Svar på/ })).toHaveLength(2);
     // C's quote names Bo and shows B's text once (as a quote) + once (as C's... no, that's C's body)
     expect(
       screen.getByRole('button', { name: /Svar på Bos meddelande/ }),

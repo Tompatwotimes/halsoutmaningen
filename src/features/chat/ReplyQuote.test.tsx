@@ -29,7 +29,13 @@ describe('ReplyQuote', () => {
 
   it('is a button that calls onJump with the parent seq when clicked', async () => {
     const onJump = vi.fn();
-    render(<ReplyQuote preview={preview({ seq: 34 })} viewerUserId="u1" onJump={onJump} />);
+    render(
+      <ReplyQuote
+        preview={preview({ seq: 34 })}
+        viewerUserId="u1"
+        onJump={onJump}
+      />,
+    );
     await userEvent.click(screen.getByRole('button'));
     expect(onJump).toHaveBeenCalledWith(34);
   });
@@ -41,7 +47,12 @@ describe('ReplyQuote', () => {
   });
 
   it('announces the reply relationship in its accessible name', () => {
-    render(<ReplyQuote preview={preview({ senderDisplayName: 'Anna' })} viewerUserId="u1" />);
+    render(
+      <ReplyQuote
+        preview={preview({ senderDisplayName: 'Anna' })}
+        viewerUserId="u1"
+      />,
+    );
     expect(
       screen.getByRole('button', { name: /Svar på Annas meddelande/ }),
     ).toBeInTheDocument();
@@ -58,7 +69,9 @@ describe('ReplyQuote', () => {
     expect(
       screen.getByRole('button', { name: 'Svar på ett borttaget meddelande' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('[Borttaget av administratör]')).toBeInTheDocument();
+    expect(
+      screen.getByText('[Borttaget av administratör]'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/hemlig/)).toBeNull();
     expect(screen.queryByText('Anna')).toBeNull();
   });

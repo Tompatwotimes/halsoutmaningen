@@ -206,6 +206,61 @@
   width: 100%;
 }
 
+/* Composer reply strip (design §8.4) — sits flush above `.composeRow`. */
+.replyStrip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-left: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-sunken);
+}
+
+.replyStripText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.replyStripSender {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+}
+
+.replyStripLine {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.replyStripCancel {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: var(--c-text-faint);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-full);
+}
+
+.replyStripCancel:hover,
+.replyStripCancel:focus-visible {
+  color: var(--c-text-muted);
+}
+
+.replyStripCancel :global(svg) {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
 .hiddenFile {
   position: absolute;
   width: 1px;

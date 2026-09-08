@@ -26,12 +26,14 @@ import { ChatImageGrid } from './ChatImageGrid';
 import { TrainingCard } from './TrainingCard';
 import { LikeBadge } from './LikeBadge';
 import { MessageActions } from './MessageActions';
+import { ReplyQuote } from './ReplyQuote';
 import { useMessageGestures } from './useMessageGestures';
 import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import {
   CHAT_BODY_MAX_LENGTH,
+  HIDDEN_REPLY_TARGET_MESSAGE,
   REPLY_SWIPE_ARM_PX,
   chatDateSeparatorKey,
   displayBody,
@@ -41,6 +43,8 @@ import {
   scrollAnchorAdjustment,
   swedishPossessive,
 } from './chat';
+import { deriveReplyTarget, type ReplyTarget } from './replyPreview';
+import { ChatError } from './chat-error';
 import {
   useChatMessages,
   useMarkChatRead,
@@ -96,6 +100,7 @@ export function ChatPanel({
   );
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [composePhase, setComposePhase] = useState<UploadPhase | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +174,8 @@ export function ChatPanel({
     reactedMaxSeq.current = 0;
     markedSeq.current = 0;
     setShowNewMessages(false);
+    // A reply target from a previous open / room is stale (design §5.8).
+    setReplyTarget(null);
   }, [challengeId, open]);
 
   // Track user intent from the scroll position; auto-load older history near
@@ -309,13 +316,34 @@ export function ChatPanel({
 
   function send() {
     if (!canSend) return;
+    const replyToMessageId = replyTarget?.messageId;
     post.mutate(
-      { challengeId, userId, body: draft, files, onPhase: setComposePhase },
+      {
+        challengeId,
+        userId,
+        body: draft,
+        files,
+        onPhase: setComposePhase,
+        ...(replyToMessageId ? { replyToMessageId } : {}),
+      },
       {
         onSuccess: () => {
+          // Success clears everything (design §5.8 / §18.2).
           setDraft('');
           setFiles([]);
           setImageError(null);
+          setReplyTarget(null);
+        },
+        onError: (error: unknown) => {
+          // Failure keeps the draft, attachments AND reply target so the user
+          // retries losing nothing — except when the target itself became
+          // hidden, where reply mode is dropped (draft still kept) (§5.8).
+          if (
+            error instanceof Error &&
+            error.message === HIDDEN_REPLY_TARGET_MESSAGE
+          ) {
+            setReplyTarget(null);
+          }
         },
         onSettled: () => {
           setComposePhase(null);
@@ -350,8 +378,13 @@ export function ChatPanel({
   }
 
   const handleReply = useCallback(
-    (message: ChatMessage) => onReplyToMessage?.(message),
-    [onReplyToMessage],
+    (message: ChatMessage) => {
+      // One reply-target state — the "Svara" action row and the swipe gesture
+      // both converge here (design §5.9). The external seam still fires.
+      setReplyTarget(deriveReplyTarget(message, userId));
+      onReplyToMessage?.(message);
+    },
+    [onReplyToMessage, userId],
   );
 
   function jumpToLatest() {
@@ -377,6 +410,26 @@ export function ChatPanel({
         send();
       }}
     >
+      {replyTarget && (
+        <div className={styles.replyStrip}>
+          <div className={styles.replyStripText}>
+            <span className={styles.replyStripSender}>
+              Svarar på {replyTarget.senderLabel}
+            </span>
+            {replyTarget.line !== '' && (
+              <span className={styles.replyStripLine}>{replyTarget.line}</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className={styles.replyStripCancel}
+            onClick={() => setReplyTarget(null)}
+            aria-label="Avbryt svar"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      )}
       {files.length > 0 && (
         <div className={styles.pickStrip} data-testid="chat-compose-images">
           {files.map((file, i) => (
@@ -437,7 +490,12 @@ export function ChatPanel({
       )}
       {post.isError && (
         <p className={styles.sendError} role="status">
-          Meddelandet kunde inte skickas — försök igen.
+          {/* A ChatError.message is always a Swedish, user-safe string (empty
+              body / too long / rate limit / hidden reply target / offline);
+              anything else falls back to the generic line. */}
+          {post.error instanceof ChatError && post.error.message
+            ? post.error.message
+            : 'Meddelandet kunde inte skickas — försök igen.'}
         </p>
       )}
     </form>
@@ -499,6 +557,7 @@ export function ChatPanel({
                 key={entry.message.id}
                 message={entry.message}
                 isSelf={entry.message.senderUserId === userId}
+                viewerUserId={userId}
                 onSetLike={setLike}
                 isLikePending={isLikePending}
                 onReply={handleReply}
@@ -532,6 +591,7 @@ export function ChatPanel({
 function MessageRow({
   message,
   isSelf,
+  viewerUserId,
   moderation,
   onSetLike,
   isLikePending,
@@ -539,6 +599,7 @@ function MessageRow({
 }: {
   message: ChatMessage;
   isSelf: boolean;
+  viewerUserId: string;
   moderation: ReactNode;
   onSetLike: (vars: { messageId: string; liked: boolean }) => void;
   isLikePending: (messageId: string) => boolean;
@@ -700,6 +761,12 @@ function MessageRow({
         )}
         <time className={styles.time}>{formatTime(message.createdAt)}</time>
       </div>
+      {message.replyPreview !== null && (
+        <ReplyQuote
+          preview={message.replyPreview}
+          viewerUserId={viewerUserId}
+        />
+      )}
       {text !== null && (
         <p className={styles.body} data-testid="chat-message-body">
           {text}

@@ -146,6 +146,13 @@ interface PostVars {
   files?: File[];
   /** Composer progress callback: `'processing'` then `'uploading'`. */
   onPhase?: UploadPhaseCallback;
+  /**
+   * Set only when this message is a reply — the id of the message being
+   * replied to. Threaded straight through to `sendChatMessage`, which passes
+   * `p_reply_to_message_id` to `post_chat_message` **only when present** so a
+   * normal message keeps the exact old call shape (design §22.2).
+   */
+  replyToMessageId?: string;
 }
 
 /**
@@ -164,6 +171,9 @@ export function usePostChatMessage() {
         body: vars.body,
         files: vars.files ?? [],
         ...(vars.onPhase ? { onPhase: vars.onPhase } : {}),
+        ...(vars.replyToMessageId
+          ? { replyToMessageId: vars.replyToMessageId }
+          : {}),
       }),
     onSuccess: (_data, vars) => {
       void queryClient.invalidateQueries({

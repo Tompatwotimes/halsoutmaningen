@@ -9,6 +9,15 @@ import type { ChatMessage, ChatMessageStatus } from './types';
 /** The fixed text shown for an admin-hidden message — the raw body is never displayed. */
 export const HIDDEN_MESSAGE_PLACEHOLDER = '[Borttaget av administratör]';
 
+/**
+ * The exact Swedish message `post_chat_message` raises when a reply's target
+ * was hidden between arming and sending (migration 20260908120000). The
+ * composer matches it verbatim to drop reply mode while keeping the draft
+ * (design §5.8 / §26). Kept as a constant so the string lives in one place.
+ */
+export const HIDDEN_REPLY_TARGET_MESSAGE =
+  'Meddelandet går inte längre att svara på';
+
 /** Server-enforced hard limit; the composer also checks this as defence in depth. */
 export const CHAT_BODY_MAX_LENGTH = 1000;
 
