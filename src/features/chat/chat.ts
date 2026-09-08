@@ -92,6 +92,68 @@ export function isInteractiveEventTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * Does an event target sit inside a chat image thumbnail? An image thumb is
+ * technically an interactive `<button>` (single tap → lightbox), but a mobile
+ * double-tap on a photo still likes the containing message — so the gesture
+ * layer treats it differently from an action / moderation button.
+ */
+export function isChatImageTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element && target.closest('[data-chat-image]') !== null
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mobile gesture primitives (design §6). Pure so the state machine in
+// useMessageGestures is unit-testable without a DOM.
+// ---------------------------------------------------------------------------
+
+/** Rightward travel (px) at which releasing the swipe arms a reply. */
+export const REPLY_SWIPE_ARM_PX = 64;
+/** Hard cap on the visual swipe follow so a card can never slide off-screen. */
+export const REPLY_SWIPE_MAX_PX = 96;
+/** Movement (px) that still counts as a stationary tap, not a drag. */
+export const TAP_SLOP_PX = 10;
+/** Vertical movement (px) past which the gesture is committed to scrolling. */
+export const SWIPE_DEADZONE_PX = 10;
+/** Two taps closer together than this (ms) are a double-tap. */
+export const DOUBLE_TAP_MS = 260;
+
+export type PointerMovePhase = 'idle' | 'vscroll' | 'swipe';
+
+/**
+ * Classify an in-progress pointer move relative to its drag origin (design
+ * §6.1):
+ *   - `vscroll` — clear vertical intent (either direction). Native scroll owns
+ *     it; it must NEVER become a reply swipe afterwards.
+ *   - `swipe` — clear RIGHTWARD horizontal intent (`dx` dominant by 1.5×).
+ *   - `idle` — not enough evidence yet; a leftward move also stays `idle`
+ *     (there is no left-swipe feature).
+ */
+export function classifyPointerMove({
+  dx,
+  dy,
+}: {
+  dx: number;
+  dy: number;
+}): PointerMovePhase {
+  if (Math.abs(dy) > SWIPE_DEADZONE_PX) return 'vscroll';
+  if (dx > 12 && dx > Math.abs(dy) * 1.5) return 'swipe';
+  return 'idle';
+}
+
+/** Has a rightward swipe travelled far enough to arm a reply on release? */
+export function isSwipeArmed(dx: number): boolean {
+  return dx >= REPLY_SWIPE_ARM_PX;
+}
+
+/** The clamped visual follow distance for a swipe: `0 ≤ result ≤ REPLY_SWIPE_MAX_PX`. */
+export function clampSwipeDx(dx: number): number {
+  if (dx <= 0) return 0;
+  return Math.min(dx, REPLY_SWIPE_MAX_PX);
+}
+
+/**
  * The accessible label for the reaction micro-badge (design §7.3 / §26). Empty
  * string when there is nothing to announce (0 likes → the badge is not
  * rendered). `subject` is `meddelandet` for a message, `passet` for a training

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
@@ -13,18 +14,25 @@ import { Button } from '@/components/ui/Button';
 import { Sheet } from '@/components/ui/Sheet';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
-import { ImageIcon, CloseIcon } from '@/components/icons';
+import {
+  CloseIcon,
+  HeartFilledIcon,
+  ImageIcon,
+  ReplyIcon,
+} from '@/components/icons';
 import { probeImage } from '@/features/challenge/heic';
 import type { UploadPhase } from '@/lib/media/image-processing';
 import { ChatImageGrid } from './ChatImageGrid';
 import { TrainingCard } from './TrainingCard';
 import { LikeBadge } from './LikeBadge';
 import { MessageActions } from './MessageActions';
+import { useMessageGestures } from './useMessageGestures';
 import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import {
   CHAT_BODY_MAX_LENGTH,
+  REPLY_SWIPE_ARM_PX,
   chatDateSeparatorKey,
   displayBody,
   isInteractiveEventTarget,
@@ -579,6 +587,47 @@ function MessageRow({
 
   const handleReply = useCallback(() => onReply(message), [onReply, message]);
 
+  // Touch/pen gestures (design §6): swipe-right → reply, double-tap → like.
+  // Mouse keeps the desktop onDoubleClick above; the hook is inert for it.
+  const lightboxCloseRef = useRef<(() => void) | null>(null);
+  const gestures = useMessageGestures({
+    enabled: showSocial,
+    likedByMe: message.likedByMe,
+    likePending,
+    onArmReply: handleReply,
+    onDoubleTapLike: () => onSetLike({ messageId: message.id, liked: true }),
+    onCloseLightbox: () => lightboxCloseRef.current?.(),
+  });
+
+  const wrapperStyle: CSSProperties = {
+    transform:
+      gestures.swipeDx > 0 ? `translateX(${gestures.swipeDx}px)` : undefined,
+    transition: gestures.dragging ? 'none' : undefined,
+  };
+
+  const overlay = showSocial ? (
+    <>
+      <span
+        className={styles.replyReveal}
+        data-armed={gestures.armed || undefined}
+        aria-hidden="true"
+        style={{
+          opacity:
+            gestures.swipeDx > 8
+              ? Math.min(1, gestures.swipeDx / REPLY_SWIPE_ARM_PX)
+              : 0,
+        }}
+      >
+        <ReplyIcon />
+      </span>
+      {gestures.popping && (
+        <span className={styles.heartPop} aria-hidden="true">
+          <HeartFilledIcon />
+        </span>
+      )}
+    </>
+  ) : null;
+
   const social = showSocial ? (
     <>
       <MessageActions
@@ -610,8 +659,11 @@ function MessageRow({
           .filter(Boolean)
           .join(' ')}
         data-seq={message.seq}
+        style={wrapperStyle}
         onDoubleClick={handleDoubleClick}
+        {...gestures.handlers}
       >
+        {overlay}
         <TrainingCard
           card={message.trainingCard}
           senderName={senderLabel}
@@ -633,8 +685,11 @@ function MessageRow({
         .filter(Boolean)
         .join(' ')}
       data-seq={message.seq}
+      style={wrapperStyle}
       onDoubleClick={handleDoubleClick}
+      {...gestures.handlers}
     >
+      {overlay}
       <div className={styles.messageHead}>
         {isGameMaster ? (
           <Badge tone="neutral" size="sm">
@@ -654,6 +709,9 @@ function MessageRow({
         <ChatImageGrid
           messageId={message.id}
           attachments={message.attachments}
+          registerLightboxClose={(fn) => {
+            lightboxCloseRef.current = fn;
+          }}
         />
       )}
       {social}

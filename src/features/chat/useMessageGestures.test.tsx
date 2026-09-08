@@ -5,14 +5,16 @@ import { useMessageGestures } from './useMessageGestures';
 /**
  * A minimal synthetic PointerEvent-ish object. Only the fields the hook reads.
  */
-function pe(over: Partial<Record<string, unknown>> = {}) {
-  const el = (over.currentTarget as HTMLElement) ?? document.createElement('div');
+function pe(over: Record<string, unknown> = {}) {
+  const el =
+    (over.currentTarget as HTMLElement | undefined) ??
+    document.createElement('div');
   return {
     pointerId: 1,
     pointerType: 'touch',
     clientX: 0,
     clientY: 0,
-    target: (over.target as EventTarget) ?? el,
+    target: (over.target as EventTarget | undefined) ?? el,
     currentTarget: el,
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
@@ -45,17 +47,25 @@ describe('useMessageGestures — swipe to reply', () => {
     const { result } = renderHook(() => useMessageGestures(p));
     const el = document.createElement('div');
     act(() => {
-      result.current.handlers.onPointerDown(pe({ currentTarget: el, clientX: 0 }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 40 }));
+      result.current.handlers.onPointerDown(
+        pe({ currentTarget: el, clientX: 0 }),
+      );
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 40 }),
+      );
     });
     expect(result.current.swipeDx).toBe(40);
     expect(result.current.armed).toBe(false);
     act(() => {
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 80 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
     });
     expect(result.current.armed).toBe(true);
     act(() => {
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 80 }));
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
     });
     expect(p.onArmReply).toHaveBeenCalledTimes(1);
     expect(result.current.swipeDx).toBe(0);
@@ -68,8 +78,12 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 30 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 30 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 30 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 30 }),
+      );
     });
     expect(p.onArmReply).not.toHaveBeenCalled();
     expect(result.current.swipeDx).toBe(0);
@@ -81,12 +95,18 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 90 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
     });
     expect(p.onArmReply).not.toHaveBeenCalled();
     act(() => {
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 20 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 20 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 20 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 20 }),
+      );
     });
     expect(p.onArmReply).not.toHaveBeenCalled();
   });
@@ -97,7 +117,9 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 400 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 400 }),
+      );
     });
     expect(result.current.swipeDx).toBe(96);
   });
@@ -108,8 +130,12 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: -90 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: -90 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: -90 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: -90 }),
+      );
     });
     expect(p.onArmReply).not.toHaveBeenCalled();
     expect(result.current.swipeDx).toBe(0);
@@ -145,8 +171,12 @@ describe('useMessageGestures — swipe to reply', () => {
       result.current.handlers.onPointerDown(
         pe({ currentTarget: el, target: button }),
       );
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 90 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 90 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
     });
     expect(p.onArmReply).not.toHaveBeenCalled();
     expect(result.current.swipeDx).toBe(0);
@@ -158,7 +188,9 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 80 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
     });
     expect(result.current.swipeDx).toBe(80);
     act(() => {
@@ -190,14 +222,22 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 80 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 80 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
     });
     expect(p.onArmReply).toHaveBeenCalledTimes(1);
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 90 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 90 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
     });
     expect(p.onArmReply).toHaveBeenCalledTimes(2);
   });
@@ -208,8 +248,12 @@ describe('useMessageGestures — swipe to reply', () => {
     const el = document.createElement('div');
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 90 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 90 }));
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 90 }),
+      );
     });
     expect(p.onArmReply).not.toHaveBeenCalled();
     expect(result.current.swipeDx).toBe(0);
@@ -286,9 +330,15 @@ describe('useMessageGestures — double tap to like', () => {
     });
     act(() => {
       // a swipe gesture in between
-      result.current.handlers.onPointerDown(pe({ currentTarget: el, clientX: 0 }));
-      result.current.handlers.onPointerMove(pe({ currentTarget: el, clientX: 80 }));
-      result.current.handlers.onPointerUp(pe({ currentTarget: el, clientX: 80 }));
+      result.current.handlers.onPointerDown(
+        pe({ currentTarget: el, clientX: 0 }),
+      );
+      result.current.handlers.onPointerMove(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
+      result.current.handlers.onPointerUp(
+        pe({ currentTarget: el, clientX: 80 }),
+      );
     });
     act(() => {
       result.current.handlers.onPointerDown(pe({ currentTarget: el }));

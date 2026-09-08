@@ -11,6 +11,9 @@
   flex-direction: column;
   gap: var(--sp-3);
   min-height: 12rem;
+  /* Contain a swiped card's translateX so it never adds a horizontal scrollbar
+     (vertical scrolling lives on the Sheet body, not here). */
+  overflow-x: clip;
 }
 
 .skeletons {
@@ -71,6 +74,7 @@
 }
 
 .message {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
@@ -78,6 +82,9 @@
   border: 1px solid var(--c-border-faint);
   border-radius: var(--radius-md);
   background: var(--c-surface-sunken);
+  /* Browser owns the vertical axis; horizontal pointer moves come to JS
+     (design §6.1). Never `none` — vertical chat scrolling stays native. */
+  touch-action: pan-y;
 }
 
 .self {
@@ -87,6 +94,76 @@
 
 .gm {
   border-left: 3px solid var(--c-danger);
+}
+
+/* Swipe-to-reply affordance: a muted ↩️ at the card's left edge that fades in
+   as the card is dragged right, and firms up once the reply is armed. */
+.replyReveal {
+  position: absolute;
+  left: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--c-text-faint);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.replyReveal svg {
+  width: 16px;
+  height: 16px;
+}
+
+.replyReveal[data-armed] {
+  color: var(--c-accent);
+}
+
+/* Brief confirmation heart after a double-tap like. Decorative only. */
+.heartPop {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: inline-flex;
+  color: var(--c-accent);
+  pointer-events: none;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+}
+
+.heartPop svg {
+  width: 34px;
+  height: 34px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .message {
+    transition: transform 180ms var(--ease-out, ease);
+  }
+
+  .heartPop {
+    animation: heart-pop 200ms var(--ease-out, ease-out);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heartPop {
+    display: none;
+  }
+}
+
+@keyframes heart-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
 }
 
 .messageHead {

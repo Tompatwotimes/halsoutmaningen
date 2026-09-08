@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -74,17 +74,21 @@ describe('ChatImageGrid', () => {
         registerLightboxClose={register}
       />,
     );
-    const [thumb] = await screen.findAllByRole('button', { name: /Öppna bild/ });
+    const [thumb] = await screen.findAllByRole('button', {
+      name: /Öppna bild/,
+    });
     await user.click(thumb!);
     // opened → a close fn was registered
-    const lastFn = register.mock.calls.at(-1)?.[0];
+    const lastFn = register.mock.calls.at(-1)?.[0] as (() => void) | undefined;
     expect(typeof lastFn).toBe('function');
     expect(
       screen.getByRole('dialog', { name: 'Bildvisning' }),
     ).toBeInTheDocument();
     // calling it closes the lightbox and de-registers
     register.mockClear();
-    lastFn();
+    act(() => {
+      lastFn?.();
+    });
     expect(
       screen.queryByRole('dialog', { name: 'Bildvisning' }),
     ).not.toBeInTheDocument();
