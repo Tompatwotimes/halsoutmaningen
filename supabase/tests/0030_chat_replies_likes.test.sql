@@ -374,6 +374,10 @@ select ok(
 -- ##  and Task A Section C. The one genuine `authenticated`-role test is F3.  ##
 -- ############################################################################
 set local role postgres;
+-- Clear any leftover JWT claim from Task A so the fixture inserts below run as
+-- the privileged backend (auth.uid() = NULL) — the training_entries ownership
+-- trigger then allows seeding an entry for another user.
+select set_config('request.jwt.claims', '', true);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
 values
