@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   DOUBLE_TAP_MS,
+  REPLY_JUMP_MAX_PAGES,
   REPLY_SWIPE_ARM_PX,
   REPLY_SWIPE_MAX_PX,
   chatDateSeparatorKey,
   classifyPointerMove,
   clampSwipeDx,
   displayBody,
+  findLoadedSeq,
   isChatImageTarget,
   isInteractiveEventTarget,
   isNearBottom,
@@ -340,5 +342,23 @@ describe('gesture constants', () => {
     expect(REPLY_SWIPE_ARM_PX).toBe(64);
     expect(REPLY_SWIPE_MAX_PX).toBe(96);
     expect(REPLY_SWIPE_ARM_PX).toBeLessThan(REPLY_SWIPE_MAX_PX);
+  });
+});
+
+describe('findLoadedSeq', () => {
+  it('is true when a message with that seq is among the loaded ones', () => {
+    expect(findLoadedSeq([msg({ seq: 3 }), msg({ seq: 7 })], 7)).toBe(true);
+  });
+  it('is false when no loaded message has that seq', () => {
+    expect(findLoadedSeq([msg({ seq: 3 }), msg({ seq: 7 })], 4)).toBe(false);
+  });
+  it('is false for an empty list', () => {
+    expect(findLoadedSeq([], 1)).toBe(false);
+  });
+});
+
+describe('REPLY_JUMP_MAX_PAGES', () => {
+  it('is a small, bounded page cap for jump-to-original history paging', () => {
+    expect(REPLY_JUMP_MAX_PAGES).toBe(10);
   });
 });

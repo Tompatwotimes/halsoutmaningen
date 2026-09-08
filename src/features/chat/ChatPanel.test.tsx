@@ -8,7 +8,13 @@ import {
   it,
   vi,
 } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   installResizeObserverMock,
@@ -835,6 +841,158 @@ describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
     expect(
       screen.getAllByText('[Borttaget av administratör]').length,
     ).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('ChatPanel — jump to original from a reply quote (Task H)', () => {
+  function rp(
+    over: Partial<NonNullable<ChatMessage['replyPreview']>> = {},
+  ): NonNullable<ChatMessage['replyPreview']> {
+    return {
+      deleted: false,
+      messageId: 'm1',
+      seq: 1,
+      senderType: 'participant',
+      senderUserId: 'u2',
+      senderDisplayName: 'Anna',
+      kind: 'text',
+      text: 'ursprunget',
+      hasImage: false,
+      training: null,
+      ...over,
+    };
+  }
+
+  function primeDynamic(
+    getState: () => { messages: ChatMessage[]; hasNextPage: boolean },
+  ) {
+    useChatMessagesMock.mockImplementation(() => ({
+      ...buildQuery(),
+      ...getState(),
+    }));
+    useMarkChatReadMock.mockReturnValue({ mutate: markReadMutate });
+    usePostChatMessageMock.mockReturnValue({
+      mutate: postMutate,
+      isPending: false,
+      isError: false,
+    });
+    probeImageMock.mockResolvedValue({
+      decodable: true,
+      width: 10,
+      height: 10,
+      likelyHeic: false,
+    });
+  }
+
+  it('scrolls a loaded target into view and briefly highlights it, leaving the follow latch alone', () => {
+    vi.useFakeTimers();
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    prime({
+      messages: [
+        row(1, { id: 'm1', body: 'ursprunget' }),
+        row(2),
+        row(9, {
+          body: 'mitt svar',
+          replyPreview: rp({ seq: 1, messageId: 'm1' }),
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    scrollIntoView.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    const target = document.body.querySelector('[data-seq="1"]')!;
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center' }),
+    );
+    expect(target).toHaveAttribute('data-jump-highlight');
+    // the "Nya meddelanden" pill is never conjured by a jump
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(target).not.toHaveAttribute('data-jump-highlight');
+    vi.useRealTimers();
+    scrollIntoView.mockRestore();
+  });
+
+  it('pages upward (bounded) to reach an unloaded target, then scrolls to it', async () => {
+    let revealedPages = 0;
+    fetchNextPage = vi.fn(() => {
+      revealedPages += 1;
+      return Promise.resolve();
+    });
+    const deepTarget = row(1, { id: 'm1', body: 'långt bak' });
+    const anchor = row(50, {
+      body: 'svar',
+      replyPreview: rp({ seq: 1, messageId: 'm1' }),
+    });
+    primeDynamic(() => ({
+      messages: revealedPages >= 3 ? [deepTarget, anchor] : [anchor],
+      hasNextPage: true,
+    }));
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    scrollIntoView.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-seq="1"]')).toBeInTheDocument(),
+    );
+    expect(fetchNextPage.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(fetchNextPage.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center' }),
+    );
+  });
+
+  it('stops at the page cap and shows a one-line notice when the target is never found', async () => {
+    fetchNextPage = vi.fn(() => Promise.resolve());
+    primeDynamic(() => ({
+      messages: [
+        row(20),
+        row(50, {
+          body: 'svar',
+          replyPreview: rp({ seq: 999, messageId: 'mX' }),
+        }),
+      ],
+      hasNextPage: true,
+    }));
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    await screen.findByText('Kunde inte hitta meddelandet i historiken.');
+    expect(fetchNextPage).toHaveBeenCalledTimes(10);
+
+    // no further paging after the cap
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchNextPage).toHaveBeenCalledTimes(10);
+  });
+
+  it('does not page at all when there is no more history and the target is absent', async () => {
+    fetchNextPage = vi.fn(() => Promise.resolve());
+    primeDynamic(() => ({
+      messages: [
+        row(20),
+        row(50, {
+          body: 'svar',
+          replyPreview: rp({ seq: 999, messageId: 'mX' }),
+        }),
+      ],
+      hasNextPage: false,
+    }));
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    await screen.findByText('Kunde inte hitta meddelandet i historiken.');
+    expect(fetchNextPage).not.toHaveBeenCalled();
   });
 });
 
