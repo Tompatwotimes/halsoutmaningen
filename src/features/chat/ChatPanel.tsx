@@ -66,9 +66,10 @@ export interface ChatPanelProps {
   /** Rendered under a participant message when the viewer is an admin (Task 9). */
   renderModeration?: (message: ChatMessage) => ReactNode;
   /**
-   * Invoked when a viewer picks "Svara" on a message. The reply composer /
-   * quote UI is a later task (F/G) — Task E only exposes the affordance and
-   * this callback seam; unwired here it is a no-op.
+   * Optional notification that a viewer started a reply to `message` (via the
+   * "Svara" action or a right-swipe). The reply composer itself is fully
+   * self-contained in this component now (Task G) — this seam only exists for
+   * a host that wants to observe the intent; production leaves it unset.
    */
   onReplyToMessage?: (message: ChatMessage) => void;
 }
