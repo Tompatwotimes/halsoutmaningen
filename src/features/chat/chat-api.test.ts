@@ -279,6 +279,22 @@ describe('mapChatRow — like_count / liked_by_me', () => {
     );
     expect(mapChatRow(rowFixture({ liked_by_me: 1 })).likedByMe).toBe(false);
   });
+
+  // Task I guard: an OLD `list_chat_messages` row (NEW frontend talking to the
+  // not-yet-migrated production DB, design §22.2) has none of the three new
+  // keys. Every new field must degrade to a safe, non-throwing default so the
+  // NEW-frontend + OLD-DB window renders correctly.
+  it('maps a pre-migration row (no like_count / liked_by_me / reply_preview) to safe defaults', () => {
+    const msg = mapChatRow(rowFixture());
+    expect(msg.likeCount).toBe(0);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+    expect(msg.replyToMessageId).toBeNull();
+    // the rest of the row still maps as before
+    expect(msg.id).toBe('m1');
+    expect(msg.body).toBe('hej');
+    expect(msg.status).toBe('active');
+  });
 });
 
 describe('mapChatRow — reply_preview', () => {

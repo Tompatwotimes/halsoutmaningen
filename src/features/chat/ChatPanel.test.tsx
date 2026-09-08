@@ -996,6 +996,115 @@ describe('ChatPanel — jump to original from a reply quote (Task H)', () => {
   });
 });
 
+describe('ChatPanel — moderation / privacy / regression sweep (Task I)', () => {
+  const tombstone: NonNullable<ChatMessage['replyPreview']> = {
+    deleted: true,
+    messageId: null,
+    seq: null,
+    senderType: null,
+    senderUserId: null,
+    senderDisplayName: null,
+    kind: null,
+    text: null,
+    hasImage: false,
+    training: null,
+  };
+
+  it('a reply to a since-hidden parent shows ONLY the canonical placeholder — no parent body / note / activity / GM text', () => {
+    prime({
+      messages: [
+        row(9, { body: 'mitt svar på det dolda', replyPreview: tombstone }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const quote = screen.getByRole('button', {
+      name: 'Svar på ett borttaget meddelande',
+    });
+    expect(quote).toHaveTextContent('[Borttaget av administratör]');
+    // none of the strings a real parent preview could have carried
+    for (const leak of [
+      'Löpning',
+      'Simning',
+      'hemlig anteckning',
+      'GAME MASTER',
+      'Golf räknas inte',
+    ]) {
+      expect(screen.queryByText(new RegExp(leak))).toBeNull();
+    }
+  });
+
+  it('a hidden message that is ALSO a reply: quote placeholder shows, body withheld, and NO social controls', () => {
+    prime({
+      messages: [
+        row(9, {
+          status: 'hidden',
+          body: null,
+          likeCount: 0,
+          likedByMe: false,
+          replyPreview: tombstone,
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    // both the message body and the quote render the same placeholder
+    expect(
+      screen.getAllByText('[Borttaget av administratör]').length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole('button', { name: /gillar/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Gilla meddelandet' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Svara på/ })).toBeNull();
+  });
+
+  it('a like refetch that returns the SAME seqs does not move the viewport or raise "Nya meddelanden"', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    // open → loading → messages, then the reader scrolls up to read history
+    prime({ isLoading: true });
+    const view = wrap(<ChatPanel {...BASE_PROPS} />);
+    const el = screen.getByRole('log').parentElement!;
+    const ctl = mockScroller(el, {
+      scrollHeight: 900,
+      clientHeight: 300,
+      scrollTop: 0,
+    });
+    prime({ isLoading: false, messages: [row(1), row(2), row(3)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+    ctl.scrollTop = 100; // scrolled well up
+    ctl.fireScroll();
+    scrollIntoView.mockClear();
+    markReadMutate.mockClear();
+
+    // a like landed → Realtime invalidates → refetch returns the SAME 3 seqs,
+    // only like_count changed on row 2
+    prime({
+      isLoading: false,
+      messages: [row(1), row(2, { likeCount: 1 }), row(3)],
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(ctl.scrollTop).toBe(100);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    expect(markReadMutate).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
+
+  it('the moderation slot is still offered to admins on a plain participant message alongside the like badge', () => {
+    const renderModeration = vi.fn(() => <span data-testid="mod">dölj</span>);
+    prime({ messages: [row(5, { likeCount: 2, senderDisplayName: 'Anna' })] });
+    wrap(
+      <ChatPanel {...BASE_PROPS} isAdmin renderModeration={renderModeration} />,
+    );
+    expect(screen.getByTestId('mod')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '2 personer gillar meddelandet' }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('ChatPanel — mobile gestures (Task F)', () => {
   function card(seq: number): HTMLElement {
     return document.body.querySelector(`[data-seq="${seq}"]`)!;
