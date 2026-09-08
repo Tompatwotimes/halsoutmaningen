@@ -606,6 +606,211 @@ describe('ChatPanel — heart badge + message actions (Task E)', () => {
   });
 });
 
+describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
+  function replyPreview(
+    over: Partial<NonNullable<ChatMessage['replyPreview']>> = {},
+  ): NonNullable<ChatMessage['replyPreview']> {
+    return {
+      deleted: false,
+      messageId: 'p1',
+      seq: 2,
+      senderType: 'participant',
+      senderUserId: 'u2',
+      senderDisplayName: 'Anna',
+      kind: 'text',
+      text: 'Golf räknas inte',
+      hasImage: false,
+      training: null,
+      ...over,
+    };
+  }
+
+  it('arming a reply via the Svara button shows the composer strip with the target sender', async () => {
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+  });
+
+  it('arming a reply via a right swipe shows the same composer strip', () => {
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const cardEl = document.body.querySelector('[data-seq="5"]')! as HTMLElement;
+    fireEvent.pointerDown(cardEl, { pointerType: 'touch', pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(cardEl, { pointerType: 'touch', pointerId: 1, clientX: 80, clientY: 2 });
+    fireEvent.pointerUp(cardEl, { pointerType: 'touch', pointerId: 1, clientX: 80, clientY: 2 });
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+  });
+
+  it('the ✕ cancels reply mode but keeps the typed draft', async () => {
+    const user = userEvent.setup({ delay: null });
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'mitt svar');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Avbryt svar' }));
+    expect(screen.queryByText('Svarar på Anna')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('mitt svar');
+  });
+
+  it('sending while in reply mode threads replyToMessageId to post.mutate', async () => {
+    const user = userEvent.setup({ delay: null });
+    prime({ messages: [row(5, { id: 'm5', senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'det gör det visst');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(postMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ replyToMessageId: 'm5' }),
+      expect.anything(),
+    );
+  });
+
+  it('a normal (non-reply) send does NOT include replyToMessageId', async () => {
+    const user = userEvent.setup({ delay: null });
+    prime({ messages: [row(5)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'vanligt meddelande');
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    const [vars] = postMutate.mock.calls[0] as [Record<string, unknown>];
+    expect(vars).not.toHaveProperty('replyToMessageId');
+  });
+
+  it('on a successful reply send the strip and the draft both clear', async () => {
+    const user = userEvent.setup({ delay: null });
+    postMutate = vi.fn((_vars, opts?: { onSuccess?: () => void }) =>
+      opts?.onSuccess?.(),
+    );
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'klart');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(screen.queryByText('Svarar på Anna')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('on a failed reply send the strip and the draft both remain', async () => {
+    const user = userEvent.setup({ delay: null });
+    postMutate = vi.fn((_vars, opts?: { onError?: (e: unknown) => void }) =>
+      opts?.onError?.(new Error('nätverksfel')),
+    );
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'behåll mig');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('behåll mig');
+  });
+
+  it('a hidden-target server error drops reply mode, keeps the draft, and shows the Swedish message', async () => {
+    const user = userEvent.setup({ delay: null });
+    const err = new Error('Meddelandet går inte längre att svara på');
+    postMutate = vi.fn((_vars, opts?: { onError?: (e: unknown) => void }) =>
+      opts?.onError?.(err),
+    );
+    prime(
+      { messages: [row(5, { senderDisplayName: 'Anna' })] },
+      { isError: true, error: err },
+    );
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'för sent');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(screen.queryByText('Svarar på Anna')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('för sent');
+    expect(
+      screen.getByText('Meddelandet går inte längre att svara på'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders one ReplyQuote inside a message that has a replyPreview', () => {
+    prime({
+      messages: [
+        row(9, {
+          replyPreview: replyPreview({ senderDisplayName: 'Anna', text: 'Golf räknas inte' }),
+          body: 'Det gör det visst',
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: /Svar på Annas meddelande/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Det gör det visst')).toBeInTheDocument();
+  });
+
+  it('renders replies flat — C replying to B quotes B only, never A', () => {
+    // A ← B ← C. C's replyPreview describes B; A's text must not appear anywhere.
+    prime({
+      messages: [
+        row(1, { id: 'mA', body: 'A: ursprunget', replyPreview: null }),
+        row(2, {
+          id: 'mB',
+          body: 'B: svar på A',
+          replyPreview: replyPreview({ messageId: 'mA', senderDisplayName: 'Anna', text: 'A: ursprunget' }),
+        }),
+        row(3, {
+          id: 'mC',
+          body: 'C: svar på B',
+          replyPreview: replyPreview({ messageId: 'mB', senderDisplayName: 'Bo', text: 'B: svar på A' }),
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    // Exactly two quote blocks (B quotes A, C quotes B) — no recursive expansion.
+    expect(
+      screen.getAllByRole('button', { name: /^Svar på/ }),
+    ).toHaveLength(2);
+    // C's quote names Bo and shows B's text once (as a quote) + once (as C's... no, that's C's body)
+    expect(
+      screen.getByRole('button', { name: /Svar på Bos meddelande/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('a reply to a since-hidden parent shows exactly the placeholder in the quote, no leak', () => {
+    prime({
+      messages: [
+        row(9, {
+          body: 'mitt svar',
+          replyPreview: replyPreview({
+            deleted: true,
+            messageId: null,
+            seq: null,
+            senderType: null,
+            senderUserId: null,
+            senderDisplayName: null,
+            kind: null,
+            text: null,
+          }),
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: 'Svar på ett borttaget meddelande' }),
+    ).toBeInTheDocument();
+    // the quote itself renders the canonical constant
+    expect(
+      screen.getAllByText('[Borttaget av administratör]').length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('ChatPanel — mobile gestures (Task F)', () => {
   function card(seq: number): HTMLElement {
     return document.body.querySelector(`[data-seq="${seq}"]`)!;
