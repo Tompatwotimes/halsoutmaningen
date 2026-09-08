@@ -543,7 +543,9 @@ describe('reconcileLikeState (pure)', () => {
 
   it('does not crash on an undefined cache or a missing message', () => {
     expect(reconcileLikeState(undefined, 'm1', true, 1)).toBeUndefined();
-    expect(reconcileLikeState(cache([[row(1)]]), 'gone', true, 1)!.pages[0]![0]!.id).toBe('m1');
+    expect(
+      reconcileLikeState(cache([[row(1)]]), 'gone', true, 1)!.pages[0]![0]!.id,
+    ).toBe('m1');
   });
 });
 
@@ -650,9 +652,7 @@ describe('useSetChatMessageLike', () => {
     });
 
     expect(result.current.isPending('m1')).toBe(true);
-    await waitFor(() =>
-      expect(setChatMessageLike).toHaveBeenCalledTimes(1),
-    );
+    await waitFor(() => expect(setChatMessageLike).toHaveBeenCalledTimes(1));
     expect(setChatMessageLike).toHaveBeenCalledWith('m1', true);
 
     await act(async () => {
@@ -664,9 +664,7 @@ describe('useSetChatMessageLike', () => {
     // after settle the same message can be mutated again
     setChatMessageLike.mockResolvedValueOnce({ liked: false, likeCount: 2 });
     act(() => result.current.setLike({ messageId: 'm1', liked: false }));
-    await waitFor(() =>
-      expect(setChatMessageLike).toHaveBeenCalledTimes(2),
-    );
+    await waitFor(() => expect(setChatMessageLike).toHaveBeenCalledTimes(2));
   });
 
   it('allows two DIFFERENT messages to mutate concurrently', async () => {
@@ -691,9 +689,7 @@ describe('useSetChatMessageLike', () => {
 
     expect(result.current.isPending('m1')).toBe(true);
     expect(result.current.isPending('m2')).toBe(true);
-    await waitFor(() =>
-      expect(setChatMessageLike).toHaveBeenCalledTimes(2),
-    );
+    await waitFor(() => expect(setChatMessageLike).toHaveBeenCalledTimes(2));
 
     await act(async () => {
       dA.resolve({ liked: true, likeCount: 1 });
@@ -723,9 +719,7 @@ describe('useSetChatMessageLike', () => {
 
     setChatMessageLike.mockResolvedValueOnce({ liked: true, likeCount: 1 });
     act(() => result.current.setLike({ messageId: 'm1', liked: true }));
-    await waitFor(() =>
-      expect(setChatMessageLike).toHaveBeenCalledTimes(2),
-    );
+    await waitFor(() => expect(setChatMessageLike).toHaveBeenCalledTimes(2));
   });
 
   it('does not crash when the target message is not in the loaded cache', async () => {
@@ -771,7 +765,9 @@ describe('useSetChatMessageLike', () => {
     const d = deferred<{ liked: boolean; likeCount: number }>();
     setChatMessageLike.mockReturnValueOnce(d.promise);
     const client = makeClient();
-    const before = cache([[row(1, { seq: 42, status: 'active', likeCount: 1 })]]);
+    const before = cache([
+      [row(1, { seq: 42, status: 'active', likeCount: 1 })],
+    ]);
     client.setQueryData(chatKeys.messages('c1'), before);
     client.setQueryData(chatKeys.unreadRoot('c1'), 3);
     const { result } = renderHook(() => useSetChatMessageLike('c1'), {

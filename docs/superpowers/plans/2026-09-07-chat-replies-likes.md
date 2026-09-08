@@ -31,7 +31,7 @@ build and prove the DB; C–I build the frontend against it; J is the rollout.
 | A | DB — schema (column, table, FK, indexes, RLS) | — |
 | B | DB — RPC/read model (`_create_chat_message` helper, `post_chat_message` wrapper, `set_chat_message_like`, `list_chat_messages` v4) + pgTAP `0030` | A |
 | C | Frontend — types + `chat-api` mapping + backwards-compat | B (shape only; no live DB needed for unit tests) |
-| D | Frontend — likes data layer (`useToggleChatMessageLike`, optimistic cache) | C |
+| D | Frontend — likes data layer (`useSetChatMessageLike`, optimistic cache) | C |
 | E | Frontend — `<LikeBadge>` + message action row + double-click like | D |
 | F | Frontend — mobile gestures (swipe-to-reply, double-tap-to-like, lightbox coexistence) | E |
 | G | Frontend — reply composer mode + `<ReplyQuote>` rendering | C, E |
@@ -314,21 +314,31 @@ Run → fail (fields undefined on the type / not mapped). Record.
   { p_message_id, p_liked })` — the Task B RPC is an **idempotent state-setter**
   (`set_chat_message_like(uuid, boolean)`), not a toggle; the client passes the
   desired state so a retry is safe. Swedish error mapping (`chatMessageError`).
-- `src/features/chat/useChat.ts` — `useToggleChatMessageLike(challengeId)`:
-  a mutation with
-  - `onMutate(messageId)`: cancel `chatKeys.messages`, snapshot, optimistically
-    patch **every page** of the infinite-query cache — for the matching
-    `message.id`, flip `likedByMe` and `likeCount += likedByMe ? -1 : +1`;
-    add `messageId` to an in-flight `Set` (module ref or context).
-  - `onError`: restore the snapshot; remove from in-flight; surface the Swedish
-    message.
-  - `onSuccess(data, messageId)`: set `likedByMe = data.liked`,
-    `likeCount = data.likeCount` on the cached row (authoritative reconcile);
-    remove from in-flight.
-  - `onSettled`: (nothing extra — Realtime will also invalidate; that refetch
-    reconciles any other client's concurrent like.)
-  - export an `isLikePending(messageId)` helper reading the in-flight set.
-- `src/features/chat/useChat.test.tsx` *(or a new `useToggleChatMessageLike.test.tsx`)*.
+- `src/features/chat/useChat.ts` — **`useSetChatMessageLike(challengeId)`**
+  *(implemented as a desired-state setter, not a `useToggle*` — the RPC is
+  idempotent and the mutation carries an explicit `liked` boolean; state-aware
+  so a repeat / stale call cannot drift the count)*. Exposes
+  `{ setLike({ messageId, liked }), isPending(messageId), error, reset }`.
+  The mutation:
+  - `onMutate({ messageId, liked })`: `cancelQueries(chatKeys.messages)`,
+    snapshot the whole infinite-query cache, then a **state-aware** optimistic
+    patch (`optimisticLikePatch`) — for the matching `message.id`, if it is
+    already in the desired `liked` state leave `likeCount` alone, else
+    `likedByMe := liked` and `likeCount ± 1` clamped at 0. Only
+    `likedByMe` / `likeCount` change; every other page/message/`pageParams` is
+    preserved by reference. (`messageId` was added to the in-flight `Set` by
+    `setLike` synchronously, before `mutate`.)
+  - `onError`: restore the exact snapshot (never reverse by arithmetic).
+  - `onSuccess(result, { messageId })`: `reconcileLikeState` — set
+    `likedByMe = result.liked`, `likeCount = result.likeCount` (the server
+    wins even when it differs from the optimistic ±1).
+  - `onSettled({ messageId })`: remove `messageId` from the in-flight `Set`.
+  - **no** invalidation of its own — Realtime (`chat_activity`) already
+    refetches `list_chat_messages` on a real change; the three updates converge.
+  - `retry: false`.
+  - `optimisticLikePatch` / `reconcileLikeState` are exported pure helpers
+    (unit-tested in `useChat.test.tsx`).
+- `src/features/chat/useChat.test.tsx`.
 
 **RED**
 
@@ -338,7 +348,7 @@ Run → fail (fields undefined on the type / not mapped). Record.
 - reconcile on resolve: server says `{ liked: true, like_count: 5 }` →
   cache row shows `5`.
 - two rapid `mutate` calls for the same id → the second is a no-op while the
-  first is in flight (`isLikePending` true) → final state matches the last
+  first is in flight (`isPending` true) → final state matches the last
   settled server response.
 
 Run → fail (hook does not exist). Record.
@@ -347,7 +357,7 @@ Run → fail (hook does not exist). Record.
 
 **GREEN** — targeted tests green; typecheck + lint clean.
 
-**Commit** — `feat(chat): useToggleChatMessageLike with optimistic reconcile`
+**Commit** — `feat(chat): useSetChatMessageLike with optimistic reconcile`
 
 ---
 
@@ -372,7 +382,7 @@ Run → fail (hook does not exist). Record.
   - `<MessageActions>` after the body/attachments, before/around `{moderation}`
   - `<LikeBadge>` overlapping the card's bottom-right (design §8.1)
   - `onDoubleClick` on the card → toggle like (+ pop unless reduced-motion)
-  - wire `useToggleChatMessageLike` + `isLikePending`
+  - wire `useSetChatMessageLike` (`setLike` + `isPending`)
   - pass `data-seq={message.seq}` on the card wrapper (needed by Task H)
 - `src/features/chat/LikeBadge.test.tsx`, `MessageActions.test.tsx`,
   and `ChatPanel.test.tsx` additions.
@@ -576,7 +586,7 @@ they exist and are named):
 - A like Realtime invalidation (simulated) that returns the **same seqs**
   does not move the viewport / does not set `showNewMessages`
   (design §19.2).
-- `useToggleChatMessageLike` never calls `mark_chat_read` and never bumps the
+- `useSetChatMessageLike` never calls `mark_chat_read` and never bumps the
   unread query directly (only Realtime does, and that returns an unchanged
   count).
 - `chat-api` pre-migration-shape suite green (Task C) — re-assert here as a
@@ -688,7 +698,7 @@ src/components/icons.tsx                   (HeartIcon, HeartFilledIcon, ReplyIco
 src/features/chat/types.ts                 (ReplyPreview, ChatMessage fields)
 src/features/chat/chat.ts                  (gesture constants + pure helpers, REPLY_JUMP_MAX_PAGES)
 src/features/chat/chat-api.ts              (mapChatRow, narrowReplyPreview, sendChatMessage, setChatMessageLike)
-src/features/chat/useChat.ts               (useToggleChatMessageLike, PostVars.replyToMessageId)
+src/features/chat/useChat.ts               (useSetChatMessageLike + pure like-cache helpers; PostVars.replyToMessageId is Task G)
 src/features/chat/ChatPanel.tsx            (MessageRow: quote + badge + actions + gestures; composer reply mode; jumpToMessage)
 src/features/chat/ChatPanel.module.css     (touch-action, overscroll, swipe, pop, jumpHighlight)
 src/features/chat/ChatImageGrid.tsx        (shared lightbox-close for double-tap)
