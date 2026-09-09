@@ -328,6 +328,42 @@ export type Database = {
           },
         ]
       }
+      chat_message_likes: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_message_likes_message_fk"
+            columns: ["message_id", "challenge_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id", "challenge_id"]
+          },
+          {
+            foreignKeyName: "chat_message_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           body: string | null
@@ -337,6 +373,7 @@ export type Database = {
           hidden_by: string | null
           hidden_reason: string | null
           id: string
+          reply_to_message_id: string | null
           sender_type: string
           sender_user_id: string | null
           seq: number
@@ -351,6 +388,7 @@ export type Database = {
           hidden_by?: string | null
           hidden_reason?: string | null
           id?: string
+          reply_to_message_id?: string | null
           sender_type: string
           sender_user_id?: string | null
           seq?: never
@@ -365,6 +403,7 @@ export type Database = {
           hidden_by?: string | null
           hidden_reason?: string | null
           id?: string
+          reply_to_message_id?: string | null
           sender_type?: string
           sender_user_id?: string | null
           seq?: never
@@ -385,6 +424,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_reply_to_fk"
+            columns: ["reply_to_message_id", "challenge_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id", "challenge_id"]
           },
           {
             foreignKeyName: "chat_messages_sender_user_id_fkey"
@@ -1407,6 +1453,36 @@ export type Database = {
         Returns: Json
       }
       _chat_attachment_readable: { Args: { p_path: string }; Returns: boolean }
+      _create_chat_message: {
+        Args: {
+          p_attachments: Json
+          p_body: string
+          p_challenge_id: string
+          p_message_id: string
+          p_reply_to_message_id: string
+        }
+        Returns: {
+          body: string | null
+          challenge_id: string
+          created_at: string
+          hidden_at: string | null
+          hidden_by: string | null
+          hidden_reason: string | null
+          id: string
+          reply_to_message_id: string | null
+          sender_type: string
+          sender_user_id: string | null
+          seq: number
+          status: string
+          training_entry_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "chat_messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       _game_master_candidates: {
         Args: { p_challenge_id: string }
         Returns: {
@@ -1829,6 +1905,9 @@ export type Database = {
           challenge_id: string
           created_at: string
           id: string
+          like_count: number
+          liked_by_me: boolean
+          reply_preview: Json
           sender_display_name: string
           sender_type: string
           sender_user_id: string
@@ -1869,6 +1948,7 @@ export type Database = {
           p_body?: string
           p_challenge_id: string
           p_message_id?: string
+          p_reply_to_message_id?: string
         }
         Returns: {
           body: string | null
@@ -1878,6 +1958,7 @@ export type Database = {
           hidden_by: string | null
           hidden_reason: string | null
           id: string
+          reply_to_message_id: string | null
           sender_type: string
           sender_user_id: string | null
           seq: number
@@ -2002,6 +2083,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      set_chat_message_like: {
+        Args: { p_liked: boolean; p_message_id: string }
+        Returns: Json
       }
       set_official_final_weight: {
         Args: {
