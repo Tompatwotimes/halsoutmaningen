@@ -91,7 +91,9 @@ describe('decodeImage — <img> paint-readiness gate (blank-upload regression)',
       height: 1500,
     }));
 
-    const decoded = await decodeImage(fakeImageFile('portrait.jpg', 'image/jpeg'));
+    const decoded = await decodeImage(
+      fakeImageFile('portrait.jpg', 'image/jpeg'),
+    );
 
     expect(bitmapMock.calls).toHaveLength(1);
     expect(decoded.width).toBe(2000);
