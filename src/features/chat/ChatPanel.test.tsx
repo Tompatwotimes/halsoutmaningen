@@ -1642,6 +1642,21 @@ describe('ChatPanel — opens at the latest message (cached React Query lifecycl
     expect(scroller).toBeTruthy();
   });
 
+  it('reopen after a new message arrived while closed opens at that new message', () => {
+    geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
+    const { view } = cachedOpen([row(1), row(2), row(3)], geom);
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} open={false} />}</>);
+
+    // a 4th message landed via Realtime while the panel was closed; the list is
+    // taller now
+    geom.grow(1900);
+    prime({ isLoading: false, messages: [row(1), row(2), row(3), row(4)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} open />}</>);
+    const scroller2 = screen.getByRole('log').parentElement!;
+    expect(geom.scrollTopOf(scroller2)).toBe(1900);
+    expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 4 });
+  });
+
   it('reopen after scrolling up in a PRIOR session still opens at the latest', () => {
     geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
     const { view, scroller, top } = cachedOpen([row(1), row(2), row(3)], geom);
