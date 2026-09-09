@@ -1541,6 +1541,147 @@ describe('ChatPanel scroll behaviour (B1)', () => {
   });
 });
 
+describe('ChatPanel — opens at the latest message (cached React Query lifecycle)', () => {
+  // The B1 helper above always routes reopen through `isLoading: true` →
+  // `isLoading: false`, which re-triggers the pin layout effect. Real
+  // TanStack Query does NOT reload when the panel reopens with data already in
+  // cache: `isLoading` is false and `messages` is populated on the FIRST
+  // `open` render. This block models that path.
+  function installProtoGeometry(opts: {
+    scrollHeight: number;
+    clientHeight: number;
+  }) {
+    const tops = new WeakMap<HTMLElement, number>();
+    let scrollHeight = opts.scrollHeight;
+    const proto = HTMLElement.prototype;
+    const prev = {
+      scrollHeight: Object.getOwnPropertyDescriptor(proto, 'scrollHeight'),
+      clientHeight: Object.getOwnPropertyDescriptor(proto, 'clientHeight'),
+      scrollTop: Object.getOwnPropertyDescriptor(proto, 'scrollTop'),
+    };
+    Object.defineProperty(proto, 'scrollHeight', {
+      configurable: true,
+      get() {
+        return scrollHeight;
+      },
+    });
+    Object.defineProperty(proto, 'clientHeight', {
+      configurable: true,
+      get() {
+        return opts.clientHeight;
+      },
+    });
+    Object.defineProperty(proto, 'scrollTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return tops.get(this) ?? 0;
+      },
+      set(this: HTMLElement, v: number) {
+        tops.set(this, v);
+      },
+    });
+    return {
+      grow(to: number) {
+        scrollHeight = to;
+      },
+      get scrollHeight() {
+        return scrollHeight;
+      },
+      clientHeight: opts.clientHeight,
+      scrollTopOf(el: HTMLElement) {
+        return tops.get(el) ?? 0;
+      },
+      uninstall() {
+        for (const key of [
+          'scrollHeight',
+          'clientHeight',
+          'scrollTop',
+        ] as const) {
+          const d = prev[key];
+          if (d) Object.defineProperty(proto, key, d);
+        }
+      },
+    };
+  }
+
+  let geom: ReturnType<typeof installProtoGeometry> | undefined;
+  afterEach(() => {
+    geom?.uninstall();
+    geom = undefined;
+  });
+
+  /** Mount closed, then flip to open with cached data present on the first open render. */
+  function cachedOpen(
+    messages: ChatMessage[],
+    g: ReturnType<typeof installProtoGeometry>,
+  ) {
+    prime({ isLoading: false, messages });
+    const view = wrap(<ChatPanel {...BASE_PROPS} open={false} />);
+    // now open — messages are ALREADY there, no loading transition
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} open />}</>);
+    const scroller = screen.getByRole('log').parentElement!;
+    return { view, scroller, top: () => g.scrollTopOf(scroller) };
+  }
+
+  it('lands at the actual bottom on a cached open (no loading transition)', () => {
+    geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
+    const { top } = cachedOpen([row(1), row(2), row(3)], geom);
+    expect(top()).toBe(geom.scrollHeight); // pinned to the newest message
+  });
+
+  it('keeps following the bottom when content grows AFTER a cached open (images/quotes settle)', () => {
+    geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
+    const { scroller, top } = cachedOpen([row(1), row(2), row(3)], geom);
+    expect(top()).toBe(1400);
+
+    // media / reply-quote / action-row heights land a frame later → list grows
+    geom.grow(2600);
+    act(() => roMock.trigger());
+
+    expect(top()).toBe(2600); // still pinned, not stranded above the newest
+    expect(scroller).toBeTruthy();
+  });
+
+  it('reopen after scrolling up in a PRIOR session still opens at the latest', () => {
+    geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
+    const { view, scroller, top } = cachedOpen([row(1), row(2), row(3)], geom);
+    expect(top()).toBe(1400);
+
+    // user scrolls up, then closes
+    act(() => {
+      scroller.scrollTop = 100;
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} open={false} />}</>);
+
+    // reopen — cache still holds the same 3 messages, no loading
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} open />}</>);
+    const scroller2 = screen.getByRole('log').parentElement!;
+    expect(geom.scrollTopOf(scroller2)).toBe(1400);
+
+    // and a later growth on THIS session is still followed
+    geom.grow(3000);
+    act(() => roMock.trigger());
+    expect(geom.scrollTopOf(scroller2)).toBe(3000);
+  });
+
+  it('a deliberate scroll-up in the CURRENT open session still stops the follow', () => {
+    geom = installProtoGeometry({ scrollHeight: 2000, clientHeight: 400 });
+    const { scroller } = cachedOpen([row(1), row(2), row(3)], geom);
+
+    // user scrolls well up (2000 - 200 - 400 = 1400 > 96 → not near bottom)
+    act(() => {
+      scroller.scrollTop = 200;
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+
+    // later growth must NOT drag them back down
+    geom.grow(3200);
+    act(() => roMock.trigger());
+    expect(geom.scrollTopOf(scroller)).toBe(200);
+  });
+});
+
 describe('ChatPanel image composer (B3)', () => {
   function jpeg(name = 'a.jpg') {
     return new File(['x'], name, { type: 'image/jpeg' });
