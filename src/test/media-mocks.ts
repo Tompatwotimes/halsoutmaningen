@@ -13,7 +13,19 @@ import { vi } from 'vitest';
 // ---------------------------------------------------------------------------
 
 export type ImageLoadOutcome =
-  { width: number; height: number } | 'error' | 'never';
+  | {
+      width: number;
+      height: number;
+      /**
+       * What `img.decode()` does for this file. Default `'resolve'`.
+       * `'reject'` models WebKit rejecting `decode()` for a detached `<img>`
+       * that nonetheless fired `load` — the state that produced blank uploads.
+       * `'never'` models a `decode()` that hangs after a successful `load`.
+       */
+      decode?: 'resolve' | 'reject' | 'never';
+    }
+  | 'error'
+  | 'never';
 
 export interface ImageElementMock {
   uninstall: () => void;
@@ -99,6 +111,12 @@ export function installImageElementMock(
       const outcome = outcomeFor(name);
       if (outcome === 'error') return Promise.reject(new Error('decode'));
       if (outcome === 'never') return new Promise<void>(() => undefined);
+      if (outcome.decode === 'reject') {
+        return Promise.reject(new Error('decode'));
+      }
+      if (outcome.decode === 'never') {
+        return new Promise<void>(() => undefined);
+      }
       return Promise.resolve();
     }
   }

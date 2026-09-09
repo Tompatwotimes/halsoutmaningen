@@ -74,6 +74,60 @@ describe('decodeImage — createImageBitmap fallback', () => {
   });
 });
 
+describe('decodeImage — <img> paint-readiness gate (blank-upload regression)', () => {
+  it('does NOT return an <img> that fired load but whose decode() rejected — uses createImageBitmap instead', async () => {
+    // Production BUG: on WebKit a detached <img> can fire `load` before its
+    // pixels are decoded; drawing it then composites nothing → a solid white
+    // JPEG upload. `decode()` is the only reliable "safe to drawImage" gate, so
+    // a decode() rejection must send us to the reliable createImageBitmap path,
+    // never fall through to an <img> that draws blank.
+    imgMock = installImageElementMock(() => ({
+      width: 2000,
+      height: 1500,
+      decode: 'reject',
+    }));
+    bitmapMock = installCreateImageBitmapMock(() => ({
+      width: 2000,
+      height: 1500,
+    }));
+
+    const decoded = await decodeImage(fakeImageFile('portrait.jpg', 'image/jpeg'));
+
+    expect(bitmapMock.calls).toHaveLength(1);
+    expect(decoded.width).toBe(2000);
+    expect(decoded.height).toBe(1500);
+    decoded.close();
+    expect(bitmapMock.closed).toBe(1);
+    // the <img> object URL that we abandoned was still revoked (no leak)
+    expect(imgMock.revoked).toEqual(imgMock.created);
+  });
+
+  it('throws undecodable when the <img> decode() rejects AND createImageBitmap is unavailable', async () => {
+    imgMock = installImageElementMock(() => ({
+      width: 100,
+      height: 100,
+      decode: 'reject',
+    }));
+    // no createImageBitmap mock installed → the fallback path is unavailable
+    await expect(
+      decodeImage(fakeImageFile('a.jpg', 'image/jpeg')),
+    ).rejects.toBeInstanceOf(ImageDecodeError);
+  });
+
+  it('decodes normally via <img> when decode() resolves (no needless fallback)', async () => {
+    imgMock = installImageElementMock(() => ({
+      width: 800,
+      height: 600,
+      decode: 'resolve',
+    }));
+    bitmapMock = installCreateImageBitmapMock(() => ({ width: 1, height: 1 }));
+    const decoded = await decodeImage(fakeImageFile('a.jpg', 'image/jpeg'));
+    expect(decoded.width).toBe(800);
+    expect(bitmapMock.calls).toHaveLength(0); // <img> path was enough
+    decoded.close();
+  });
+});
+
 describe('decodeImage — undecodable', () => {
   it('throws ImageDecodeError with likelyHeic when both paths fail for a .heic file', async () => {
     imgMock = installImageElementMock(() => 'error');
