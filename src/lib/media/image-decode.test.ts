@@ -128,6 +128,34 @@ describe('decodeImage — <img> paint-readiness gate (blank-upload regression)',
     expect(bitmapMock.calls).toHaveLength(0); // <img> path was enough
     decoded.close();
   });
+
+  it('handles an alternating decode() pattern with no cross-call state leak ("typ varannan")', async () => {
+    // Odd files: decode() resolves → <img> path. Even files: decode() rejects
+    // → createImageBitmap path. Every result must carry the file's real
+    // dimensions; none silently falls through to a blank <img>.
+    imgMock = installImageElementMock((name) => ({
+      width: 1000 + Number(name.replace(/\D/g, '')),
+      height: 800,
+      decode: Number(name.replace(/\D/g, '')) % 2 === 0 ? 'reject' : 'resolve',
+    }));
+    bitmapMock = installCreateImageBitmapMock((name) => ({
+      width: 1000 + Number(name.replace(/\D/g, '')),
+      height: 800,
+    }));
+
+    for (let i = 1; i <= 6; i++) {
+      const decoded = await decodeImage(
+        fakeImageFile(`img${String(i)}.jpg`, 'image/jpeg'),
+      );
+      expect(decoded.width).toBe(1000 + i);
+      expect(decoded.height).toBe(800);
+      decoded.close();
+    }
+    // 3 even files each took the bitmap fallback
+    expect(bitmapMock.calls).toHaveLength(3);
+    // every <img> object URL created was also revoked
+    expect(imgMock.revoked.sort()).toEqual(imgMock.created.sort());
+  });
 });
 
 describe('decodeImage — undecodable', () => {
