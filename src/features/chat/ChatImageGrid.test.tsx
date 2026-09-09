@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -54,5 +54,44 @@ describe('ChatImageGrid', () => {
     expect(
       await screen.findByLabelText('Bilden kunde inte laddas'),
     ).toBeInTheDocument();
+  });
+
+  it('marks each thumbnail with data-chat-image so a double-tap can still like the message', async () => {
+    signed.mockResolvedValue('https://x/y');
+    wrap(<ChatImageGrid messageId="m" attachments={atts(2)} />);
+    const thumbs = await screen.findAllByRole('button', { name: /Öppna bild/ });
+    for (const t of thumbs) expect(t).toHaveAttribute('data-chat-image');
+  });
+
+  it('registers a close-lightbox callback while the lightbox is open and clears it when closed', async () => {
+    const user = userEvent.setup();
+    signed.mockResolvedValue('https://x/y');
+    const register = vi.fn();
+    wrap(
+      <ChatImageGrid
+        messageId="m"
+        attachments={atts(1)}
+        registerLightboxClose={register}
+      />,
+    );
+    const [thumb] = await screen.findAllByRole('button', {
+      name: /Öppna bild/,
+    });
+    await user.click(thumb!);
+    // opened → a close fn was registered
+    const lastFn = register.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    expect(typeof lastFn).toBe('function');
+    expect(
+      screen.getByRole('dialog', { name: 'Bildvisning' }),
+    ).toBeInTheDocument();
+    // calling it closes the lightbox and de-registers
+    register.mockClear();
+    act(() => {
+      lastFn?.();
+    });
+    expect(
+      screen.queryByRole('dialog', { name: 'Bildvisning' }),
+    ).not.toBeInTheDocument();
+    expect(register).toHaveBeenLastCalledWith(null);
   });
 });

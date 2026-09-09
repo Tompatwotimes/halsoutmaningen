@@ -5,6 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 import { Badge } from '@/components/ui/Badge';
@@ -12,26 +14,44 @@ import { Button } from '@/components/ui/Button';
 import { Sheet } from '@/components/ui/Sheet';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/feedback/EmptyState';
-import { ImageIcon, CloseIcon } from '@/components/icons';
+import {
+  CloseIcon,
+  HeartFilledIcon,
+  ImageIcon,
+  ReplyIcon,
+} from '@/components/icons';
 import { probeImage } from '@/features/challenge/heic';
 import type { UploadPhase } from '@/lib/media/image-processing';
 import { ChatImageGrid } from './ChatImageGrid';
 import { TrainingCard } from './TrainingCard';
+import { LikeBadge } from './LikeBadge';
+import { MessageActions } from './MessageActions';
+import { ReplyQuote } from './ReplyQuote';
+import { useMessageGestures } from './useMessageGestures';
 import { CHAT_IMAGE_MAX_COUNT } from './chat-media';
 import { formatLongDate } from '@/domain/format';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import {
   CHAT_BODY_MAX_LENGTH,
+  HIDDEN_REPLY_TARGET_MESSAGE,
+  REPLY_JUMP_MAX_PAGES,
+  REPLY_SWIPE_ARM_PX,
   chatDateSeparatorKey,
   displayBody,
+  findLoadedSeq,
+  isInteractiveEventTarget,
   isNearBottom,
   isProgrammaticScroll,
   scrollAnchorAdjustment,
+  swedishPossessive,
 } from './chat';
+import { deriveReplyTarget, type ReplyTarget } from './replyPreview';
+import { ChatError } from './chat-error';
 import {
   useChatMessages,
   useMarkChatRead,
   usePostChatMessage,
+  useSetChatMessageLike,
 } from './useChat';
 import type { ChatMessage } from './types';
 import styles from './ChatPanel.module.css';
@@ -45,6 +65,13 @@ export interface ChatPanelProps {
   isAdmin: boolean;
   /** Rendered under a participant message when the viewer is an admin (Task 9). */
   renderModeration?: (message: ChatMessage) => ReactNode;
+  /**
+   * Optional notification that a viewer started a reply to `message` (via the
+   * "Svara" action or a right-swipe). The reply composer itself is fully
+   * self-contained in this component now (Task G) — this seam only exists for
+   * a host that wants to observe the intent; production leaves it unset.
+   */
+  onReplyToMessage?: (message: ChatMessage) => void;
 }
 
 function formatTime(iso: string): string {
@@ -66,12 +93,17 @@ export function ChatPanel({
   timeZone,
   isAdmin,
   renderModeration,
+  onReplyToMessage,
 }: ChatPanelProps) {
   const query = useChatMessages(open ? challengeId : null);
   const { mutate: markRead } = useMarkChatRead();
   const post = usePostChatMessage();
+  const { setLike, isPending: isLikePending } = useSetChatMessageLike(
+    open ? challengeId : null,
+  );
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [composePhase, setComposePhase] = useState<UploadPhase | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +145,21 @@ export function ChatPanel({
   const markedSeq = useRef(0);
   const [showNewMessages, setShowNewMessages] = useState(false);
 
+  // --- jump-to-original from a reply quote (design §5.6) ------------------
+  // The seq currently outlined by a jump (cleared after ~1.2 s), a one-line
+  // "not in history" notice, and the in-progress jump request. `jumpTick`
+  // re-runs the driver effect after each bounded `fetchNextPage`.
+  const [highlightSeq, setHighlightSeq] = useState<number | null>(null);
+  const [jumpNotice, setJumpNotice] = useState<string | null>(null);
+  const jumpRequest = useRef<{
+    seq: number;
+    pagesFetched: number;
+    fetching: boolean;
+  } | null>(null);
+  const [jumpTick, setJumpTick] = useState(0);
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
   // Pin the viewport to the bottom, recording where the resulting scroll lands
   // so the scroll listener does not read it back as a user gesture.
   const pinToBottom = useCallback(() => {
@@ -145,6 +192,12 @@ export function ChatPanel({
     reactedMaxSeq.current = 0;
     markedSeq.current = 0;
     setShowNewMessages(false);
+    // A reply target from a previous open / room is stale (design §5.8).
+    setReplyTarget(null);
+    // Any pending / lingering jump belongs to the previous room.
+    jumpRequest.current = null;
+    setHighlightSeq(null);
+    setJumpNotice(null);
   }, [challengeId, open]);
 
   // Track user intent from the scroll position; auto-load older history near
@@ -285,13 +338,34 @@ export function ChatPanel({
 
   function send() {
     if (!canSend) return;
+    const replyToMessageId = replyTarget?.messageId;
     post.mutate(
-      { challengeId, userId, body: draft, files, onPhase: setComposePhase },
+      {
+        challengeId,
+        userId,
+        body: draft,
+        files,
+        onPhase: setComposePhase,
+        ...(replyToMessageId ? { replyToMessageId } : {}),
+      },
       {
         onSuccess: () => {
+          // Success clears everything (design §5.8 / §18.2).
           setDraft('');
           setFiles([]);
           setImageError(null);
+          setReplyTarget(null);
+        },
+        onError: (error: unknown) => {
+          // Failure keeps the draft, attachments AND reply target so the user
+          // retries losing nothing — except when the target itself became
+          // hidden, where reply mode is dropped (draft still kept) (§5.8).
+          if (
+            error instanceof Error &&
+            error.message === HIDDEN_REPLY_TARGET_MESSAGE
+          ) {
+            setReplyTarget(null);
+          }
         },
         onSettled: () => {
           setComposePhase(null);
@@ -325,6 +399,79 @@ export function ChatPanel({
     setImageError(null);
   }
 
+  const handleReply = useCallback(
+    (message: ChatMessage) => {
+      // One reply-target state — the "Svara" action row and the swipe gesture
+      // both converge here (design §5.9). The external seam still fires.
+      setReplyTarget(deriveReplyTarget(message, userId));
+      onReplyToMessage?.(message);
+    },
+    [onReplyToMessage, userId],
+  );
+
+  // Tap a reply quote → bring its original into view (design §5.6). Cheap
+  // request-setter; the driver effect below does the bounded work.
+  const jumpToMessage = useCallback((seq: number) => {
+    jumpRequest.current = { seq, pagesFetched: 0, fetching: false };
+    setHighlightSeq(null);
+    setJumpNotice(null);
+    setJumpTick((n) => n + 1);
+  }, []);
+
+  // Jump driver: scroll to the target if it is loaded (+ brief highlight,
+  // WITHOUT disturbing the follow-the-bottom latch — the recorded
+  // `programmaticScrollTo` makes the scroll listener ignore the resulting
+  // event). Otherwise page upward through the EXISTING `fetchNextPage`
+  // mechanism, at most `REPLY_JUMP_MAX_PAGES` times, re-checking after each
+  // page. If the target never appears, show a one-line notice and stop — no
+  // unbounded loop.
+  useEffect(() => {
+    const req = jumpRequest.current;
+    if (!req || req.fetching) return;
+
+    if (findLoadedSeq(messages, req.seq)) {
+      jumpRequest.current = null;
+      const node = listRef.current?.querySelector<HTMLElement>(
+        `[data-seq="${String(req.seq)}"]`,
+      );
+      if (node) {
+        node.scrollIntoView({ block: 'center' });
+        const el = scrollRef.current;
+        if (el) programmaticScrollTo.current = el.scrollTop;
+        setHighlightSeq(req.seq);
+        window.setTimeout(() => {
+          setHighlightSeq((s) => (s === req.seq ? null : s));
+        }, 1200);
+      }
+      return;
+    }
+
+    if (
+      req.pagesFetched >= REPLY_JUMP_MAX_PAGES ||
+      !queryRef.current.hasNextPage
+    ) {
+      jumpRequest.current = null;
+      setJumpNotice('Kunde inte hitta meddelandet i historiken.');
+      return;
+    }
+
+    req.fetching = true;
+    req.pagesFetched += 1;
+    const el = scrollRef.current;
+    if (el) pendingAnchorHeight.current = el.scrollHeight;
+    void queryRef.current.fetchNextPage().finally(() => {
+      if (jumpRequest.current) jumpRequest.current.fetching = false;
+      setJumpTick((n) => n + 1);
+    });
+  }, [jumpTick, messages]);
+
+  // Auto-dismiss the "not in history" notice after a few seconds (toast-like).
+  useEffect(() => {
+    if (jumpNotice === null) return;
+    const t = window.setTimeout(() => setJumpNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [jumpNotice]);
+
   function jumpToLatest() {
     stickToBottom.current = true;
     pinToBottom();
@@ -348,6 +495,26 @@ export function ChatPanel({
         send();
       }}
     >
+      {replyTarget && (
+        <div className={styles.replyStrip}>
+          <div className={styles.replyStripText}>
+            <span className={styles.replyStripSender}>
+              Svarar på {replyTarget.senderLabel}
+            </span>
+            {replyTarget.line !== '' && (
+              <span className={styles.replyStripLine}>{replyTarget.line}</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className={styles.replyStripCancel}
+            onClick={() => setReplyTarget(null)}
+            aria-label="Avbryt svar"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      )}
       {files.length > 0 && (
         <div className={styles.pickStrip} data-testid="chat-compose-images">
           {files.map((file, i) => (
@@ -408,7 +575,12 @@ export function ChatPanel({
       )}
       {post.isError && (
         <p className={styles.sendError} role="status">
-          Meddelandet kunde inte skickas — försök igen.
+          {/* A ChatError.message is always a Swedish, user-safe string (empty
+              body / too long / rate limit / hidden reply target / offline);
+              anything else falls back to the generic line. */}
+          {post.error instanceof ChatError && post.error.message
+            ? post.error.message
+            : 'Meddelandet kunde inte skickas — försök igen.'}
         </p>
       )}
     </form>
@@ -470,6 +642,12 @@ export function ChatPanel({
                 key={entry.message.id}
                 message={entry.message}
                 isSelf={entry.message.senderUserId === userId}
+                viewerUserId={userId}
+                isJumpHighlighted={entry.message.seq === highlightSeq}
+                onSetLike={setLike}
+                isLikePending={isLikePending}
+                onReply={handleReply}
+                onJumpToMessage={jumpToMessage}
                 moderation={
                   isAdmin &&
                   (entry.message.senderType === 'participant' ||
@@ -492,6 +670,19 @@ export function ChatPanel({
             Nya meddelanden ↓
           </button>
         )}
+
+        {jumpNotice && (
+          <div className={styles.jumpNotice} role="status">
+            <span>{jumpNotice}</span>
+            <button
+              type="button"
+              onClick={() => setJumpNotice(null)}
+              aria-label="Stäng"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        )}
       </div>
     </Sheet>
   );
@@ -500,38 +691,151 @@ export function ChatPanel({
 function MessageRow({
   message,
   isSelf,
+  viewerUserId,
+  isJumpHighlighted,
   moderation,
+  onSetLike,
+  isLikePending,
+  onReply,
+  onJumpToMessage,
 }: {
   message: ChatMessage;
   isSelf: boolean;
+  viewerUserId: string;
+  isJumpHighlighted: boolean;
   moderation: ReactNode;
+  onSetLike: (vars: { messageId: string; liked: boolean }) => void;
+  isLikePending: (messageId: string) => boolean;
+  onReply: (message: ChatMessage) => void;
+  onJumpToMessage: (seq: number) => void;
 }) {
   const isGameMaster = message.senderType === 'game_master';
+  const isCard =
+    message.senderType === 'training_card' &&
+    message.status === 'active' &&
+    message.trainingCard !== null;
   const text = displayBody(message);
   const senderLabel = isSelf
     ? 'Du'
     : (message.senderDisplayName ?? 'Deltagare');
 
+  // Social affordances only on a live chat item — never on the
+  // "[Borttaget av administratör]" placeholder (design §7.1).
+  const showSocial = message.status === 'active';
+  const likePending = isLikePending(message.id);
+  const badgeSubject = isCard ? 'passet' : 'meddelandet';
+  const likeLabel = message.likedByMe
+    ? 'Ta bort gilla-markering'
+    : `Gilla ${badgeSubject}`;
+  const replyNoun = isCard ? 'pass' : 'meddelande';
+  const replyName = isGameMaster
+    ? 'Game Master'
+    : (message.senderDisplayName ?? 'deltagaren');
+  const replyLabel = isSelf
+    ? `Svara på ditt ${replyNoun}`
+    : `Svara på ${swedishPossessive(replyName)} ${replyNoun}`;
+
+  const toggleLike = useCallback(() => {
+    onSetLike({ messageId: message.id, liked: !message.likedByMe });
+  }, [onSetLike, message.id, message.likedByMe]);
+
+  const handleDoubleClick = useCallback(
+    (event: ReactMouseEvent) => {
+      // Double-click LIKES — it never unlikes, and never fires from an
+      // interactive child (image, badge, action / moderation button).
+      if (message.likedByMe || likePending) return;
+      if (isInteractiveEventTarget(event.target)) return;
+      onSetLike({ messageId: message.id, liked: true });
+    },
+    [message.likedByMe, message.id, likePending, onSetLike],
+  );
+
+  const handleReply = useCallback(() => onReply(message), [onReply, message]);
+
+  // Touch/pen gestures (design §6): swipe-right → reply, double-tap → like.
+  // Mouse keeps the desktop onDoubleClick above; the hook is inert for it.
+  const lightboxCloseRef = useRef<(() => void) | null>(null);
+  const gestures = useMessageGestures({
+    enabled: showSocial,
+    likedByMe: message.likedByMe,
+    likePending,
+    onArmReply: handleReply,
+    onDoubleTapLike: () => onSetLike({ messageId: message.id, liked: true }),
+    onCloseLightbox: () => lightboxCloseRef.current?.(),
+  });
+
+  const wrapperStyle: CSSProperties = {
+    transform:
+      gestures.swipeDx > 0 ? `translateX(${gestures.swipeDx}px)` : undefined,
+    transition: gestures.dragging ? 'none' : undefined,
+  };
+
+  const overlay = showSocial ? (
+    <>
+      <span
+        className={styles.replyReveal}
+        data-armed={gestures.armed || undefined}
+        aria-hidden="true"
+        style={{
+          opacity:
+            gestures.swipeDx > 8
+              ? Math.min(1, gestures.swipeDx / REPLY_SWIPE_ARM_PX)
+              : 0,
+        }}
+      >
+        <ReplyIcon />
+      </span>
+      {gestures.popping && (
+        <span className={styles.heartPop} aria-hidden="true">
+          <HeartFilledIcon />
+        </span>
+      )}
+    </>
+  ) : null;
+
+  const social = showSocial ? (
+    <>
+      <MessageActions
+        likedByMe={message.likedByMe}
+        likeLabel={likeLabel}
+        replyLabel={replyLabel}
+        likeDisabled={likePending}
+        onLike={toggleLike}
+        onReply={handleReply}
+      />
+      <LikeBadge
+        likeCount={message.likeCount}
+        likedByMe={message.likedByMe}
+        subject={badgeSubject}
+        onToggle={toggleLike}
+        disabled={likePending}
+      />
+    </>
+  ) : null;
+
   // An active training card renders its own self-contained layout (its own
   // header + time), not a normal bubble. A hidden card falls through to the
   // standard render: sender label + the "[Borttaget av administratör]"
   // placeholder, exactly like a hidden participant message.
-  if (
-    message.senderType === 'training_card' &&
-    message.status === 'active' &&
-    message.trainingCard !== null
-  ) {
+  if (isCard && message.trainingCard !== null) {
     return (
       <div
         className={[styles.message, isSelf && styles.self]
           .filter(Boolean)
           .join(' ')}
+        data-seq={message.seq}
+        data-jump-highlight={isJumpHighlighted || undefined}
+        style={wrapperStyle}
+        onDoubleClick={handleDoubleClick}
+        {...gestures.handlers}
       >
+        {overlay}
         <TrainingCard
           card={message.trainingCard}
           senderName={senderLabel}
           time={formatTime(message.createdAt)}
         />
+        {social}
         {moderation}
       </div>
     );
@@ -546,7 +850,13 @@ function MessageRow({
       ]
         .filter(Boolean)
         .join(' ')}
+      data-seq={message.seq}
+      data-jump-highlight={isJumpHighlighted || undefined}
+      style={wrapperStyle}
+      onDoubleClick={handleDoubleClick}
+      {...gestures.handlers}
     >
+      {overlay}
       <div className={styles.messageHead}>
         {isGameMaster ? (
           <Badge tone="neutral" size="sm">
@@ -557,6 +867,13 @@ function MessageRow({
         )}
         <time className={styles.time}>{formatTime(message.createdAt)}</time>
       </div>
+      {message.replyPreview !== null && (
+        <ReplyQuote
+          preview={message.replyPreview}
+          viewerUserId={viewerUserId}
+          onJump={onJumpToMessage}
+        />
+      )}
       {text !== null && (
         <p className={styles.body} data-testid="chat-message-body">
           {text}
@@ -566,8 +883,12 @@ function MessageRow({
         <ChatImageGrid
           messageId={message.id}
           attachments={message.attachments}
+          registerLightboxClose={(fn) => {
+            lightboxCloseRef.current = fn;
+          }}
         />
       )}
+      {social}
       {moderation}
     </div>
   );

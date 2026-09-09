@@ -5,6 +5,8 @@ import type {
   ChatMessage,
   ChatMessageStatus,
   ChatSenderType,
+  ReplyPreview,
+  ReplyPreviewKind,
   TrainingCardData,
 } from './types';
 import {
@@ -76,10 +78,24 @@ function jstrOrNull(v: unknown): string | null {
 function jnum(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
+/** A non-negative integer count, else 0. Never coerces a numeric string. */
+function jcount(v: unknown): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : 0;
+}
+/** Strict boolean — only the literal `true` is true. Never `Boolean("false")`. */
+function jbool(v: unknown): boolean {
+  return v === true;
+}
 function narrowSenderType(v: unknown): ChatSenderType {
   if (v === 'game_master') return 'game_master';
   if (v === 'training_card') return 'training_card';
   return 'participant';
+}
+/** Like `narrowSenderType` but fails closed to `null` for an unknown value. */
+function narrowSenderTypeOrNull(v: unknown): ChatSenderType | null {
+  return v === 'participant' || v === 'game_master' || v === 'training_card'
+    ? v
+    : null;
 }
 function narrowStatus(v: unknown): ChatMessageStatus {
   return v === 'hidden' ? 'hidden' : 'active';
@@ -120,7 +136,85 @@ function narrowAttachments(v: unknown): ChatAttachment[] {
     .sort((a, b) => a.position - b.position);
 }
 
+const REPLY_PREVIEW_KINDS: readonly ReplyPreviewKind[] = [
+  'text',
+  'image',
+  'training_card',
+  'game_master',
+];
+function narrowReplyPreviewKind(v: unknown): ReplyPreviewKind | null {
+  return typeof v === 'string' &&
+    (REPLY_PREVIEW_KINDS as readonly string[]).includes(v)
+    ? (v as ReplyPreviewKind)
+    : null;
+}
+function narrowReplyPreviewTraining(
+  v: unknown,
+): { activity: string | null; durationMinutes: number } | null {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return null;
+  const r = v as Record<string, unknown>;
+  // `activity` + `duration_minutes` are the ONLY fields the server sends — a
+  // note, proof path, storage_path or status is never read off this object.
+  return {
+    activity: jstrOrNull(r.activity),
+    durationMinutes: jcount(r.duration_minutes),
+  };
+}
+
+const REPLY_PREVIEW_TOMBSTONE: ReplyPreview = {
+  deleted: true,
+  messageId: null,
+  seq: null,
+  senderType: null,
+  senderUserId: null,
+  senderDisplayName: null,
+  kind: null,
+  text: null,
+  hasImage: false,
+  training: null,
+};
+
+/**
+ * Narrow a `list_chat_messages` `reply_preview` jsonb value to a `ReplyPreview`.
+ *
+ *  - `null` / `undefined` / a non-object scalar / an array   → `null` (not a
+ *      reply, a pre-migration row, or malformed — degrade to "no quote")
+ *  - `{ deleted: true }`                                     → the **tombstone**
+ *      (a fixed, fully-withheld object). NOTHING is read from the raw payload,
+ *      so a hidden parent can never leak a field through here even if the
+ *      server wrongly included one.
+ *  - otherwise                                               → the visible
+ *      quote. It must at least carry a `message_id`; without one it is
+ *      malformed → `null` (the reply renders as a plain message). Every field
+ *      is narrowed defensively; a malformed nested `training` degrades to
+ *      `null`. Never throws.
+ */
+export function narrowReplyPreview(v: unknown): ReplyPreview | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'object' || Array.isArray(v)) return null;
+  const r = v as Record<string, unknown>;
+
+  if (r.deleted === true) return { ...REPLY_PREVIEW_TOMBSTONE };
+
+  const messageId = jstrOrNull(r.message_id);
+  if (messageId === null) return null;
+
+  return {
+    deleted: false,
+    messageId,
+    seq: typeof r.seq === 'number' && Number.isFinite(r.seq) ? r.seq : null,
+    senderType: narrowSenderTypeOrNull(r.sender_type),
+    senderUserId: jstrOrNull(r.sender_user_id),
+    senderDisplayName: jstrOrNull(r.sender_display_name),
+    kind: narrowReplyPreviewKind(r.kind),
+    text: jstrOrNull(r.text),
+    hasImage: r.has_image === true,
+    training: narrowReplyPreviewTraining(r.training),
+  };
+}
+
 export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
+  const replyPreview = narrowReplyPreview(raw.reply_preview);
   return {
     id: jstr(raw.id),
     seq: jnum(raw.seq),
@@ -136,6 +230,15 @@ export function mapChatRow(raw: Record<string, unknown>): ChatMessage {
     trainingCard: narrowTrainingCard(raw.training_card),
     hiddenReason: jstrOrNull(raw.hidden_reason),
     gameMasterEventId: jstrOrNull(raw.game_master_event_id),
+    // The only parent reference a client gets is inside the access-gated
+    // preview (`list_chat_messages` exposes no raw reply_to_message_id column):
+    // null for a normal message and for the tombstone (parent id withheld).
+    replyToMessageId: replyPreview?.messageId ?? null,
+    replyPreview,
+    // Reaction metadata, gated server-side (0 / false for a hidden row seen by
+    // a non-admin, absent on a pre-migration row) — normalised once here.
+    likeCount: jcount(raw.like_count),
+    likedByMe: jbool(raw.liked_by_me),
     createdAt: jstr(raw.created_at),
   };
 }
@@ -154,6 +257,13 @@ export interface SendChatMessageInput {
   files?: File[];
   /** Composer progress: `'processing'` (compressing) then `'uploading'`. */
   onPhase?: UploadPhaseCallback;
+  /**
+   * When this message is a reply, the id of the message it replies to. Passed
+   * to `post_chat_message` as `p_reply_to_message_id` **only when set** — a
+   * normal message still sends the exact old 2-key / 4-key call shape, which
+   * matters for the NEW-frontend + OLD-DB verification window (design §22.2).
+   */
+  replyToMessageId?: string;
 }
 
 /**
@@ -170,6 +280,7 @@ export async function sendChatMessage(
 ): Promise<ChatMessage> {
   const body = input.body.trim();
   const files = input.files ?? [];
+  const replyTo = input.replyToMessageId;
 
   if (body.length === 0 && files.length === 0) {
     throw new ChatError('Meddelandet kan inte vara tomt.');
@@ -179,10 +290,12 @@ export async function sendChatMessage(
   }
 
   if (files.length === 0) {
-    const { data, error } = await chatRpc('post_chat_message', {
+    const args: Record<string, unknown> = {
       p_challenge_id: input.challengeId,
       p_body: body.length > 0 ? body : null,
-    });
+    };
+    if (replyTo !== undefined) args.p_reply_to_message_id = replyTo;
+    const { data, error } = await chatRpc('post_chat_message', args);
     if (error) throw new ChatError(chatMessageError(error.message));
     return mapChatRow(asRecord(data));
   }
@@ -196,12 +309,14 @@ export async function sendChatMessage(
     input.onPhase,
   );
 
-  const { data, error } = await chatRpc('post_chat_message', {
+  const args: Record<string, unknown> = {
     p_challenge_id: input.challengeId,
     p_body: body.length > 0 ? body : null,
     p_message_id: messageId,
     p_attachments: prepared,
-  });
+  };
+  if (replyTo !== undefined) args.p_reply_to_message_id = replyTo;
+  const { data, error } = await chatRpc('post_chat_message', args);
   if (error) {
     await removeChatImages(prepared.map((p) => p.path));
     throw new ChatError(chatMessageError(error.message));
@@ -221,6 +336,41 @@ export async function markChatRead(
   if (error) {
     throw new ChatError('Läspositionen kunde inte sparas.');
   }
+}
+
+/** Camel-cased committed state from `set_chat_message_like` — no snake_case past here. */
+export interface SetChatMessageLikeResult {
+  liked: boolean;
+  likeCount: number;
+}
+
+/**
+ * Set the calling participant's heart on a message to an explicit state
+ * (design §10.2 — idempotent, retry-safe: `liked === true` guarantees the like
+ * exists, `liked === false` guarantees it is gone; repeating a call is a
+ * no-op). The server derives identity from `auth.uid()` and does every
+ * authorization check (active membership, target visible, status='active'); this
+ * wrapper only marshals the call and narrows the `{ liked, like_count }` reply.
+ *
+ * Optimistic cache handling belongs to the hook layer (Task D), not here. A
+ * transport failure throws `ChatError` (the RPC already speaks Swedish); a
+ * malformed reply degrades to `{ liked: false, likeCount: 0 }` — the next
+ * `list_chat_messages` refetch reconciles — matching `fetchUnreadCount`'s
+ * "null → 0" convention.
+ */
+export async function setChatMessageLike(
+  messageId: string,
+  liked: boolean,
+): Promise<SetChatMessageLikeResult> {
+  const { data, error } = await chatRpc('set_chat_message_like', {
+    p_message_id: messageId,
+    p_liked: liked,
+  });
+  if (error) {
+    throw new ChatError(chatMessageError(error.message));
+  }
+  const r = asRecord(data);
+  return { liked: jbool(r.liked), likeCount: jcount(r.like_count) };
 }
 
 function chatMessageError(serverMessage: string): string {

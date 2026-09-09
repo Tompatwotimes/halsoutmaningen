@@ -1,0 +1,60 @@
+/*
+ * Message action row (design §7.1 / §8.3). Restrained ghost icons — a social
+ * detail, not a toolbar. Always visible (so it is keyboard-reachable and
+ * touch-usable with no reveal gesture) but deliberately faint until hovered or
+ * focused; on a card hover the whole card lifts the row slightly (ChatPanel
+ * .message:hover). No `display`/`visibility` toggle, so it never leaves the
+ * tab order.
+ */
+
+.actions {
+  align-self: flex-end;
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: 2px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--c-text-faint);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.button:hover:not(:disabled),
+.button:focus-visible {
+  color: var(--c-text-muted);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.button[aria-pressed='true'] {
+  color: var(--c-accent);
+}
+
+.icon {
+  width: 15px;
+  height: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

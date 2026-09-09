@@ -34,6 +34,8 @@ const {
   sendChatMessage,
   markChatRead,
   mapChatRow,
+  narrowReplyPreview,
+  setChatMessageLike,
   fetchRecentChatMessages,
   fetchOlderChatMessages,
   fetchUnreadCount,
@@ -229,6 +231,648 @@ describe('mapChatRow training_card', () => {
 
   it('leaves trainingCard null for an ordinary message', () => {
     expect(mapChatRow(rowFixture()).trainingCard).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list_chat_messages v4 (migration 20260908120000): +like_count, +liked_by_me,
+// +reply_preview. All narrowed once, here at the adapter boundary — no caller
+// should need `message.likeCount ?? 0`.
+// ---------------------------------------------------------------------------
+describe('mapChatRow — like_count / liked_by_me', () => {
+  it('maps like_count 0', () => {
+    expect(mapChatRow(rowFixture({ like_count: 0 })).likeCount).toBe(0);
+  });
+  it('maps like_count 1', () => {
+    expect(mapChatRow(rowFixture({ like_count: 1 })).likeCount).toBe(1);
+  });
+  it('maps like_count > 1', () => {
+    expect(mapChatRow(rowFixture({ like_count: 7 })).likeCount).toBe(7);
+  });
+  it('fails a negative like_count closed to 0', () => {
+    expect(mapChatRow(rowFixture({ like_count: -3 })).likeCount).toBe(0);
+  });
+  it('does not coerce a numeric string like_count', () => {
+    expect(mapChatRow(rowFixture({ like_count: '4' })).likeCount).toBe(0);
+  });
+  it('fails a non-integer like_count closed to 0', () => {
+    expect(mapChatRow(rowFixture({ like_count: 2.5 })).likeCount).toBe(0);
+    expect(mapChatRow(rowFixture({ like_count: Number.NaN })).likeCount).toBe(
+      0,
+    );
+  });
+
+  it('maps liked_by_me true', () => {
+    expect(mapChatRow(rowFixture({ liked_by_me: true })).likedByMe).toBe(true);
+  });
+  it('maps liked_by_me false', () => {
+    expect(mapChatRow(rowFixture({ liked_by_me: false })).likedByMe).toBe(
+      false,
+    );
+  });
+  it('never treats a "false" string as true (no Boolean() coercion)', () => {
+    expect(mapChatRow(rowFixture({ liked_by_me: 'false' })).likedByMe).toBe(
+      false,
+    );
+    expect(mapChatRow(rowFixture({ liked_by_me: 'true' })).likedByMe).toBe(
+      false,
+    );
+    expect(mapChatRow(rowFixture({ liked_by_me: 1 })).likedByMe).toBe(false);
+  });
+
+  // Task I guard: an OLD `list_chat_messages` row (NEW frontend talking to the
+  // not-yet-migrated production DB, design §22.2) has none of the three new
+  // keys. Every new field must degrade to a safe, non-throwing default so the
+  // NEW-frontend + OLD-DB window renders correctly.
+  it('maps a pre-migration row (no like_count / liked_by_me / reply_preview) to safe defaults', () => {
+    const msg = mapChatRow(rowFixture());
+    expect(msg.likeCount).toBe(0);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+    expect(msg.replyToMessageId).toBeNull();
+    // the rest of the row still maps as before
+    expect(msg.id).toBe('m1');
+    expect(msg.body).toBe('hej');
+    expect(msg.status).toBe('active');
+  });
+});
+
+describe('mapChatRow — reply_preview', () => {
+  it('maps a visible text-parent preview and derives replyToMessageId', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          message_id: 'p1',
+          seq: 3,
+          sender_type: 'participant',
+          sender_user_id: 'u9',
+          sender_display_name: 'Anna',
+          kind: 'text',
+          text: 'Golf räknas inte',
+          has_image: false,
+          training: null,
+        },
+      }),
+    );
+    expect(msg.replyPreview).toEqual({
+      deleted: false,
+      messageId: 'p1',
+      seq: 3,
+      senderType: 'participant',
+      senderUserId: 'u9',
+      senderDisplayName: 'Anna',
+      kind: 'text',
+      text: 'Golf räknas inte',
+      hasImage: false,
+      training: null,
+    });
+    expect(msg.replyToMessageId).toBe('p1');
+  });
+
+  it('maps a visible image-only-parent preview', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          message_id: 'p2',
+          kind: 'image',
+          text: null,
+          has_image: true,
+          training: null,
+        },
+      }),
+    );
+    expect(msg.replyPreview?.kind).toBe('image');
+    expect(msg.replyPreview?.hasImage).toBe(true);
+    expect(msg.replyPreview?.text).toBeNull();
+  });
+
+  it('maps a visible training-card-parent preview to activity + duration only', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          message_id: 'p3',
+          kind: 'training_card',
+          text: null,
+          has_image: false,
+          training: {
+            activity: 'Löpning',
+            duration_minutes: 45,
+            // fields the server must never send — proven not to leak through:
+            note: 'HEMLIG-NOTE',
+            proofs: [{ position: 1, path: 'c/u/d/1.jpg' }],
+            storage_path: 'c/u/d/1.jpg',
+            entry_status: 'active',
+          },
+        },
+      }),
+    );
+    expect(msg.replyPreview?.kind).toBe('training_card');
+    expect(msg.replyPreview?.training).toEqual({
+      activity: 'Löpning',
+      durationMinutes: 45,
+    });
+    expect(Object.keys(msg.replyPreview!.training!).sort()).toEqual([
+      'activity',
+      'durationMinutes',
+    ]);
+    expect(JSON.stringify(msg.replyPreview)).not.toContain('HEMLIG-NOTE');
+    expect(JSON.stringify(msg.replyPreview)).not.toContain('1.jpg');
+  });
+
+  it('maps a visible Game Master-parent preview', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          message_id: 'p4',
+          kind: 'game_master',
+          sender_type: 'game_master',
+          sender_user_id: null,
+          sender_display_name: null,
+          text: 'GAME MASTER: kör hårt',
+          has_image: false,
+          training: null,
+        },
+      }),
+    );
+    expect(msg.replyPreview?.kind).toBe('game_master');
+    expect(msg.replyPreview?.senderType).toBe('game_master');
+    expect(msg.replyPreview?.text).toBe('GAME MASTER: kör hårt');
+  });
+
+  it('maps the {"deleted": true} tombstone with every descriptive field withheld', () => {
+    const msg = mapChatRow(rowFixture({ reply_preview: { deleted: true } }));
+    expect(msg.replyPreview).toEqual({
+      deleted: true,
+      messageId: null,
+      seq: null,
+      senderType: null,
+      senderUserId: null,
+      senderDisplayName: null,
+      kind: null,
+      text: null,
+      hasImage: false,
+      training: null,
+    });
+    expect(msg.replyToMessageId).toBeNull();
+  });
+
+  it('never reads content off a tombstone even if the payload wrongly carries it', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          deleted: true,
+          message_id: 'SECRET-ID',
+          sender_display_name: 'SECRET-NAME',
+          text: 'SECRET-BODY',
+          training: { activity: 'SECRET-ACTIVITY', duration_minutes: 30 },
+        },
+      }),
+    );
+    expect(msg.replyPreview?.deleted).toBe(true);
+    expect(msg.replyPreview?.messageId).toBeNull();
+    expect(msg.replyPreview?.senderDisplayName).toBeNull();
+    expect(msg.replyPreview?.text).toBeNull();
+    expect(msg.replyPreview?.training).toBeNull();
+    expect(msg.replyToMessageId).toBeNull();
+    expect(JSON.stringify(msg.replyPreview)).not.toContain('SECRET');
+  });
+
+  it('maps a null / absent / malformed reply_preview to null (no quote)', () => {
+    expect(
+      mapChatRow(rowFixture({ reply_preview: null })).replyPreview,
+    ).toBeNull();
+    expect(mapChatRow(rowFixture()).replyPreview).toBeNull(); // key absent
+    expect(
+      mapChatRow(rowFixture({ reply_preview: 'boom' })).replyPreview,
+    ).toBeNull();
+    expect(
+      mapChatRow(rowFixture({ reply_preview: 42 })).replyPreview,
+    ).toBeNull();
+    expect(
+      mapChatRow(rowFixture({ reply_preview: [] })).replyPreview,
+    ).toBeNull();
+  });
+
+  it('maps a visible preview with no message_id to null (malformed → no quote)', () => {
+    expect(
+      mapChatRow(rowFixture({ reply_preview: { kind: 'text', text: 'x' } }))
+        .replyPreview,
+    ).toBeNull();
+  });
+
+  it('degrades a malformed nested training object to null without throwing', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          message_id: 'p5',
+          kind: 'training_card',
+          training: 'not-an-object',
+        },
+      }),
+    );
+    expect(msg.replyPreview?.training).toBeNull();
+    expect(msg.replyPreview?.kind).toBe('training_card');
+  });
+
+  it('degrades malformed scalar fields to safe defaults without throwing', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        reply_preview: {
+          message_id: 'p6',
+          seq: 'not-a-number',
+          sender_type: 'weird',
+          kind: 'not-a-kind',
+          has_image: 'yes',
+          text: 123,
+          training: { activity: 5, duration_minutes: 'lots' },
+        },
+      }),
+    );
+    expect(msg.replyPreview?.messageId).toBe('p6');
+    expect(msg.replyPreview?.seq).toBeNull();
+    expect(msg.replyPreview?.senderType).toBeNull();
+    expect(msg.replyPreview?.kind).toBeNull();
+    expect(msg.replyPreview?.hasImage).toBe(false);
+    expect(msg.replyPreview?.text).toBeNull();
+    expect(msg.replyPreview?.training).toEqual({
+      activity: null,
+      durationMinutes: 0,
+    });
+  });
+});
+
+describe('narrowReplyPreview (unit)', () => {
+  it('returns null for null / undefined / scalars / arrays', () => {
+    expect(narrowReplyPreview(null)).toBeNull();
+    expect(narrowReplyPreview(undefined)).toBeNull();
+    expect(narrowReplyPreview('x')).toBeNull();
+    expect(narrowReplyPreview(0)).toBeNull();
+    expect(narrowReplyPreview(true)).toBeNull();
+    expect(narrowReplyPreview([])).toBeNull();
+    expect(narrowReplyPreview([{ deleted: true }])).toBeNull();
+  });
+
+  it('returns the tombstone for { deleted: true }', () => {
+    expect(narrowReplyPreview({ deleted: true })?.deleted).toBe(true);
+    expect(narrowReplyPreview({ deleted: true })?.messageId).toBeNull();
+  });
+
+  it('returns a visible preview for a well-formed object', () => {
+    const p = narrowReplyPreview({
+      message_id: 'p',
+      kind: 'text',
+      text: 'hej',
+    });
+    expect(p?.deleted).toBe(false);
+    expect(p?.messageId).toBe('p');
+    expect(p?.kind).toBe('text');
+  });
+
+  it('returns null for a visible preview missing message_id', () => {
+    expect(narrowReplyPreview({ kind: 'text' })).toBeNull();
+  });
+
+  it('never throws on arbitrary garbage', () => {
+    expect(() =>
+      narrowReplyPreview({ message_id: {}, training: [], seq: {}, kind: [] }),
+    ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Release-compatibility: the NEW frontend must also run against the CURRENT
+// production `list_chat_messages` — which has `training_card` (migration
+// 20260907120000) but NOT `like_count` / `liked_by_me` / `reply_preview`
+// (migration 20260908120000 is not deployed). This is the NEW-frontend +
+// OLD-DB half of the DB-first rollout window (design §22.2).
+// ---------------------------------------------------------------------------
+describe('backwards compatibility — current (pre-replies-likes) list_chat_messages shape', () => {
+  /** Exactly the keys production's RPC returns today — training_card, no social fields. */
+  function currentProdRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'cur-1',
+      seq: 20,
+      challenge_id: 'c1',
+      sender_type: 'participant',
+      sender_user_id: 'u9',
+      sender_display_name: 'Erik',
+      body: 'hej från nuvarande produktion',
+      status: 'active',
+      attachments: [],
+      training_card: null,
+      created_at: '2026-09-07T12:00:00Z',
+      ...overrides,
+    };
+  }
+
+  it('the fixture has none of the three new keys', () => {
+    const row = currentProdRow();
+    expect('like_count' in row).toBe(false);
+    expect('liked_by_me' in row).toBe(false);
+    expect('reply_preview' in row).toBe(false);
+    expect('reply_to_message_id' in row).toBe(false);
+  });
+
+  it('maps a participant row → likeCount 0, likedByMe false, replyPreview null, replyToMessageId null', () => {
+    const msg = mapChatRow(currentProdRow());
+    expect(msg.senderType).toBe('participant');
+    expect(msg.body).toBe('hej från nuvarande produktion');
+    expect(msg.likeCount).toBe(0);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+    expect(msg.replyToMessageId).toBeNull();
+  });
+
+  it('maps a Game Master row → the same safe defaults, sender unchanged', () => {
+    const msg = mapChatRow(
+      currentProdRow({
+        sender_type: 'game_master',
+        sender_user_id: null,
+        sender_display_name: null,
+        body: 'Systemet observerar.',
+      }),
+    );
+    expect(msg.senderType).toBe('game_master');
+    expect(msg.body).toBe('Systemet observerar.');
+    expect(msg.likeCount).toBe(0);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+  });
+
+  it('maps a training_card row → trainingCard unchanged AND the social defaults', () => {
+    const msg = mapChatRow(
+      currentProdRow({
+        sender_type: 'training_card',
+        body: null,
+        training_card: {
+          entry_id: 'ent-9',
+          activity: 'Cykling',
+          duration_minutes: 60,
+          note: null,
+          challenge_date: '2026-09-07',
+          entry_status: 'active',
+          trained_at: '2026-09-07T07:00:00Z',
+          proofs: [{ position: 1, path: 'c/u/d/1-a.jpg' }],
+        },
+      }),
+    );
+    expect(msg.trainingCard?.activity).toBe('Cykling');
+    expect(msg.trainingCard?.durationMinutes).toBe(60);
+    expect(msg.likeCount).toBe(0);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+  });
+
+  it('maps a hidden row → withheld body AND neutral social defaults', () => {
+    const msg = mapChatRow(currentProdRow({ status: 'hidden', body: null }));
+    expect(msg.status).toBe('hidden');
+    expect(msg.body).toBeNull();
+    expect(msg.likeCount).toBe(0);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+  });
+
+  it('fetchRecentChatMessages maps a whole mixed current-production page without throwing', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        currentProdRow({ id: 'a', seq: 4 }),
+        currentProdRow({
+          id: 'b',
+          seq: 3,
+          sender_type: 'game_master',
+          sender_user_id: null,
+        }),
+        currentProdRow({
+          id: 'c',
+          seq: 2,
+          sender_type: 'training_card',
+          body: null,
+          training_card: {
+            entry_id: 'e',
+            activity: 'Gå',
+            duration_minutes: 30,
+            note: null,
+            challenge_date: '2026-09-07',
+            entry_status: 'active',
+            trained_at: '2026-09-07T07:00:00Z',
+            proofs: [],
+          },
+        }),
+        currentProdRow({ id: 'd', seq: 1, status: 'hidden', body: null }),
+      ],
+      error: null,
+    });
+    const page = await fetchRecentChatMessages('c1', 50);
+    expect(page).toHaveLength(4);
+    expect(page.every((m) => m.likeCount === 0)).toBe(true);
+    expect(page.every((m) => !m.likedByMe)).toBe(true);
+    expect(page.every((m) => m.replyPreview === null)).toBe(true);
+    expect(page.every((m) => m.replyToMessageId === null)).toBe(true);
+    expect(page.map((m) => m.senderType)).toEqual([
+      'participant',
+      'game_master',
+      'training_card',
+      'participant',
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New DB + new frontend: the additive fields do not disturb any existing field.
+// ---------------------------------------------------------------------------
+describe('mapChatRow — additive fields alongside a full v4 row', () => {
+  it('maps a normal message with attachments AND a reply preview AND likes', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        seq: 30,
+        body: 'Det gör det visst.',
+        attachments: [{ position: 1, path: 'c1/u1/m/1-a.jpg' }],
+        like_count: 2,
+        liked_by_me: true,
+        reply_preview: {
+          message_id: 'parent',
+          kind: 'text',
+          text: 'Golf räknas inte',
+          has_image: false,
+          training: null,
+        },
+      }),
+    );
+    // unchanged fields
+    expect(msg.seq).toBe(30);
+    expect(msg.body).toBe('Det gör det visst.');
+    expect(msg.senderDisplayName).toBe('Pia');
+    expect(msg.status).toBe('active');
+    expect(msg.attachments).toEqual([{ position: 1, path: 'c1/u1/m/1-a.jpg' }]);
+    expect(msg.trainingCard).toBeNull();
+    // additive fields
+    expect(msg.likeCount).toBe(2);
+    expect(msg.likedByMe).toBe(true);
+    expect(msg.replyPreview?.text).toBe('Golf räknas inte');
+    expect(msg.replyToMessageId).toBe('parent');
+  });
+
+  it('maps a training_card row that also carries likes — the two stay separate', () => {
+    const msg = mapChatRow(
+      rowFixture({
+        sender_type: 'training_card',
+        body: null,
+        like_count: 5,
+        liked_by_me: false,
+        reply_preview: null,
+        training_card: {
+          entry_id: 'ent-2',
+          activity: 'Simning',
+          duration_minutes: 50,
+          note: 'skönt',
+          challenge_date: '2026-09-06',
+          entry_status: 'active',
+          trained_at: '2026-09-06T18:00:00Z',
+          proofs: [],
+        },
+      }),
+    );
+    expect(msg.trainingCard?.activity).toBe('Simning');
+    expect(msg.trainingCard?.note).toBe('skönt');
+    expect(msg.likeCount).toBe(5);
+    expect(msg.likedByMe).toBe(false);
+    expect(msg.replyPreview).toBeNull();
+  });
+});
+
+describe('sendChatMessage — reply threading', () => {
+  it('a text-only NON-reply sends the exact old 2-key call (no p_reply_to_message_id)', async () => {
+    rpc.mockResolvedValue({ data: rowFixture(), error: null });
+    await sendChatMessage({ challengeId: 'c1', userId: 'u1', body: 'hej' });
+    const [, args] = rpc.mock.calls[0]!;
+    expect(Object.keys(args as object).sort()).toEqual([
+      'p_body',
+      'p_challenge_id',
+    ]);
+    expect('p_reply_to_message_id' in (args as object)).toBe(false);
+  });
+
+  it('a text-only reply adds p_reply_to_message_id', async () => {
+    rpc.mockResolvedValue({ data: rowFixture(), error: null });
+    await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: 'Det gör det visst.',
+      replyToMessageId: 'parent-1',
+    });
+    expect(rpc).toHaveBeenCalledWith('post_chat_message', {
+      p_challenge_id: 'c1',
+      p_body: 'Det gör det visst.',
+      p_reply_to_message_id: 'parent-1',
+    });
+  });
+
+  it('an image NON-reply sends the exact old 4-key call', async () => {
+    rpc.mockResolvedValue({ data: rowFixture(), error: null });
+    await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: '',
+      files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })],
+    });
+    const [, args] = rpc.mock.calls[0]!;
+    expect(Object.keys(args as object).sort()).toEqual([
+      'p_attachments',
+      'p_body',
+      'p_challenge_id',
+      'p_message_id',
+    ]);
+  });
+
+  it('an image reply adds p_reply_to_message_id as the 5th key', async () => {
+    rpc.mockResolvedValue({ data: rowFixture(), error: null });
+    await sendChatMessage({
+      challengeId: 'c1',
+      userId: 'u1',
+      body: 'kolla',
+      files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })],
+      replyToMessageId: 'parent-2',
+    });
+    const [, args] = rpc.mock.calls[0]!;
+    expect((args as Record<string, unknown>).p_reply_to_message_id).toBe(
+      'parent-2',
+    );
+    expect(Object.keys(args as object)).toHaveLength(5);
+  });
+});
+
+describe('setChatMessageLike', () => {
+  it('calls set_chat_message_like with the message id and liked=true', async () => {
+    rpc.mockResolvedValue({
+      data: { liked: true, like_count: 1 },
+      error: null,
+    });
+    await setChatMessageLike('m1', true);
+    expect(rpc).toHaveBeenCalledWith('set_chat_message_like', {
+      p_message_id: 'm1',
+      p_liked: true,
+    });
+    const [, args] = rpc.mock.calls[0]!;
+    expect(Object.keys(args as object).sort()).toEqual([
+      'p_liked',
+      'p_message_id',
+    ]);
+  });
+
+  it('calls set_chat_message_like with liked=false', async () => {
+    rpc.mockResolvedValue({
+      data: { liked: false, like_count: 0 },
+      error: null,
+    });
+    await setChatMessageLike('m1', false);
+    expect(rpc).toHaveBeenCalledWith('set_chat_message_like', {
+      p_message_id: 'm1',
+      p_liked: false,
+    });
+  });
+
+  it('maps { liked, like_count } to { liked, likeCount }', async () => {
+    rpc.mockResolvedValue({
+      data: { liked: true, like_count: 4 },
+      error: null,
+    });
+    expect(await setChatMessageLike('m1', true)).toEqual({
+      liked: true,
+      likeCount: 4,
+    });
+  });
+
+  it('rejects with ChatError on a transport failure', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'network' } });
+    await expect(setChatMessageLike('m1', true)).rejects.toBeInstanceOf(
+      ChatError,
+    );
+  });
+
+  it('passes a Swedish RPC error message through', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'Det går inte att gilla ett dolt meddelande' },
+    });
+    await expect(setChatMessageLike('m1', true)).rejects.toThrow(
+      'Det går inte att gilla ett dolt meddelande',
+    );
+  });
+
+  it('degrades a malformed response to a safe { liked:false, likeCount:0 } (no throw)', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+    expect(await setChatMessageLike('m1', true)).toEqual({
+      liked: false,
+      likeCount: 0,
+    });
+    rpc.mockResolvedValue({
+      data: { liked: 'yes', like_count: -1 },
+      error: null,
+    });
+    expect(await setChatMessageLike('m1', true)).toEqual({
+      liked: false,
+      likeCount: 0,
+    });
   });
 });
 

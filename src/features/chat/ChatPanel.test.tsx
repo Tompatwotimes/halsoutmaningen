@@ -8,13 +8,20 @@ import {
   it,
   vi,
 } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   installResizeObserverMock,
   type ResizeObserverMockHandle,
 } from '@/test/resize-observer-mock';
 import type { ChatMessage } from './types';
+import { ChatError } from './chat-error';
 
 // jsdom has no scrollIntoView / createObjectURL / ResizeObserver — stub them.
 let roMock: ResizeObserverMockHandle;
@@ -35,17 +42,27 @@ const {
   useMarkChatReadMock,
   usePostChatMessageMock,
   probeImageMock,
+  setLikeMock,
+  isLikePendingMock,
 } = vi.hoisted(() => ({
   useChatMessagesMock: vi.fn<() => Record<string, unknown>>(),
   useMarkChatReadMock: vi.fn<() => Record<string, unknown>>(),
   usePostChatMessageMock: vi.fn<() => Record<string, unknown>>(),
   probeImageMock: vi.fn(),
+  setLikeMock: vi.fn(),
+  isLikePendingMock: vi.fn<(id: string) => boolean>(() => false),
 }));
 
 vi.mock('./useChat', () => ({
   useChatMessages: () => useChatMessagesMock(),
   useMarkChatRead: () => useMarkChatReadMock(),
   usePostChatMessage: () => usePostChatMessageMock(),
+  useSetChatMessageLike: () => ({
+    setLike: setLikeMock,
+    isPending: isLikePendingMock,
+    error: null,
+    reset: vi.fn(),
+  }),
   useChatImageUrls: () => ({ data: [], isLoading: false }),
   useTrainingCardProofUrls: () => ({ data: [], isLoading: false }),
 }));
@@ -70,6 +87,10 @@ function row(seq: number, over: Partial<ChatMessage> = {}): ChatMessage {
     trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
+    replyToMessageId: null,
+    replyPreview: null,
+    likeCount: 0,
+    likedByMe: false,
     createdAt: '2026-09-05T12:00:00Z',
     ...over,
   };
@@ -161,6 +182,7 @@ afterEach(() => {
   markReadMutate = vi.fn();
   fetchNextPage = vi.fn();
   postMutate = vi.fn();
+  isLikePendingMock.mockReturnValue(false);
 });
 
 const BASE_PROPS = {
@@ -364,6 +386,919 @@ describe('ChatPanel', () => {
       <ChatPanel {...BASE_PROPS} isAdmin renderModeration={renderModeration} />,
     );
     expect(screen.getByTestId('mod')).toBeInTheDocument();
+  });
+});
+
+describe('ChatPanel — heart badge + message actions (Task E)', () => {
+  it('shows a LikeBadge on an active participant message with likes', () => {
+    prime({ messages: [row(5, { likeCount: 3 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: '3 personer gillar meddelandet' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows NO LikeBadge when a message has zero likes', () => {
+    prime({ messages: [row(5, { likeCount: 0 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.queryByRole('button', { name: /gillar meddelandet/ }),
+    ).toBeNull();
+  });
+
+  it('shows a LikeBadge on a training card with likes', () => {
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'training_card',
+          body: null,
+          likeCount: 6,
+          trainingCard: {
+            entryId: 'e1',
+            activity: 'Löpning',
+            durationMinutes: 45,
+            note: null,
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: '6 personer gillar passet' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a LikeBadge on a Game Master message with likes', () => {
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'game_master',
+          senderUserId: null,
+          senderDisplayName: null,
+          body: 'GAME MASTER: kör hårt',
+          likeCount: 2,
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: '2 personer gillar meddelandet' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows NEITHER a badge NOR actions on a hidden message', () => {
+    prime({
+      messages: [row(5, { status: 'hidden', body: null, likeCount: 0 })],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByText('[Borttaget av administratör]'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /gillar/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Gilla meddelandet' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Svara på/ })).toBeNull();
+  });
+
+  it('gives an active message a keyboard-reachable like + reply action row', () => {
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: 'Gilla meddelandet' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    ).toBeInTheDocument();
+  });
+
+  it('gives a training card the "Gilla passet" action', () => {
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'training_card',
+          body: null,
+          senderDisplayName: 'Tomas',
+          trainingCard: {
+            entryId: 'e1',
+            activity: 'Löpning',
+            durationMinutes: 45,
+            note: null,
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: 'Gilla passet' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Svara på Tomas pass' }),
+    ).toBeInTheDocument();
+  });
+
+  it('the explicit like action calls setLike with the desired state true (unliked → like)', async () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Gilla meddelandet' }),
+    );
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+  });
+
+  it('the explicit unlike action calls setLike with liked=false (liked → unlike)', async () => {
+    prime({ messages: [row(5, { likedByMe: true, likeCount: 2 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Ta bort gilla-markering' }),
+    );
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: false });
+  });
+
+  it('disables the like action while that message is pending', () => {
+    isLikePendingMock.mockImplementation((id: string) => id === 'm5');
+    prime({ messages: [row(5), row(6)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const buttons = screen.getAllByRole('button', {
+      name: 'Gilla meddelandet',
+    });
+    // row 5 pending → disabled; row 6 not pending → enabled
+    expect(buttons[0]).toBeDisabled();
+    expect(buttons[1]).toBeEnabled();
+  });
+
+  it('double-click on an unliked message card likes it (desired state true, not a toggle)', () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const card = document.body.querySelector('[data-seq="5"]')!;
+    fireEvent.dblClick(card);
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+  });
+
+  it('double-click on an already-liked message does NOT unlike', () => {
+    prime({ messages: [row(5, { likedByMe: true, likeCount: 3 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    fireEvent.dblClick(document.body.querySelector('[data-seq="5"]')!);
+    expect(setLikeMock).not.toHaveBeenCalled();
+  });
+
+  it('double-click landing on an interactive child (the badge button) does not like via the card', () => {
+    prime({ messages: [row(5, { likedByMe: false, likeCount: 4 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const badge = screen.getByRole('button', {
+      name: '4 personer gillar meddelandet',
+    });
+    fireEvent.dblClick(badge);
+    // the card handler bailed (target is a <button>); no liked=true from the card
+    expect(setLikeMock).not.toHaveBeenCalledWith({
+      messageId: 'm5',
+      liked: true,
+    });
+  });
+
+  it('a single click on the action button does not also trigger the card double-click like', async () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Gilla meddelandet' }),
+    );
+    expect(setLikeMock).toHaveBeenCalledTimes(1);
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+  });
+
+  it('carries data-seq on the message row for later jump-to-original', () => {
+    prime({ messages: [row(42)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(document.body.querySelector('[data-seq="42"]')).toBeInTheDocument();
+  });
+
+  it('leaves the message body, attachments and moderation affordance intact', () => {
+    const renderModeration = vi.fn(() => <span data-testid="mod">dölj</span>);
+    prime({
+      messages: [
+        row(5, {
+          body: 'oförändrad text',
+          likeCount: 2,
+          attachments: [{ position: 1, path: 'c1/u2/m5/1-a.jpg' }],
+        }),
+      ],
+    });
+    wrap(
+      <ChatPanel {...BASE_PROPS} isAdmin renderModeration={renderModeration} />,
+    );
+    expect(screen.getByTestId('chat-message-body')).toHaveTextContent(
+      'oförändrad text',
+    );
+    expect(screen.getByTestId('mod')).toBeInTheDocument();
+  });
+
+  it('the "Svara" action calls onReplyToMessage with the message', async () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5', seq: 5 }),
+    );
+  });
+});
+
+describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
+  function replyPreview(
+    over: Partial<NonNullable<ChatMessage['replyPreview']>> = {},
+  ): NonNullable<ChatMessage['replyPreview']> {
+    return {
+      deleted: false,
+      messageId: 'p1',
+      seq: 2,
+      senderType: 'participant',
+      senderUserId: 'u2',
+      senderDisplayName: 'Anna',
+      kind: 'text',
+      text: 'Golf räknas inte',
+      hasImage: false,
+      training: null,
+      ...over,
+    };
+  }
+
+  it('arming a reply via the Svara button shows the composer strip with the target sender', async () => {
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+  });
+
+  it('arming a reply via a right swipe shows the same composer strip', () => {
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const cardEl = document.body.querySelector(
+      '[data-seq="5"]',
+    )! as HTMLElement;
+    fireEvent.pointerDown(cardEl, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerMove(cardEl, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 80,
+      clientY: 2,
+    });
+    fireEvent.pointerUp(cardEl, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 80,
+      clientY: 2,
+    });
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+  });
+
+  it('the ✕ cancels reply mode but keeps the typed draft', async () => {
+    const user = userEvent.setup({ delay: null });
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'mitt svar');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Avbryt svar' }));
+    expect(screen.queryByText('Svarar på Anna')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('mitt svar');
+  });
+
+  it('sending while in reply mode threads replyToMessageId to post.mutate', async () => {
+    const user = userEvent.setup({ delay: null });
+    prime({ messages: [row(5, { id: 'm5', senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'det gör det visst');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(postMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ replyToMessageId: 'm5' }),
+      expect.anything(),
+    );
+  });
+
+  it('a normal (non-reply) send does NOT include replyToMessageId', async () => {
+    const user = userEvent.setup({ delay: null });
+    prime({ messages: [row(5)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'vanligt meddelande');
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    const [vars] = postMutate.mock.calls[0] as [Record<string, unknown>];
+    expect(vars).not.toHaveProperty('replyToMessageId');
+  });
+
+  it('on a successful reply send the strip and the draft both clear', async () => {
+    const user = userEvent.setup({ delay: null });
+    postMutate = vi.fn((_vars, opts?: { onSuccess?: () => void }) =>
+      opts?.onSuccess?.(),
+    );
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'klart');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(screen.queryByText('Svarar på Anna')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('on a failed reply send the strip and the draft both remain', async () => {
+    const user = userEvent.setup({ delay: null });
+    postMutate = vi.fn((_vars, opts?: { onError?: (e: unknown) => void }) =>
+      opts?.onError?.(new Error('nätverksfel')),
+    );
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'behåll mig');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(screen.getByText('Svarar på Anna')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('behåll mig');
+  });
+
+  it('a hidden-target server error drops reply mode, keeps the draft, and shows the Swedish message', async () => {
+    const user = userEvent.setup({ delay: null });
+    const err = new ChatError('Meddelandet går inte längre att svara på');
+    postMutate = vi.fn((_vars, opts?: { onError?: (e: unknown) => void }) =>
+      opts?.onError?.(err),
+    );
+    prime(
+      { messages: [row(5, { senderDisplayName: 'Anna' })] },
+      { isError: true, error: err },
+    );
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await user.type(screen.getByRole('textbox'), 'för sent');
+    await user.click(
+      screen.getByRole('button', { name: 'Svara på Annas meddelande' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Skicka' }));
+    expect(screen.queryByText('Svarar på Anna')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('för sent');
+    expect(
+      screen.getByText('Meddelandet går inte längre att svara på'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders one ReplyQuote inside a message that has a replyPreview', () => {
+    prime({
+      messages: [
+        row(9, {
+          replyPreview: replyPreview({
+            senderDisplayName: 'Anna',
+            text: 'Golf räknas inte',
+          }),
+          body: 'Det gör det visst',
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: /Svar på Annas meddelande/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Det gör det visst')).toBeInTheDocument();
+  });
+
+  it('renders replies flat — C replying to B quotes B only, never A', () => {
+    // A ← B ← C. C's replyPreview describes B; A's text must not appear anywhere.
+    prime({
+      messages: [
+        row(1, { id: 'mA', body: 'A: ursprunget', replyPreview: null }),
+        row(2, {
+          id: 'mB',
+          body: 'B: svar på A',
+          replyPreview: replyPreview({
+            messageId: 'mA',
+            senderDisplayName: 'Anna',
+            text: 'A: ursprunget',
+          }),
+        }),
+        row(3, {
+          id: 'mC',
+          body: 'C: svar på B',
+          replyPreview: replyPreview({
+            messageId: 'mB',
+            senderDisplayName: 'Bo',
+            text: 'B: svar på A',
+          }),
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    // Exactly two quote blocks (B quotes A, C quotes B) — no recursive expansion.
+    expect(screen.getAllByRole('button', { name: /^Svar på/ })).toHaveLength(2);
+    // C's quote names Bo and shows B's text once (as a quote) + once (as C's... no, that's C's body)
+    expect(
+      screen.getByRole('button', { name: /Svar på Bos meddelande/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('a reply to a since-hidden parent shows exactly the placeholder in the quote, no leak', () => {
+    prime({
+      messages: [
+        row(9, {
+          body: 'mitt svar',
+          replyPreview: replyPreview({
+            deleted: true,
+            messageId: null,
+            seq: null,
+            senderType: null,
+            senderUserId: null,
+            senderDisplayName: null,
+            kind: null,
+            text: null,
+          }),
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(
+      screen.getByRole('button', { name: 'Svar på ett borttaget meddelande' }),
+    ).toBeInTheDocument();
+    // the quote itself renders the canonical constant
+    expect(
+      screen.getAllByText('[Borttaget av administratör]').length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('ChatPanel — jump to original from a reply quote (Task H)', () => {
+  function rp(
+    over: Partial<NonNullable<ChatMessage['replyPreview']>> = {},
+  ): NonNullable<ChatMessage['replyPreview']> {
+    return {
+      deleted: false,
+      messageId: 'm1',
+      seq: 1,
+      senderType: 'participant',
+      senderUserId: 'u2',
+      senderDisplayName: 'Anna',
+      kind: 'text',
+      text: 'ursprunget',
+      hasImage: false,
+      training: null,
+      ...over,
+    };
+  }
+
+  function primeDynamic(
+    getState: () => { messages: ChatMessage[]; hasNextPage: boolean },
+  ) {
+    useChatMessagesMock.mockImplementation(() => ({
+      ...buildQuery(),
+      ...getState(),
+    }));
+    useMarkChatReadMock.mockReturnValue({ mutate: markReadMutate });
+    usePostChatMessageMock.mockReturnValue({
+      mutate: postMutate,
+      isPending: false,
+      isError: false,
+    });
+    probeImageMock.mockResolvedValue({
+      decodable: true,
+      width: 10,
+      height: 10,
+      likelyHeic: false,
+    });
+  }
+
+  it('scrolls a loaded target into view and briefly highlights it, leaving the follow latch alone', () => {
+    vi.useFakeTimers();
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    prime({
+      messages: [
+        row(1, { id: 'm1', body: 'ursprunget' }),
+        row(2),
+        row(9, {
+          body: 'mitt svar',
+          replyPreview: rp({ seq: 1, messageId: 'm1' }),
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    scrollIntoView.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    const target = document.body.querySelector('[data-seq="1"]')!;
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center' }),
+    );
+    expect(target).toHaveAttribute('data-jump-highlight');
+    // the "Nya meddelanden" pill is never conjured by a jump
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(target).not.toHaveAttribute('data-jump-highlight');
+    vi.useRealTimers();
+    scrollIntoView.mockRestore();
+  });
+
+  it('pages upward (bounded) to reach an unloaded target, then scrolls to it', async () => {
+    let revealedPages = 0;
+    fetchNextPage = vi.fn(() => {
+      revealedPages += 1;
+      return Promise.resolve();
+    });
+    const deepTarget = row(1, { id: 'm1', body: 'långt bak' });
+    const anchor = row(50, {
+      body: 'svar',
+      replyPreview: rp({ seq: 1, messageId: 'm1' }),
+    });
+    primeDynamic(() => ({
+      messages: revealedPages >= 3 ? [deepTarget, anchor] : [anchor],
+      hasNextPage: true,
+    }));
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    scrollIntoView.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-seq="1"]')).toBeInTheDocument(),
+    );
+    expect(fetchNextPage.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(fetchNextPage.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center' }),
+    );
+  });
+
+  it('stops at the page cap and shows a one-line notice when the target is never found', async () => {
+    fetchNextPage = vi.fn(() => Promise.resolve());
+    primeDynamic(() => ({
+      messages: [
+        row(20),
+        row(50, {
+          body: 'svar',
+          replyPreview: rp({ seq: 999, messageId: 'mX' }),
+        }),
+      ],
+      hasNextPage: true,
+    }));
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    await screen.findByText('Kunde inte hitta meddelandet i historiken.');
+    expect(fetchNextPage).toHaveBeenCalledTimes(10);
+
+    // no further paging after the cap
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchNextPage).toHaveBeenCalledTimes(10);
+  });
+
+  it('does not page at all when there is no more history and the target is absent', async () => {
+    fetchNextPage = vi.fn(() => Promise.resolve());
+    primeDynamic(() => ({
+      messages: [
+        row(20),
+        row(50, {
+          body: 'svar',
+          replyPreview: rp({ seq: 999, messageId: 'mX' }),
+        }),
+      ],
+      hasNextPage: false,
+    }));
+    wrap(<ChatPanel {...BASE_PROPS} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Svar på/ }));
+
+    await screen.findByText('Kunde inte hitta meddelandet i historiken.');
+    expect(fetchNextPage).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatPanel — moderation / privacy / regression sweep (Task I)', () => {
+  const tombstone: NonNullable<ChatMessage['replyPreview']> = {
+    deleted: true,
+    messageId: null,
+    seq: null,
+    senderType: null,
+    senderUserId: null,
+    senderDisplayName: null,
+    kind: null,
+    text: null,
+    hasImage: false,
+    training: null,
+  };
+
+  it('a reply to a since-hidden parent shows ONLY the canonical placeholder — no parent body / note / activity / GM text', () => {
+    prime({
+      messages: [
+        row(9, { body: 'mitt svar på det dolda', replyPreview: tombstone }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    const quote = screen.getByRole('button', {
+      name: 'Svar på ett borttaget meddelande',
+    });
+    expect(quote).toHaveTextContent('[Borttaget av administratör]');
+    // none of the strings a real parent preview could have carried
+    for (const leak of [
+      'Löpning',
+      'Simning',
+      'hemlig anteckning',
+      'GAME MASTER',
+      'Golf räknas inte',
+    ]) {
+      expect(screen.queryByText(new RegExp(leak))).toBeNull();
+    }
+  });
+
+  it('a hidden message that is ALSO a reply: quote placeholder shows, body withheld, and NO social controls', () => {
+    prime({
+      messages: [
+        row(9, {
+          status: 'hidden',
+          body: null,
+          likeCount: 0,
+          likedByMe: false,
+          replyPreview: tombstone,
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    // both the message body and the quote render the same placeholder
+    expect(
+      screen.getAllByText('[Borttaget av administratör]').length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole('button', { name: /gillar/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Gilla meddelandet' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Svara på/ })).toBeNull();
+  });
+
+  it('a like refetch that returns the SAME seqs does not move the viewport or raise "Nya meddelanden"', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    // open → loading → messages, then the reader scrolls up to read history
+    prime({ isLoading: true });
+    const view = wrap(<ChatPanel {...BASE_PROPS} />);
+    const el = screen.getByRole('log').parentElement!;
+    const ctl = mockScroller(el, {
+      scrollHeight: 900,
+      clientHeight: 300,
+      scrollTop: 0,
+    });
+    prime({ isLoading: false, messages: [row(1), row(2), row(3)] });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+    ctl.scrollTop = 100; // scrolled well up
+    ctl.fireScroll();
+    scrollIntoView.mockClear();
+    markReadMutate.mockClear();
+
+    // a like landed → Realtime invalidates → refetch returns the SAME 3 seqs,
+    // only like_count changed on row 2
+    prime({
+      isLoading: false,
+      messages: [row(1), row(2, { likeCount: 1 }), row(3)],
+    });
+    view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
+
+    expect(ctl.scrollTop).toBe(100);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /nya meddelanden/i }),
+    ).not.toBeInTheDocument();
+    expect(markReadMutate).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
+
+  it('the moderation slot is still offered to admins on a plain participant message alongside the like badge', () => {
+    const renderModeration = vi.fn(() => <span data-testid="mod">dölj</span>);
+    prime({ messages: [row(5, { likeCount: 2, senderDisplayName: 'Anna' })] });
+    wrap(
+      <ChatPanel {...BASE_PROPS} isAdmin renderModeration={renderModeration} />,
+    );
+    expect(screen.getByTestId('mod')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '2 personer gillar meddelandet' }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ChatPanel — mobile gestures (Task F)', () => {
+  function card(seq: number): HTMLElement {
+    return document.body.querySelector(`[data-seq="${seq}"]`)!;
+  }
+  function swipeRight(el: HTMLElement, toX: number) {
+    fireEvent.pointerDown(el, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerMove(el, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: toX,
+      clientY: 2,
+    });
+    fireEvent.pointerUp(el, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: toX,
+      clientY: 2,
+    });
+  }
+  function doubleTap(el: HTMLElement, target?: Element) {
+    const t = target ?? el;
+    fireEvent.pointerDown(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerUp(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerDown(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerUp(t, {
+      pointerType: 'touch',
+      pointerId: 1,
+      clientX: 0,
+      clientY: 0,
+    });
+  }
+
+  it('swiping a participant message right past the threshold arms reply', () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5, { senderDisplayName: 'Anna' })] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5' }),
+    );
+  });
+
+  it('a short right drag below the threshold does NOT arm reply', () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5)] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 30);
+    expect(onReplyToMessage).not.toHaveBeenCalled();
+  });
+
+  it('swiping a training card right arms reply with the training-card message', () => {
+    const onReplyToMessage = vi.fn();
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'training_card',
+          body: null,
+          trainingCard: {
+            entryId: 'e1',
+            activity: 'Löpning',
+            durationMinutes: 45,
+            note: null,
+            challengeDate: '2026-09-05',
+            entryStatus: 'active',
+            trainedAt: '2026-09-05T12:00:00Z',
+            proofs: [],
+          },
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5', senderType: 'training_card' }),
+    );
+  });
+
+  it('swiping a Game Master message right arms reply with the GM message', () => {
+    const onReplyToMessage = vi.fn();
+    prime({
+      messages: [
+        row(5, {
+          senderType: 'game_master',
+          senderUserId: null,
+          senderDisplayName: null,
+          body: 'GAME MASTER: kör hårt',
+        }),
+      ],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm5', senderType: 'game_master' }),
+    );
+  });
+
+  it('a hidden message cannot be swipe-replied', () => {
+    const onReplyToMessage = vi.fn();
+    prime({ messages: [row(5, { status: 'hidden', body: null })] });
+    wrap(<ChatPanel {...BASE_PROPS} onReplyToMessage={onReplyToMessage} />);
+    swipeRight(card(5), 80);
+    expect(onReplyToMessage).not.toHaveBeenCalled();
+  });
+
+  it('a touch double-tap on an unliked message likes it (make liked, never a toggle)', () => {
+    vi.useFakeTimers();
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+    expect(setLikeMock).toHaveBeenCalledTimes(1);
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('a touch double-tap on an already-liked message does NOT unlike', () => {
+    vi.useFakeTimers();
+    prime({ messages: [row(5, { likedByMe: true, likeCount: 3 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('a hidden message cannot be double-tap-liked', () => {
+    vi.useFakeTimers();
+    prime({ messages: [row(5, { status: 'hidden', body: null })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('a touch double-tap while pending does nothing', () => {
+    vi.useFakeTimers();
+    isLikePendingMock.mockReturnValue(true);
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    doubleTap(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('keeps data-seq on the row', () => {
+    prime({ messages: [row(42)] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    expect(document.body.querySelector('[data-seq="42"]')).toBeInTheDocument();
+  });
+
+  it('the Task E explicit heart action still works alongside gestures', async () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Gilla meddelandet' }),
+    );
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+  });
+
+  it('the Task E desktop double-click still likes (mouse path unchanged)', () => {
+    prime({ messages: [row(5, { likedByMe: false })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    fireEvent.dblClick(card(5));
+    expect(setLikeMock).toHaveBeenCalledWith({ messageId: 'm5', liked: true });
+    expect(setLikeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Task E desktop double-click on an already-liked message still no-ops', () => {
+    prime({ messages: [row(5, { likedByMe: true, likeCount: 2 })] });
+    wrap(<ChatPanel {...BASE_PROPS} />);
+    fireEvent.dblClick(card(5));
+    expect(setLikeMock).not.toHaveBeenCalled();
   });
 });
 

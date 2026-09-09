@@ -1,13 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DOUBLE_TAP_MS,
+  REPLY_JUMP_MAX_PAGES,
+  REPLY_SWIPE_ARM_PX,
+  REPLY_SWIPE_MAX_PX,
   chatDateSeparatorKey,
+  classifyPointerMove,
+  clampSwipeDx,
   displayBody,
+  findLoadedSeq,
+  isChatImageTarget,
+  isInteractiveEventTarget,
   isNearBottom,
   isProgrammaticScroll,
+  isSwipeArmed,
   isWithinRateLimitWindow,
+  likeBadgeAriaLabel,
   scrollAnchorAdjustment,
   shouldFollowNewMessage,
   sortBySeq,
+  swedishPossessive,
 } from './chat';
 import type { ChatMessage } from './types';
 
@@ -25,6 +37,10 @@ function msg(overrides: Partial<ChatMessage>): ChatMessage {
     trainingCard: null,
     hiddenReason: null,
     gameMasterEventId: null,
+    replyToMessageId: null,
+    replyPreview: null,
+    likeCount: 0,
+    likedByMe: false,
     createdAt: '2026-09-05T12:00:00Z',
     ...overrides,
   };
@@ -199,5 +215,150 @@ describe('isProgrammaticScroll', () => {
   it('honours a custom tolerance', () => {
     expect(isProgrammaticScroll(1195, 1200, 2)).toBe(false);
     expect(isProgrammaticScroll(1195, 1200, 8)).toBe(true);
+  });
+});
+
+describe('likeBadgeAriaLabel', () => {
+  it('is empty when there is nothing to announce', () => {
+    expect(likeBadgeAriaLabel(0, false)).toBe('');
+    expect(likeBadgeAriaLabel(0, true)).toBe('');
+    expect(likeBadgeAriaLabel(-2, false)).toBe('');
+  });
+  it('counts other people in singular / plural', () => {
+    expect(likeBadgeAriaLabel(1, false)).toBe('1 person gillar meddelandet');
+    expect(likeBadgeAriaLabel(3, false)).toBe('3 personer gillar meddelandet');
+  });
+  it('names the viewer when they liked', () => {
+    expect(likeBadgeAriaLabel(1, true)).toBe('Du gillar meddelandet');
+    expect(likeBadgeAriaLabel(2, true)).toBe(
+      'Du och 1 annan gillar meddelandet',
+    );
+    expect(likeBadgeAriaLabel(4, true)).toBe(
+      'Du och 3 andra gillar meddelandet',
+    );
+  });
+  it('uses the given subject noun for a training card', () => {
+    expect(likeBadgeAriaLabel(2, false, 'passet')).toBe(
+      '2 personer gillar passet',
+    );
+    expect(likeBadgeAriaLabel(3, true, 'passet')).toBe(
+      'Du och 2 andra gillar passet',
+    );
+  });
+});
+
+describe('swedishPossessive', () => {
+  it('adds -s to an ordinary name', () => {
+    expect(swedishPossessive('Anna')).toBe('Annas');
+    expect(swedishPossessive('Game Master')).toBe('Game Masters');
+  });
+  it('leaves a name ending in s / x / z unchanged', () => {
+    expect(swedishPossessive('Tomas')).toBe('Tomas');
+    expect(swedishPossessive('Max')).toBe('Max');
+  });
+});
+
+describe('isInteractiveEventTarget', () => {
+  it('is false for a plain element and for a null target', () => {
+    expect(isInteractiveEventTarget(null)).toBe(false);
+    const div = document.createElement('div');
+    expect(isInteractiveEventTarget(div)).toBe(false);
+  });
+  it('is true for a button, a link, or a node inside one', () => {
+    const button = document.createElement('button');
+    const span = document.createElement('span');
+    button.append(span);
+    expect(isInteractiveEventTarget(button)).toBe(true);
+    expect(isInteractiveEventTarget(span)).toBe(true);
+    const a = document.createElement('a');
+    expect(isInteractiveEventTarget(a)).toBe(true);
+  });
+});
+
+describe('isChatImageTarget', () => {
+  it('is true for a node inside a [data-chat-image] element', () => {
+    const btn = document.createElement('button');
+    btn.setAttribute('data-chat-image', '');
+    const img = document.createElement('img');
+    btn.append(img);
+    expect(isChatImageTarget(img)).toBe(true);
+    expect(isChatImageTarget(btn)).toBe(true);
+  });
+  it('is false for a plain button, a null target, and a non-Element', () => {
+    expect(isChatImageTarget(null)).toBe(false);
+    expect(isChatImageTarget(document.createElement('button'))).toBe(false);
+  });
+});
+
+describe('classifyPointerMove', () => {
+  it('is idle for a tiny movement', () => {
+    expect(classifyPointerMove({ dx: 5, dy: 3 })).toBe('idle');
+    expect(classifyPointerMove({ dx: 0, dy: 0 })).toBe('idle');
+  });
+  it('is vscroll for a dominant vertical move (either direction)', () => {
+    expect(classifyPointerMove({ dx: 2, dy: 20 })).toBe('vscroll');
+    expect(classifyPointerMove({ dx: -2, dy: -30 })).toBe('vscroll');
+    expect(classifyPointerMove({ dx: 15, dy: 14 })).toBe('vscroll');
+  });
+  it('is swipe only for a dominant RIGHTWARD move', () => {
+    expect(classifyPointerMove({ dx: 30, dy: 5 })).toBe('swipe');
+    expect(classifyPointerMove({ dx: 40, dy: -8 })).toBe('swipe');
+  });
+  it('is never swipe for a leftward move', () => {
+    expect(classifyPointerMove({ dx: -30, dy: 5 })).toBe('idle');
+    expect(classifyPointerMove({ dx: -80, dy: 2 })).toBe('idle');
+  });
+  it('does not arm on an ambiguous diagonal (dx not clearly dominant)', () => {
+    expect(classifyPointerMove({ dx: 12, dy: 9 })).toBe('idle');
+    expect(classifyPointerMove({ dx: 20, dy: 15 })).toBe('vscroll');
+  });
+});
+
+describe('isSwipeArmed', () => {
+  it('is false below the arm threshold', () => {
+    expect(isSwipeArmed(0)).toBe(false);
+    expect(isSwipeArmed(REPLY_SWIPE_ARM_PX - 1)).toBe(false);
+  });
+  it('is true at or past the arm threshold', () => {
+    expect(isSwipeArmed(REPLY_SWIPE_ARM_PX)).toBe(true);
+    expect(isSwipeArmed(REPLY_SWIPE_ARM_PX + 40)).toBe(true);
+  });
+});
+
+describe('clampSwipeDx', () => {
+  it('never returns a negative follow distance', () => {
+    expect(clampSwipeDx(-40)).toBe(0);
+    expect(clampSwipeDx(0)).toBe(0);
+  });
+  it('clamps to REPLY_SWIPE_MAX_PX so a card cannot slide off-screen', () => {
+    expect(clampSwipeDx(30)).toBe(30);
+    expect(clampSwipeDx(REPLY_SWIPE_MAX_PX + 500)).toBe(REPLY_SWIPE_MAX_PX);
+  });
+});
+
+describe('gesture constants', () => {
+  it('exports a sane double-tap window and swipe thresholds', () => {
+    expect(DOUBLE_TAP_MS).toBe(260);
+    expect(REPLY_SWIPE_ARM_PX).toBe(64);
+    expect(REPLY_SWIPE_MAX_PX).toBe(96);
+    expect(REPLY_SWIPE_ARM_PX).toBeLessThan(REPLY_SWIPE_MAX_PX);
+  });
+});
+
+describe('findLoadedSeq', () => {
+  it('is true when a message with that seq is among the loaded ones', () => {
+    expect(findLoadedSeq([msg({ seq: 3 }), msg({ seq: 7 })], 7)).toBe(true);
+  });
+  it('is false when no loaded message has that seq', () => {
+    expect(findLoadedSeq([msg({ seq: 3 }), msg({ seq: 7 })], 4)).toBe(false);
+  });
+  it('is false for an empty list', () => {
+    expect(findLoadedSeq([], 1)).toBe(false);
+  });
+});
+
+describe('REPLY_JUMP_MAX_PAGES', () => {
+  it('is a small, bounded page cap for jump-to-original history paging', () => {
+    expect(REPLY_JUMP_MAX_PAGES).toBe(10);
   });
 });

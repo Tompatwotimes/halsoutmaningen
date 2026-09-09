@@ -41,6 +41,12 @@ vi.mock('./useChat', () => ({
   useChatMessages: () => useChatMessagesMock(),
   useMarkChatRead: () => useMarkChatReadMock(),
   usePostChatMessage: () => usePostChatMessageMock(),
+  useSetChatMessageLike: () => ({
+    setLike: vi.fn(),
+    isPending: () => false,
+    error: null,
+    reset: vi.fn(),
+  }),
 }));
 
 import { ChatBubble } from './ChatBubble';

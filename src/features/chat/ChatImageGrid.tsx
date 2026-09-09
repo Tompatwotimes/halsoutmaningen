@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ImageOffIcon } from '@/components/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useChatImageUrls } from './useChat';
@@ -17,12 +17,27 @@ import styles from './ChatImageGrid.module.css';
 export function ChatImageGrid({
   messageId,
   attachments,
+  registerLightboxClose,
 }: {
   messageId: string;
   attachments: ChatAttachment[];
+  /**
+   * The card's gesture layer registers a "close my lightbox" callback here so a
+   * mobile double-tap on a photo can dismiss the viewer the first tap opened
+   * (design §6.2). Called with `null` when nothing is open.
+   */
+  registerLightboxClose?: (close: (() => void) | null) => void;
 }) {
   const { data, isLoading } = useChatImageUrls(messageId, attachments);
   const [lightboxAt, setLightboxAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!registerLightboxClose) return;
+    registerLightboxClose(
+      lightboxAt !== null ? () => setLightboxAt(null) : null,
+    );
+    return () => registerLightboxClose(null);
+  }, [lightboxAt, registerLightboxClose]);
 
   const count = Math.min(attachments.length, 4);
   const urls = attachments.map(
@@ -86,6 +101,7 @@ function Thumb({
       type="button"
       className={styles.thumbButton}
       onClick={onOpen}
+      data-chat-image=""
       aria-label={`Öppna bild ${index + 1} av ${total}`}
     >
       <img

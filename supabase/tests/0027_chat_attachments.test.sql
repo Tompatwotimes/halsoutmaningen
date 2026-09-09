@@ -280,7 +280,7 @@ select ok(
   not has_function_privilege('anon', 'public._chat_attachment_readable(text)', 'execute'),
   'anon has NO EXECUTE on _chat_attachment_readable');
 select ok(
-  not has_function_privilege('anon', 'public.post_chat_message(uuid, text, uuid, jsonb)', 'execute'),
+  not has_function_privilege('anon', 'public.post_chat_message(uuid, text, uuid, jsonb, uuid)', 'execute'),
   'anon has NO EXECUTE on post_chat_message');
 
 select ok(

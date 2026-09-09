@@ -11,6 +11,9 @@
   flex-direction: column;
   gap: var(--sp-3);
   min-height: 12rem;
+  /* Contain a swiped card's translateX so it never adds a horizontal scrollbar
+     (vertical scrolling lives on the Sheet body, not here). */
+  overflow-x: clip;
 }
 
 .skeletons {
@@ -60,6 +63,43 @@
   outline-offset: 2px;
 }
 
+/* One-line "couldn't find the original in history" notice (design §5.6). */
+.jumpNotice {
+  position: sticky;
+  bottom: var(--sp-2);
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: calc(-1 * var(--sp-2));
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--c-text);
+  background: var(--c-surface-raised);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-md);
+}
+
+.jumpNotice button {
+  display: inline-flex;
+  padding: 2px;
+  color: var(--c-text-faint);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-full);
+}
+
+.jumpNotice button:hover,
+.jumpNotice button:focus-visible {
+  color: var(--c-text-muted);
+}
+
+.jumpNotice button :global(svg) {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
 .daySeparator {
   align-self: center;
   margin: var(--sp-2) 0;
@@ -71,6 +111,7 @@
 }
 
 .message {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
@@ -78,6 +119,9 @@
   border: 1px solid var(--c-border-faint);
   border-radius: var(--radius-md);
   background: var(--c-surface-sunken);
+  /* Browser owns the vertical axis; horizontal pointer moves come to JS
+     (design §6.1). Never `none` — vertical chat scrolling stays native. */
+  touch-action: pan-y;
 }
 
 .self {
@@ -85,8 +129,101 @@
   background: var(--c-surface-raised);
 }
 
+/* Jump-to-original highlight (design §5.6) — a brief accent outline. With
+   motion allowed it fades out over ~1.2 s; with reduced motion it is a plain
+   outline that simply disappears when the class is removed. */
+.message[data-jump-highlight] {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .message[data-jump-highlight] {
+    animation: chat-jump-highlight 1200ms var(--ease-out, ease-out) forwards;
+  }
+}
+
+@keyframes chat-jump-highlight {
+  from {
+    outline-color: var(--c-accent);
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
 .gm {
   border-left: 3px solid var(--c-danger);
+}
+
+/* Swipe-to-reply affordance: a muted ↩️ at the card's left edge that fades in
+   as the card is dragged right, and firms up once the reply is armed. */
+.replyReveal {
+  position: absolute;
+  left: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--c-text-faint);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.replyReveal svg {
+  width: 16px;
+  height: 16px;
+}
+
+.replyReveal[data-armed] {
+  color: var(--c-accent);
+}
+
+/* Brief confirmation heart after a double-tap like. Decorative only. */
+.heartPop {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: inline-flex;
+  color: var(--c-accent);
+  pointer-events: none;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+}
+
+.heartPop svg {
+  width: 34px;
+  height: 34px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .message {
+    transition: transform 180ms var(--ease-out, ease);
+  }
+
+  .heartPop {
+    animation: heart-pop 200ms var(--ease-out, ease-out);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heartPop {
+    display: none;
+  }
+}
+
+@keyframes heart-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0;
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
 }
 
 .messageHead {
@@ -127,6 +264,61 @@
   align-items: flex-end;
   gap: var(--sp-2);
   width: 100%;
+}
+
+/* Composer reply strip (design §8.4) — sits flush above `.composeRow`. */
+.replyStrip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-left: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-sunken);
+}
+
+.replyStripText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.replyStripSender {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+}
+
+.replyStripLine {
+  font-size: var(--fs-xs);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.replyStripCancel {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: var(--c-text-faint);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-full);
+}
+
+.replyStripCancel:hover,
+.replyStripCancel:focus-visible {
+  color: var(--c-text-muted);
+}
+
+.replyStripCancel :global(svg) {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .hiddenFile {

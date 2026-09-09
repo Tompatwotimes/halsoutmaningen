@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { InfiniteData } from '@tanstack/react-query';
 import {
   useInfiniteQuery,
   useMutation,
@@ -13,6 +14,7 @@ import {
   fetchUnreadCount,
   markChatRead,
   sendChatMessage,
+  setChatMessageLike,
 } from './chat-api';
 import { chatImageSignedUrl } from './chat-media';
 import { createProofSignedUrl } from '@/features/challenge/entries-api';
@@ -144,6 +146,13 @@ interface PostVars {
   files?: File[];
   /** Composer progress callback: `'processing'` then `'uploading'`. */
   onPhase?: UploadPhaseCallback;
+  /**
+   * Set only when this message is a reply — the id of the message being
+   * replied to. Threaded straight through to `sendChatMessage`, which passes
+   * `p_reply_to_message_id` to `post_chat_message` **only when present** so a
+   * normal message keeps the exact old call shape (design §22.2).
+   */
+  replyToMessageId?: string;
 }
 
 /**
@@ -162,6 +171,9 @@ export function usePostChatMessage() {
         body: vars.body,
         files: vars.files ?? [],
         ...(vars.onPhase ? { onPhase: vars.onPhase } : {}),
+        ...(vars.replyToMessageId
+          ? { replyToMessageId: vars.replyToMessageId }
+          : {}),
       }),
     onSuccess: (_data, vars) => {
       void queryClient.invalidateQueries({
@@ -244,4 +256,189 @@ export function useMarkChatRead() {
       });
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Likes data layer (design §18.1) — optimistic, desired-state heart mutation
+// ---------------------------------------------------------------------------
+
+/** The `useChatMessages` cache: pages of `seq`-descending `ChatMessage[]`. */
+type ChatMessagesCache = InfiniteData<ChatMessage[], number | null>;
+
+/**
+ * Apply `transform` to the one message with `id === messageId` wherever it sits
+ * in the infinite-query cache, preserving referential identity everywhere it is
+ * not needed: the same `data` object when nothing changed, the same page array
+ * for every untouched page, the same `ChatMessage` for every untouched message,
+ * and always the same `pageParams`. `transform` returning its own argument
+ * means "no change".
+ */
+function mapMessageInChatCache(
+  data: ChatMessagesCache | undefined,
+  messageId: string,
+  transform: (m: ChatMessage) => ChatMessage,
+): ChatMessagesCache | undefined {
+  if (!data) return data;
+  const pages = data.pages.map((page) => {
+    const idx = page.findIndex((m) => m.id === messageId);
+    const current = idx === -1 ? undefined : page[idx];
+    if (current === undefined) return page;
+    const replaced = transform(current);
+    if (replaced === current) return page;
+    const nextPage = page.slice();
+    nextPage[idx] = replaced;
+    return nextPage;
+  });
+  return pages.some((p, i) => p !== data.pages[i]) ? { ...data, pages } : data;
+}
+
+/**
+ * The **state-aware** optimistic patch for a desired like state — NOT a blind
+ * toggle. If the cached message is already in `desiredLiked` the count is left
+ * untouched (a repeated / stale request cannot drift it); otherwise
+ * `likedByMe := desiredLiked` and `likeCount` moves by exactly one, clamped at
+ * 0. Only `likedByMe` / `likeCount` ever change.
+ */
+export function optimisticLikePatch(
+  data: ChatMessagesCache | undefined,
+  messageId: string,
+  desiredLiked: boolean,
+): ChatMessagesCache | undefined {
+  return mapMessageInChatCache(data, messageId, (m) =>
+    m.likedByMe === desiredLiked
+      ? m
+      : {
+          ...m,
+          likedByMe: desiredLiked,
+          likeCount: desiredLiked
+            ? m.likeCount + 1
+            : Math.max(0, m.likeCount - 1),
+        },
+  );
+}
+
+/**
+ * Reconcile a cached message to the server's **authoritative** `{ liked,
+ * likeCount }`. The server always wins — the optimistic ±1 is only a guess and
+ * another participant may have liked concurrently. Count clamped non-negative
+ * (Task C's `jcount` already guarantees a non-negative integer; belt-and-braces).
+ * Only `likedByMe` / `likeCount` change.
+ */
+export function reconcileLikeState(
+  data: ChatMessagesCache | undefined,
+  messageId: string,
+  liked: boolean,
+  likeCount: number,
+): ChatMessagesCache | undefined {
+  const count = Math.max(0, likeCount);
+  return mapMessageInChatCache(data, messageId, (m) =>
+    m.likedByMe === liked && m.likeCount === count
+      ? m
+      : { ...m, likedByMe: liked, likeCount: count },
+  );
+}
+
+/** The desired end state for one message — idempotent, not a toggle. */
+export interface SetChatMessageLikeVars {
+  messageId: string;
+  liked: boolean;
+}
+
+interface SetLikeContext {
+  previous: ChatMessagesCache | undefined;
+}
+
+/**
+ * Heart-like data layer. The UI calls `setLike({ messageId, liked })` with the
+ * DESIRED end state; the messages cache updates immediately (state-aware — a
+ * repeat is a no-op), the idempotent `set_chat_message_like` RPC runs, and its
+ * authoritative `{ liked, like_count }` reconciles the cache. A server error
+ * rolls the cache back to an exact snapshot (never by arithmetic).
+ *
+ * A per-message in-flight guard drops a second `setLike` for the SAME message
+ * while one is running, so out-of-order responses cannot leave ambiguous state;
+ * DIFFERENT messages are unaffected. `isPending(messageId)` exposes that state
+ * for the future button. No optimistic-only surface and no toast — read errors
+ * from `error` / clear them with `reset()`.
+ *
+ * Realtime is untouched: the server bumps `chat_activity` on a real change, so
+ * `useChatMessages` still invalidates + refetches `list_chat_messages`; the
+ * optimistic patch, the success reconcile and that refetch all converge on the
+ * same authoritative value. The hook adds no invalidation of its own. Mutations
+ * do not retry (`retry: false`) so the guard tracks exactly one attempt.
+ */
+export function useSetChatMessageLike(challengeId: string | null) {
+  const queryClient = useQueryClient();
+  const inFlight = useRef<Set<string>>(new Set());
+  const [, forceRender] = useState(0);
+  const bump = useCallback(() => forceRender((n) => n + 1), []);
+  const key = chatKeys.messages(challengeId ?? '');
+
+  const mutation = useMutation<
+    { liked: boolean; likeCount: number },
+    unknown,
+    SetChatMessageLikeVars,
+    SetLikeContext
+  >({
+    mutationFn: ({ messageId, liked }) => setChatMessageLike(messageId, liked),
+    onMutate: async ({ messageId, liked }) => {
+      // Stop any in-flight list refetch from landing between the optimistic
+      // patch and the reconcile and clobbering local state.
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ChatMessagesCache>(key);
+      if (previous !== undefined) {
+        queryClient.setQueryData<ChatMessagesCache>(
+          key,
+          optimisticLikePatch(previous, messageId, liked),
+        );
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      // Exact snapshot restore — never reverse by arithmetic (a concurrent
+      // Realtime refetch may have changed the cache in between).
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(key, ctx.previous);
+      }
+    },
+    onSuccess: (result, { messageId }) => {
+      const current = queryClient.getQueryData<ChatMessagesCache>(key);
+      if (current !== undefined) {
+        queryClient.setQueryData<ChatMessagesCache>(
+          key,
+          reconcileLikeState(
+            current,
+            messageId,
+            result.liked,
+            result.likeCount,
+          ),
+        );
+      }
+    },
+    onSettled: (_data, _err, { messageId }) => {
+      inFlight.current.delete(messageId);
+      bump();
+    },
+    retry: false,
+  });
+
+  const { mutate, error, reset } = mutation;
+
+  const setLike = useCallback(
+    (vars: SetChatMessageLikeVars) => {
+      if (challengeId === null) return;
+      if (inFlight.current.has(vars.messageId)) return; // per-message guard
+      inFlight.current.add(vars.messageId); // claim synchronously
+      bump();
+      mutate(vars);
+    },
+    [challengeId, mutate, bump],
+  );
+
+  const isPending = useCallback(
+    (messageId: string): boolean => inFlight.current.has(messageId),
+    [],
+  );
+
+  return { setLike, isPending, error, reset };
 }

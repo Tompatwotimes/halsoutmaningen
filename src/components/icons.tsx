@@ -228,3 +228,28 @@ export const FilterIcon = (p: IconProps) => (
     <path d="M4 5h16l-6 8v6l-4-2v-4z" />
   </Base>
 );
+
+/* ---- Chat reactions ------------------------------------------------- */
+
+export const HeartIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 20s-6.5-4.35-9-8C1.2 9.3 2.4 5.5 6 5.5c2.1 0 3.4 1.3 4 2.3.6-1 1.9-2.3 4-2.3 3.6 0 4.8 3.8 3 6.5-2.5 3.65-9 8-9 8Z" />
+  </Base>
+);
+
+/** Same silhouette, filled — the "liked by me" state. */
+export const HeartFilledIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path
+      fill="currentColor"
+      d="M12 20s-6.5-4.35-9-8C1.2 9.3 2.4 5.5 6 5.5c2.1 0 3.4 1.3 4 2.3.6-1 1.9-2.3 4-2.3 3.6 0 4.8 3.8 3 6.5-2.5 3.65-9 8-9 8Z"
+    />
+  </Base>
+);
+
+export const ReplyIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M9 7 4 12l5 5" />
+    <path d="M4 12h10a6 6 0 0 1 6 6v1" />
+  </Base>
+);
