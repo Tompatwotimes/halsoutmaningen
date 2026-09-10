@@ -58,7 +58,7 @@ describe('ReplyQuote', () => {
     ).toBeInTheDocument();
   });
 
-  it('for a hidden parent: accessible name is exactly the borttaget phrasing and NO content leaks', () => {
+  it('for a hidden parent: a non-interactive note with the borttaget phrasing and NO content leak', () => {
     render(
       <ReplyQuote
         preview={{ ...preview({ text: 'hemlig text' }), deleted: true }}
@@ -66,9 +66,11 @@ describe('ReplyQuote', () => {
         onJump={vi.fn()}
       />,
     );
+    // a role="note", not a dead <button> the reader can focus and "activate"
     expect(
-      screen.getByRole('button', { name: 'Svar på ett borttaget meddelande' }),
+      screen.getByRole('note', { name: 'Svar på ett borttaget meddelande' }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
     expect(
       screen.getByText('[Borttaget av administratör]'),
     ).toBeInTheDocument();
@@ -76,7 +78,7 @@ describe('ReplyQuote', () => {
     expect(screen.queryByText('Anna')).toBeNull();
   });
 
-  it('does not call onJump for a hidden parent (no jump to a withheld original)', async () => {
+  it('a hidden parent is not focusable and offers no jump affordance', async () => {
     const onJump = vi.fn();
     render(
       <ReplyQuote
@@ -85,7 +87,9 @@ describe('ReplyQuote', () => {
         onJump={onJump}
       />,
     );
-    await userEvent.click(screen.getByRole('button'));
+    const note = screen.getByRole('note');
+    await userEvent.click(note);
     expect(onJump).not.toHaveBeenCalled();
+    expect(note.tabIndex).toBeLessThan(0);
   });
 });

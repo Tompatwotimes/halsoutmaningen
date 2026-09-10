@@ -44,4 +44,34 @@ describe('ChatLightbox', () => {
     expect(screen.getByText(/kunde inte laddas/i)).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
+
+  it('Escape closes ONLY the viewer — it does not bubble to an ancestor (the Sheet)', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const ancestorKeyDown = vi.fn();
+    render(
+      <div onKeyDown={ancestorKeyDown}>
+        <ChatLightbox urls={urls} startIndex={0} onClose={onClose} />
+      </div>,
+    );
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(ancestorKeyDown).not.toHaveBeenCalled();
+  });
+
+  it('moves focus into the viewer on open and restores it to the opener on close', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+
+    const { unmount } = render(
+      <ChatLightbox urls={urls} startIndex={0} onClose={vi.fn()} />,
+    );
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
 });

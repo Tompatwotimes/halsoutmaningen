@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CloseIcon, ImageOffIcon } from '@/components/icons';
 import styles from './ChatLightbox.module.css';
 
@@ -21,6 +21,8 @@ export function ChatLightbox({
   const [index, setIndex] = useState(startIndex);
   const [failed, setFailed] = useState(false);
   const count = urls.length;
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const go = useCallback(
     (delta: number) => {
@@ -30,25 +32,42 @@ export function ChatLightbox({
     [count],
   );
 
+  // Move focus into the viewer on open and restore it to whatever opened it on
+  // close (the thumbnail button), so it never lands on an element hidden
+  // behind the backdrop.
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowLeft') go(-1);
-      else if (e.key === 'ArrowRight') go(1);
+    openerRef.current = document.activeElement as HTMLElement | null;
+    backdropRef.current?.focus();
+    const opener = openerRef.current;
+    return () => opener?.focus();
+  }, []);
+
+  // Escape / arrows are handled on the backdrop (React onKeyDown) so that while
+  // focus is inside the viewer the handler runs BEFORE the ancestor Sheet's
+  // own Escape handler — one Escape closes the image, not the whole chat.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      onClose();
+    } else if (e.key === 'ArrowLeft') {
+      go(-1);
+    } else if (e.key === 'ArrowRight') {
+      go(1);
     }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, go]);
+  };
 
   const url = urls[index] ?? null;
 
   return (
     <div
+      ref={backdropRef}
       className={styles.backdrop}
       role="dialog"
       aria-modal="true"
       aria-label="Bildvisning"
+      tabIndex={-1}
       onClick={onClose}
+      onKeyDown={onKeyDown}
     >
       <button
         type="button"

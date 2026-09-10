@@ -46,8 +46,9 @@
   position: sticky;
   bottom: var(--sp-2);
   align-self: center;
+  min-height: var(--touch-target);
   margin-top: calc(-1 * var(--sp-2));
-  padding: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   color: var(--c-accent-contrast);
@@ -304,7 +305,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px;
+  width: 2rem;
+  height: 2rem;
+  margin: -0.25rem;
   color: var(--c-text-faint);
   background: none;
   border: 0;

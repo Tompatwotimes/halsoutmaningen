@@ -707,7 +707,7 @@ export function ChatPanel({
             className={styles.newMessages}
             onClick={jumpToLatest}
           >
-            Nya meddelanden ↓
+            Nya meddelanden <span aria-hidden="true">↓</span>
           </button>
         )}
 

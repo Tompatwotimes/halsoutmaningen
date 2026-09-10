@@ -835,7 +835,7 @@ describe('ChatPanel — reply composer mode + quoted replies (Task G)', () => {
     });
     wrap(<ChatPanel {...BASE_PROPS} />);
     expect(
-      screen.getByRole('button', { name: 'Svar på ett borttaget meddelande' }),
+      screen.getByRole('note', { name: 'Svar på ett borttaget meddelande' }),
     ).toBeInTheDocument();
     // the quote itself renders the canonical constant
     expect(
@@ -1017,7 +1017,7 @@ describe('ChatPanel — moderation / privacy / regression sweep (Task I)', () =>
       ],
     });
     wrap(<ChatPanel {...BASE_PROPS} />);
-    const quote = screen.getByRole('button', {
+    const quote = screen.getByRole('note', {
       name: 'Svar på ett borttaget meddelande',
     });
     expect(quote).toHaveTextContent('[Borttaget av administratör]');
