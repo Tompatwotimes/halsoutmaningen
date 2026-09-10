@@ -1362,7 +1362,6 @@ describe('ChatPanel scroll behaviour (B1)', () => {
   });
 
   it('follows an incoming message when the reader is near the bottom', () => {
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
     const { view, ctl } = openWithMessages([row(1), row(2)], {
       scrollHeight: 500,
       clientHeight: 400,
@@ -1370,18 +1369,16 @@ describe('ChatPanel scroll behaviour (B1)', () => {
     });
     ctl.fireScroll();
     markReadMutate.mockClear();
-
+    ctl.grow(640); // the new row adds height
     prime({ isLoading: false, messages: [row(1), row(2), row(3)] });
     view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
 
-    expect(scrollIntoView).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'smooth' }),
-    );
+    // pinned to the (grown) bottom, not stranded at 100
+    expect(ctl.scrollTop).toBe(640);
     expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 3 });
     expect(
       screen.queryByRole('button', { name: /nya meddelanden/i }),
     ).not.toBeInTheDocument();
-    scrollIntoView.mockRestore();
   });
 
   it('does not yank the reader down while they read history — shows "Nya meddelanden"', () => {
@@ -1417,14 +1414,13 @@ describe('ChatPanel scroll behaviour (B1)', () => {
   });
 
   it("always follows the viewer's own outgoing message even if scrolled up", () => {
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
     const { view, ctl } = openWithMessages([row(1), row(2)], {
       scrollHeight: 900,
       clientHeight: 300,
     });
-    ctl.scrollTop = 50;
+    ctl.scrollTop = 50; // scrolled up — reading history
     ctl.fireScroll();
-    scrollIntoView.mockClear();
+    ctl.grow(1000);
 
     // own message arrives (senderUserId === BASE_PROPS.userId)
     prime({
@@ -1433,11 +1429,11 @@ describe('ChatPanel scroll behaviour (B1)', () => {
     });
     view.rerender(<>{<ChatPanel {...BASE_PROPS} />}</>);
 
-    expect(scrollIntoView).toHaveBeenCalled();
+    // followed to the bottom despite being scrolled up (own message)
+    expect(ctl.scrollTop).toBe(1000);
     expect(
       screen.queryByRole('button', { name: /nya meddelanden/i }),
     ).not.toBeInTheDocument();
-    scrollIntoView.mockRestore();
   });
 
   it('does not advance the read cursor while only scrolling through old history', () => {
@@ -1576,8 +1572,16 @@ describe('ChatPanel — opens at the latest message (cached React Query lifecycl
       get(this: HTMLElement) {
         return tops.get(this) ?? 0;
       },
+      // A real scroll container CLAMPS scrollTop to [0, scrollHeight -
+      // clientHeight] and fires a `scroll` event. jsdom does neither — which is
+      // exactly why `scrollTop = scrollHeight` (pinToBottom) used to be
+      // mis-measured as a user scroll in production but never in unit tests.
       set(this: HTMLElement, v: number) {
-        tops.set(this, v);
+        const max = Math.max(0, scrollHeight - opts.clientHeight);
+        const clamped = Math.max(0, Math.min(v, max));
+        const before = tops.get(this) ?? 0;
+        tops.set(this, clamped);
+        if (clamped !== before) this.dispatchEvent(new Event('scroll'));
       },
     });
     return {
@@ -1586,6 +1590,9 @@ describe('ChatPanel — opens at the latest message (cached React Query lifecycl
       },
       get scrollHeight() {
         return scrollHeight;
+      },
+      get maxScroll() {
+        return Math.max(0, scrollHeight - opts.clientHeight);
       },
       clientHeight: opts.clientHeight,
       scrollTopOf(el: HTMLElement) {
@@ -1626,20 +1633,21 @@ describe('ChatPanel — opens at the latest message (cached React Query lifecycl
   it('lands at the actual bottom on a cached open (no loading transition)', () => {
     geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
     const { top } = cachedOpen([row(1), row(2), row(3)], geom);
-    expect(top()).toBe(geom.scrollHeight); // pinned to the newest message
+    expect(top()).toBe(geom.maxScroll); // = scrollHeight - clientHeight = 1000
   });
 
   it('keeps following the bottom when content grows AFTER a cached open (images/quotes settle)', () => {
     geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
-    const { scroller, top } = cachedOpen([row(1), row(2), row(3)], geom);
-    expect(top()).toBe(1400);
+    const { top } = cachedOpen([row(1), row(2), row(3)], geom);
+    expect(top()).toBe(1000);
 
-    // media / reply-quote / action-row heights land a frame later → list grows
+    // media / reply-quote / action-row heights land a frame later → list grows.
+    // The pin's own scroll event (scrollTop clamped to the OLD max while the
+    // list is taller) must NOT be read as "user scrolled up".
     geom.grow(2600);
     act(() => roMock.trigger());
 
-    expect(top()).toBe(2600); // still pinned, not stranded above the newest
-    expect(scroller).toBeTruthy();
+    expect(top()).toBe(geom.maxScroll); // 2200 — still pinned to the newest
   });
 
   it('reopen after a new message arrived while closed opens at that new message', () => {
@@ -1647,53 +1655,83 @@ describe('ChatPanel — opens at the latest message (cached React Query lifecycl
     const { view } = cachedOpen([row(1), row(2), row(3)], geom);
     view.rerender(<>{<ChatPanel {...BASE_PROPS} open={false} />}</>);
 
-    // a 4th message landed via Realtime while the panel was closed; the list is
-    // taller now
     geom.grow(1900);
     prime({ isLoading: false, messages: [row(1), row(2), row(3), row(4)] });
     view.rerender(<>{<ChatPanel {...BASE_PROPS} open />}</>);
     const scroller2 = screen.getByRole('log').parentElement!;
-    expect(geom.scrollTopOf(scroller2)).toBe(1900);
+    expect(geom.scrollTopOf(scroller2)).toBe(geom.maxScroll); // 1500
     expect(markReadMutate).toHaveBeenCalledWith({ challengeId: 'c1', seq: 4 });
   });
 
   it('reopen after scrolling up in a PRIOR session still opens at the latest', () => {
     geom = installProtoGeometry({ scrollHeight: 1400, clientHeight: 400 });
     const { view, scroller, top } = cachedOpen([row(1), row(2), row(3)], geom);
-    expect(top()).toBe(1400);
+    expect(top()).toBe(1000);
 
     // user scrolls up, then closes
     act(() => {
       scroller.scrollTop = 100;
-      scroller.dispatchEvent(new Event('scroll'));
     });
     view.rerender(<>{<ChatPanel {...BASE_PROPS} open={false} />}</>);
 
-    // reopen — cache still holds the same 3 messages, no loading
     view.rerender(<>{<ChatPanel {...BASE_PROPS} open />}</>);
     const scroller2 = screen.getByRole('log').parentElement!;
-    expect(geom.scrollTopOf(scroller2)).toBe(1400);
+    expect(geom.scrollTopOf(scroller2)).toBe(1000);
 
     // and a later growth on THIS session is still followed
     geom.grow(3000);
     act(() => roMock.trigger());
-    expect(geom.scrollTopOf(scroller2)).toBe(3000);
+    expect(geom.scrollTopOf(scroller2)).toBe(geom.maxScroll); // 2600
   });
 
   it('a deliberate scroll-up in the CURRENT open session still stops the follow', () => {
     geom = installProtoGeometry({ scrollHeight: 2000, clientHeight: 400 });
     const { scroller } = cachedOpen([row(1), row(2), row(3)], geom);
+    expect(geom.scrollTopOf(scroller)).toBe(1600);
 
-    // user scrolls well up (2000 - 200 - 400 = 1400 > 96 → not near bottom)
+    // user scrolls well up — a downward scrollTop move past the intent threshold
     act(() => {
       scroller.scrollTop = 200;
-      scroller.dispatchEvent(new Event('scroll'));
     });
 
     // later growth must NOT drag them back down
     geom.grow(3200);
     act(() => roMock.trigger());
     expect(geom.scrollTopOf(scroller)).toBe(200);
+  });
+
+  it('a tiny sub-threshold scroll wobble does NOT count as scrolling away', () => {
+    geom = installProtoGeometry({ scrollHeight: 2000, clientHeight: 400 });
+    const { scroller } = cachedOpen([row(1), row(2), row(3)], geom);
+    expect(geom.scrollTopOf(scroller)).toBe(1600);
+
+    // a 2px jitter (momentum settle / rounding) — still following
+    act(() => {
+      scroller.scrollTop = 1598;
+    });
+    geom.grow(2600);
+    act(() => roMock.trigger());
+    expect(geom.scrollTopOf(scroller)).toBe(geom.maxScroll); // 2200
+  });
+
+  it('scrolling back down to the bottom re-arms the follow', () => {
+    const g = installProtoGeometry({ scrollHeight: 3000, clientHeight: 400 });
+    geom = g;
+    const { scroller } = cachedOpen([row(1), row(2), row(3)], g);
+
+    act(() => {
+      scroller.scrollTop = 300;
+    }); // away
+    g.grow(3400);
+    act(() => roMock.trigger());
+    expect(g.scrollTopOf(scroller)).toBe(300); // not yanked
+
+    act(() => {
+      scroller.scrollTop = g.maxScroll;
+    }); // user returns to bottom
+    g.grow(4000);
+    act(() => roMock.trigger());
+    expect(g.scrollTopOf(scroller)).toBe(g.maxScroll); // following again
   });
 });
 

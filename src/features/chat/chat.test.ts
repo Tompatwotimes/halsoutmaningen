@@ -11,9 +11,10 @@ import {
   findLoadedSeq,
   isChatImageTarget,
   isInteractiveEventTarget,
+  SCROLL_UP_INTENT_PX,
   isNearBottom,
-  isProgrammaticScroll,
   isSwipeArmed,
+  isUserScrollUp,
   isWithinRateLimitWindow,
   likeBadgeAriaLabel,
   scrollAnchorAdjustment,
@@ -198,23 +199,24 @@ describe('shouldFollowNewMessage', () => {
   });
 });
 
-describe('isProgrammaticScroll', () => {
-  it('is true when the scroll landed within tolerance of the expected top', () => {
-    expect(isProgrammaticScroll(1200, 1200)).toBe(true);
-    expect(isProgrammaticScroll(1199, 1200)).toBe(true);
-    expect(isProgrammaticScroll(1202, 1200)).toBe(true);
+describe('isUserScrollUp', () => {
+  it('is true only for a downward (toward older messages) move past the intent threshold', () => {
+    expect(isUserScrollUp(-40)).toBe(true);
+    expect(isUserScrollUp(-4)).toBe(true);
   });
-  it('is false when the scroll is far from the expected top (a user scroll)', () => {
-    expect(isProgrammaticScroll(0, 1200)).toBe(false);
-    expect(isProgrammaticScroll(1190, 1200)).toBe(false);
+  it('is false for a hold, a sub-threshold wobble, or any move toward the bottom', () => {
+    expect(isUserScrollUp(0)).toBe(false);
+    expect(isUserScrollUp(-3)).toBe(false);
+    expect(isUserScrollUp(3)).toBe(false);
+    expect(isUserScrollUp(400)).toBe(false); // a programmatic pin jumps DOWN
   });
-  it('is false when no programmatic scroll is pending (expectedTop null)', () => {
-    expect(isProgrammaticScroll(0, null)).toBe(false);
-    expect(isProgrammaticScroll(1200, null)).toBe(false);
+  it('honours a custom intent threshold', () => {
+    expect(isUserScrollUp(-6, 8)).toBe(false);
+    expect(isUserScrollUp(-10, 8)).toBe(true);
   });
-  it('honours a custom tolerance', () => {
-    expect(isProgrammaticScroll(1195, 1200, 2)).toBe(false);
-    expect(isProgrammaticScroll(1195, 1200, 8)).toBe(true);
+  it('SCROLL_UP_INTENT_PX is a small positive px value', () => {
+    expect(SCROLL_UP_INTENT_PX).toBeGreaterThan(0);
+    expect(SCROLL_UP_INTENT_PX).toBeLessThan(24);
   });
 });
 
