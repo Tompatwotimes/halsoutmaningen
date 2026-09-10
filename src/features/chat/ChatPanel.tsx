@@ -124,7 +124,6 @@ export function ChatPanel({
   // content inside it, observed for size changes.
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   // Have we performed the very first "open at the newest message" pin yet?
   const hasPinnedOnce = useRef(false);
   // `true` once the user has deliberately scrolled UP to read history in THIS
@@ -176,8 +175,9 @@ export function ChatPanel({
   queryRef.current = query;
 
   // Pin the viewport to the newest message. `scrollTop = scrollHeight` is
-  // clamped by the browser to `scrollHeight - clientHeight`; we record where it
-  // actually landed so the next scroll event measures direction from there.
+  // clamped by the browser to `scrollHeight - clientHeight` (the real max);
+  // record where it actually landed so the next scroll event measures
+  // direction from there.
   const pinToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -699,7 +699,6 @@ export function ChatPanel({
             ),
           )
         )}
-        <div ref={bottomRef} aria-hidden="true" />
 
         {showNewMessages && (
           <button
