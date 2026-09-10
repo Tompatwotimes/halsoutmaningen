@@ -135,7 +135,7 @@ export async function fetchDaySessions(
   }));
 }
 
-const PROOF_SIGNED_URL_TTL_SECONDS = 120;
+const PROOF_SIGNED_URL_TTL_SECONDS = 3600;
 
 /**
  * A short-lived signed URL for a private proof object (docs/DATABASE.md §6).

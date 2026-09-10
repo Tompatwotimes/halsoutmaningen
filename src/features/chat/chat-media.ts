@@ -39,7 +39,7 @@ import { ChatError } from './chat-error';
 
 export const CHAT_MEDIA_BUCKET = 'chat-media';
 export const CHAT_IMAGE_MAX_COUNT = 4;
-const SIGNED_URL_TTL_SECONDS = 120;
+const SIGNED_URL_TTL_SECONDS = 3600;
 
 /** Compression profile for chat images (spec §5: ~1600px, ~200–500 KB). */
 export const CHAT_IMAGE_PROCESS_OPTIONS: ProcessImageOptions = {

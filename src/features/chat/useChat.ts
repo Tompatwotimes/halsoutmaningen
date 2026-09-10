@@ -213,7 +213,12 @@ export function useChatImageUrls(
       );
       return out;
     },
-    staleTime: 90_000,
+    // The signed URL is valid for 1 h; keep it cached for well under that and
+    // don't re-sign on every window/app-focus (Realtime never invalidates
+    // these keys, so a mounted image is already as fresh as it needs to be).
+    staleTime: 10 * 60_000,
+    gcTime: 45 * 60_000,
+    refetchOnWindowFocus: false,
     retry: false,
     throwOnError: false,
   });
@@ -242,7 +247,12 @@ export function useTrainingCardProofUrls(
           url: await createProofSignedUrl(p.path).catch(() => null),
         })),
       ),
-    staleTime: 90_000,
+    // The signed URL is valid for 1 h; keep it cached for well under that and
+    // don't re-sign on every window/app-focus (Realtime never invalidates
+    // these keys, so a mounted image is already as fresh as it needs to be).
+    staleTime: 10 * 60_000,
+    gcTime: 45 * 60_000,
+    refetchOnWindowFocus: false,
     retry: false,
     throwOnError: false,
   });
