@@ -13,11 +13,16 @@
  *    (Chrome 81+, Firefox 77+, Safari 13.1+) applies EXIF orientation natively
  *    when rendering an `<img>`; `naturalWidth` / `naturalHeight` and
  *    `drawImage` then all speak in already-oriented pixels. This is the most
- *    robust path and needs no orientation flag.
+ *    robust path and needs no orientation flag. **`img.decode()` is awaited
+ *    after `load`** — on WebKit a detached `<img>` can fire `load` before its
+ *    pixels are decoded, and `ctx.drawImage` of such an `<img>` composites
+ *    nothing (a blank raster → a solid-white JPEG once the canvas is
+ *    white-filled). `decode()` is the authoritative paint-readiness gate.
  * 2. **Fallback — `createImageBitmap`** (with `imageOrientation: 'from-image'`
- *    as the best available hint), used only when the `<img>` path is
- *    unavailable or fails to load but `createImageBitmap` is present. Keeps the
- *    module usable in contexts without a DOM.
+ *    as the best available hint), used when the `<img>` path is unavailable,
+ *    fails to load, or its `decode()` rejects (an `<img>` that will not decode
+ *    is not a trustworthy `drawImage` source). Decodes real pixels from the
+ *    file bytes; also keeps the module usable in contexts without a DOM.
  *
  * Both HEIC decode paths depend on an OS codec: Safari / iOS decodes HEIC,
  * most desktop Chrome / Firefox do not. When neither path can decode the file
@@ -84,6 +89,11 @@ async function decodeViaImageElement(file: File): Promise<DecodedImage> {
     URL.revokeObjectURL(url);
   };
 
+  // 1. Load. `onload` / `onerror` are authoritative for whether the *bytes*
+  //    loaded — but on WebKit a detached <img> can fire `load` before its
+  //    pixel buffer is decoded, and `ctx.drawImage` of such an <img> can
+  //    composite nothing (a blank raster — see the module note and the
+  //    blank-upload regression test).
   try {
     await new Promise<void>((resolve, reject) => {
       img.onload = () => {
@@ -93,22 +103,26 @@ async function decodeViaImageElement(file: File): Promise<DecodedImage> {
         reject(new Error('image load failed'));
       };
       img.src = url;
-      // Best-effort fast path: resolve as soon as the pixels are decoded, so
-      // the first `drawImage` does not pay a synchronous decode. A `decode()`
-      // *rejection* is deliberately NOT fatal — WebKit rejects it spuriously
-      // for a detached <img> — `onerror` is the authoritative failure signal.
-      if (typeof img.decode === 'function') {
-        void img.decode().then(
-          () => {
-            resolve();
-          },
-          () => undefined,
-        );
-      }
     });
   } catch (err) {
     release();
     throw err;
+  }
+
+  // 2. Paint-readiness gate. `img.decode()` is the ONLY reliable "safe to
+  //    drawImage" signal for an off-DOM <img>; it is awaited here (not raced
+  //    against `onload`). A rejection now means this <img> is not a trustworthy
+  //    draw source, so we abandon it and let `decodeImage` use the
+  //    `createImageBitmap` path — which decodes real pixels from the bytes.
+  //    (`decode()` on an <img> whose load already completed is reliable;
+  //    the historical "spurious rejection" cases were pre-load.)
+  if (typeof img.decode === 'function') {
+    try {
+      await img.decode();
+    } catch {
+      release();
+      throw new Error('image not reliably decodable via <img>');
+    }
   }
 
   const width = img.naturalWidth || img.width;

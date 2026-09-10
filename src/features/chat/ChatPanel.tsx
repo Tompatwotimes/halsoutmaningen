@@ -183,8 +183,19 @@ export function ChatPanel({
     [markRead, challengeId],
   );
 
-  // Reset all positioning state when the room changes or the panel is (re)opened.
-  useEffect(() => {
+  // Reset all positioning state when the room changes or the panel is
+  // (re)opened. This MUST be a layout effect that runs BEFORE the scroll
+  // orchestration layout effect below (it is declared first, so it does): on a
+  // cached reopen — `messages` already populated, no `isLoading` transition —
+  // the orchestration effect pins on the very first `open` commit. If this
+  // reset ran as a passive `useEffect` it would fire *after* that pin and set
+  // `hasPinnedOnce.current` back to `false`, which permanently disables the
+  // ResizeObserver re-pin (its guard bails on `!hasPinnedOnce.current`) — so
+  // any image / reply-quote / action-row height that lands a frame later would
+  // strand the viewport above the newest message. Running the reset here, in
+  // the same phase and ordered first, means the pin's `hasPinnedOnce = true`
+  // sticks.
+  useLayoutEffect(() => {
     hasPinnedOnce.current = false;
     stickToBottom.current = true;
     programmaticScrollTo.current = null;
