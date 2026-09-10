@@ -135,12 +135,17 @@ export async function fetchDaySessions(
   }));
 }
 
+// One hour. Long enough that a signed URL outlives the React Query cache entry
+// that holds it (so a cached-but-expired URL is never handed to an <img>), and
+// long enough to survive a slow image load or a backgrounded tab. The object is
+// still private: the bucket is not public, the URL is only ever rendered to an
+// authorised challenge member who could re-request it anyway, and it grants
+// read-only access to a single already-visible proof image.
 const PROOF_SIGNED_URL_TTL_SECONDS = 3600;
 
 /**
- * A short-lived signed URL for a private proof object (docs/DATABASE.md §6).
- * Requested only when a viewer actually opens an entry's detail — never in
- * bulk for a grid.
+ * A signed URL for a private proof object (docs/DATABASE.md §6). Requested only
+ * when a viewer actually opens an entry's detail — never in bulk for a grid.
  */
 export async function createProofSignedUrl(path: string): Promise<string> {
   const { data, error } = await supabase.storage

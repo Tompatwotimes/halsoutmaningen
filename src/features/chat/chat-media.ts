@@ -32,13 +32,17 @@ import { ChatError } from './chat-error';
  * or an unviewable HEIC. The server MIME/size limits still apply and remain
  * authoritative; compression only reduces cost and speeds the upload.
  *
- * Reads: a short-lived signed URL, requested only when a bubble with images is
- * actually shown. The storage read policy (`_chat_attachment_readable`) is the
- * real gate — a hidden message's objects return no URL even with the path.
+ * Reads: a signed URL, requested only when a bubble with images is actually
+ * shown. The storage read policy (`_chat_attachment_readable`) is the real gate
+ * — a hidden message's objects return no URL even with the path.
  */
 
 export const CHAT_MEDIA_BUCKET = 'chat-media';
 export const CHAT_IMAGE_MAX_COUNT = 4;
+// One hour — see the matching note in challenge/entries-api.ts. The TTL must
+// outlive the React Query cache entry holding the URL so an expired URL is
+// never rendered; the object stays private (non-public bucket, member-only
+// read policy, single already-visible image).
 const SIGNED_URL_TTL_SECONDS = 3600;
 
 /** Compression profile for chat images (spec §5: ~1600px, ~200–500 KB). */
@@ -176,7 +180,7 @@ export async function removeChatImages(paths: string[]): Promise<void> {
     .catch(() => undefined);
 }
 
-/** A short-lived signed URL for one attachment path, or null if denied. */
+/** A signed URL for one attachment path, or null if denied. */
 export async function chatImageSignedUrl(path: string): Promise<string | null> {
   const { data, error } = await supabase.storage
     .from(CHAT_MEDIA_BUCKET)
