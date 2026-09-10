@@ -86,16 +86,24 @@ export function useChatMessages(challengeId: string | null) {
           table: 'chat_activity',
           filter: `challenge_id=eq.${challengeId}`,
         },
-        () => {
+        (payload?: { eventType?: string }) => {
           // Signal only — refetch and re-sort by seq rather than trusting the
           // payload or its arrival order (spec §2.2 / §7). `chat_activity`
           // carries no message text, so nothing sensitive rides the socket.
           void queryClient.invalidateQueries({
             queryKey: chatKeys.messages(challengeId),
           });
-          void queryClient.invalidateQueries({
-            queryKey: chatKeys.unreadRoot(challengeId),
-          });
+          // The unread count can only change when a genuinely NEW message
+          // arrives — that INSERTs a `chat_activity` row (the fanout trigger's
+          // `on conflict do update` path). A like or a moderation is an UPDATE
+          // of an existing row and never moves anyone's unread count, so it
+          // must not trigger an `unread_chat_count` RPC on every connected
+          // client (it fires even for clients with the panel closed).
+          if (payload?.eventType === 'INSERT') {
+            void queryClient.invalidateQueries({
+              queryKey: chatKeys.unreadRoot(challengeId),
+            });
+          }
         },
       )
       .subscribe();
