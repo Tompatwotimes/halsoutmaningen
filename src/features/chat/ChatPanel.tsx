@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -683,15 +684,15 @@ export function ChatPanel({
                 isSelf={entry.message.senderUserId === userId}
                 viewerUserId={userId}
                 isJumpHighlighted={entry.message.seq === highlightSeq}
+                likePending={isLikePending(entry.message.id)}
                 onSetLike={setLike}
-                isLikePending={isLikePending}
                 onReply={handleReply}
                 onJumpToMessage={jumpToMessage}
-                moderation={
+                renderModeration={
                   isAdmin &&
                   (entry.message.senderType === 'participant' ||
                     entry.message.senderType === 'training_card')
-                    ? renderModeration?.(entry.message)
+                    ? renderModeration
                     : undefined
                 }
               />
@@ -727,26 +728,35 @@ export function ChatPanel({
   );
 }
 
-function MessageRow({
+/**
+ * `React.memo` so a re-render of `ChatPanel` for an unrelated reason (a
+ * keystroke in the composer, one like's optimistic patch, the jump highlight,
+ * a Realtime refetch that structural-sharing collapsed to unchanged rows) does
+ * NOT re-render + re-run `useMessageGestures` for all ~50 rows. Every prop is
+ * identity-stable across those renders: `message` via React Query structural
+ * sharing, the callbacks via `useCallback`, `likePending` / `isJumpHighlighted`
+ * as plain booleans that only flip for the one affected row.
+ */
+const MessageRow = memo(function MessageRow({
   message,
   isSelf,
   viewerUserId,
   isJumpHighlighted,
-  moderation,
+  likePending,
   onSetLike,
-  isLikePending,
   onReply,
   onJumpToMessage,
+  renderModeration,
 }: {
   message: ChatMessage;
   isSelf: boolean;
   viewerUserId: string;
   isJumpHighlighted: boolean;
-  moderation: ReactNode;
+  likePending: boolean;
   onSetLike: (vars: { messageId: string; liked: boolean }) => void;
-  isLikePending: (messageId: string) => boolean;
   onReply: (message: ChatMessage) => void;
   onJumpToMessage: (seq: number) => void;
+  renderModeration: ((message: ChatMessage) => ReactNode) | undefined;
 }) {
   const isGameMaster = message.senderType === 'game_master';
   const isCard =
@@ -758,10 +768,11 @@ function MessageRow({
     ? 'Du'
     : (message.senderDisplayName ?? 'Deltagare');
 
+  const moderation = renderModeration?.(message);
+
   // Social affordances only on a live chat item — never on the
   // "[Borttaget av administratör]" placeholder (design §7.1).
   const showSocial = message.status === 'active';
-  const likePending = isLikePending(message.id);
   const badgeSubject = isCard ? 'passet' : 'meddelandet';
   const likeLabel = message.likedByMe
     ? 'Ta bort gilla-markering'
@@ -931,4 +942,4 @@ function MessageRow({
       {moderation}
     </div>
   );
-}
+});

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ChatIcon } from '@/components/icons';
 import { useAuth } from '@/features/auth/useAuth';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { useProfile } from '@/features/profile/useProfile';
 import { ChatModerationSheet } from '@/features/admin/ChatModerationSheet';
+import type { ChatMessage } from './types';
 import { ChatPanel } from './ChatPanel';
 import { useUnreadChatCount } from './useChat';
 import styles from './ChatBubble.module.css';
@@ -28,6 +29,20 @@ export function ChatBubble() {
 
   const unreadQuery = useUnreadChatCount(challengeId, userId);
   const unread = unreadQuery.data ?? 0;
+
+  // Stable across renders so `React.memo(MessageRow)` holds (an inline arrow
+  // here would re-render every moderated row on every ChatBubble render).
+  const renderModeration = useCallback(
+    (message: ChatMessage) =>
+      challengeId === null ? null : (
+        <ChatModerationSheet
+          message={message}
+          challengeId={challengeId}
+          isAdmin={isAdmin}
+        />
+      ),
+    [challengeId, isAdmin],
+  );
 
   if (challengeId === null || userId === null || challenge === null)
     return null;
@@ -58,13 +73,7 @@ export function ChatBubble() {
         userId={userId}
         timeZone={challenge.timeZone}
         isAdmin={isAdmin}
-        renderModeration={(message) => (
-          <ChatModerationSheet
-            message={message}
-            challengeId={challengeId}
-            isAdmin={isAdmin}
-          />
-        )}
+        renderModeration={renderModeration}
       />
     </>
   );
