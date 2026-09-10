@@ -42,46 +42,66 @@ export function ChatLightbox({
     return () => opener?.focus();
   }, []);
 
-  // Escape / arrows are handled on the backdrop (React onKeyDown) so that while
-  // focus is inside the viewer the handler runs BEFORE the ancestor Sheet's
-  // own Escape handler — one Escape closes the image, not the whole chat. Tab
-  // is trapped within the viewer's own controls so it never walks into the
+  // Keyboard handling lives on a `document` capture-phase listener rather than
+  // a React `onKeyDown` on the backdrop. Two reasons:
+  //   1. It works no matter where focus currently is. A React handler on the
+  //      backdrop only fires while focus is inside that subtree — but focus can
+  //      drift to <body> (e.g. an admin hides the image message while the
+  //      viewer is open and the focus-restore target is now detached). The old
+  //      backdrop-only handler left Escape/arrows dead in that state.
+  //   2. Capture phase + stopImmediatePropagation runs BEFORE the ancestor
+  //      Sheet's own key handling, so one Escape closes only the image, never
+  //      the whole chat.
+  // Tab is trapped within the viewer's own controls so it never walks into the
   // chat behind the backdrop.
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key === 'ArrowLeft') {
-      go(-1);
-      return;
-    }
-    if (e.key === 'ArrowRight') {
-      go(1);
-      return;
-    }
-    if (e.key === 'Tab') {
-      const focusables = backdropRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled])',
-      );
-      if (!focusables || focusables.length === 0) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         e.preventDefault();
-        backdropRef.current?.focus();
+        e.stopImmediatePropagation();
+        onClose();
         return;
       }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || active === backdropRef.current)) {
-        e.preventDefault();
-        last?.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first?.focus();
+      if (e.key === 'ArrowLeft') {
+        e.stopImmediatePropagation();
+        go(-1);
+        return;
       }
-    }
-  };
+      if (e.key === 'ArrowRight') {
+        e.stopImmediatePropagation();
+        go(1);
+        return;
+      }
+      if (e.key === 'Tab') {
+        const backdrop = backdropRef.current;
+        const focusables = backdrop?.querySelectorAll<HTMLElement>(
+          'button:not([disabled])',
+        );
+        e.stopImmediatePropagation();
+        if (!focusables || focusables.length === 0) {
+          e.preventDefault();
+          backdrop?.focus();
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        const inside = backdrop?.contains(active) ?? false;
+        if (
+          e.shiftKey &&
+          (active === first || active === backdrop || !inside)
+        ) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && (active === last || !inside)) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [go, onClose]);
 
   const url = urls[index] ?? null;
 
@@ -94,7 +114,6 @@ export function ChatLightbox({
       aria-label="Bildvisning"
       tabIndex={-1}
       onClick={onClose}
-      onKeyDown={onKeyDown}
     >
       <button
         type="button"
