@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ImageOffIcon } from '@/components/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useChatImageUrls } from './useChat';
@@ -13,6 +13,11 @@ import styles from './ChatImageGrid.module.css';
  * `useChatImageUrls`; a slot that resolves to `null` (denied — e.g. the
  * message was hidden between load and click) shows a broken-image fallback and
  * never crashes the bubble.
+ *
+ * Every slot is a fixed-`aspect-ratio` `.cell` that occupies the SAME box in
+ * all three states (loading / loaded / broken), so a row never reflows when a
+ * signed URL resolves a frame or two after the message rendered — that reflow
+ * is what used to strand the chat viewport above the newest message.
  */
 export function ChatImageGrid({
   messageId,
@@ -40,8 +45,12 @@ export function ChatImageGrid({
   }, [lightboxAt, registerLightboxClose]);
 
   const count = Math.min(attachments.length, 4);
-  const urls = attachments.map(
-    (a) => data?.find((d) => d.position === a.position)?.url ?? null,
+  const urls = useMemo(
+    () =>
+      attachments.map(
+        (a) => data?.find((d) => d.position === a.position)?.url ?? null,
+      ),
+    [attachments, data],
   );
 
   return (
@@ -52,13 +61,14 @@ export function ChatImageGrid({
         data-testid="chat-image-grid"
       >
         {attachments.slice(0, 4).map((a, i) => (
-          <Thumb
-            key={a.path}
-            url={isLoading ? undefined : urls[i]}
-            index={i}
-            total={count}
-            onOpen={() => setLightboxAt(i)}
-          />
+          <div className={styles.cell} key={`${String(a.position)}-${a.path}`}>
+            <Thumb
+              url={isLoading ? undefined : urls[i]}
+              index={i}
+              total={count}
+              onOpen={() => setLightboxAt(i)}
+            />
+          </div>
         ))}
       </div>
       {lightboxAt !== null && (
@@ -85,13 +95,20 @@ function Thumb({
   onOpen: () => void;
 }) {
   const [failed, setFailed] = useState(false);
+  // A transient error (an expired URL served from cache, a flaky network) must
+  // not permanently pin the broken slot: clear it whenever the URL changes.
+  useEffect(() => setFailed(false), [url]);
 
   if (url === undefined) {
-    return <Skeleton width="100%" height="100%" radius="var(--radius-md)" />;
+    return <Skeleton width="100%" height="100%" radius="0" />;
   }
   if (url === null || failed) {
     return (
-      <div className={styles.broken} aria-label="Bilden kunde inte laddas">
+      <div
+        className={styles.broken}
+        role="img"
+        aria-label="Bilden kunde inte laddas"
+      >
         <ImageOffIcon />
       </div>
     );
@@ -102,7 +119,7 @@ function Thumb({
       className={styles.thumbButton}
       onClick={onOpen}
       data-chat-image=""
-      aria-label={`Öppna bild ${index + 1} av ${total}`}
+      aria-label={`Öppna bild ${String(index + 1)} av ${String(total)}`}
     >
       <img
         src={url}

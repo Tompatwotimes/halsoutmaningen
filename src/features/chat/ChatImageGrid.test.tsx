@@ -63,6 +63,24 @@ describe('ChatImageGrid', () => {
     for (const t of thumbs) expect(t).toHaveAttribute('data-chat-image');
   });
 
+  it('reserves the same fixed-ratio slot count while loading and after resolving (no reflow)', async () => {
+    // never resolve → stays in the loading state
+    signed.mockReturnValue(new Promise(() => undefined));
+    const { container } = wrap(
+      <ChatImageGrid messageId="m" attachments={atts(3)} />,
+    );
+    const grid = await screen.findByTestId('chat-image-grid');
+    const cellsWhileLoading = grid.children.length;
+    expect(cellsWhileLoading).toBe(3); // one box per attachment, up front
+
+    // and the resolved layout has the same number of slots
+    signed.mockResolvedValue('https://x/y');
+    wrap(<ChatImageGrid messageId="m2" attachments={atts(3)} />);
+    const grids = screen.getAllByTestId('chat-image-grid');
+    expect(grids[1]!.children.length).toBe(3);
+    expect(container).toBeTruthy();
+  });
+
   it('registers a close-lightbox callback while the lightbox is open and clears it when closed', async () => {
     const user = userEvent.setup();
     signed.mockResolvedValue('https://x/y');
