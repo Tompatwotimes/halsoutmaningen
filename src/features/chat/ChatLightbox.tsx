@@ -44,15 +44,42 @@ export function ChatLightbox({
 
   // Escape / arrows are handled on the backdrop (React onKeyDown) so that while
   // focus is inside the viewer the handler runs BEFORE the ancestor Sheet's
-  // own Escape handler — one Escape closes the image, not the whole chat.
+  // own Escape handler — one Escape closes the image, not the whole chat. Tab
+  // is trapped within the viewer's own controls so it never walks into the
+  // chat behind the backdrop.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
       onClose();
-    } else if (e.key === 'ArrowLeft') {
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
       go(-1);
-    } else if (e.key === 'ArrowRight') {
+      return;
+    }
+    if (e.key === 'ArrowRight') {
       go(1);
+      return;
+    }
+    if (e.key === 'Tab') {
+      const focusables = backdropRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled])',
+      );
+      if (!focusables || focusables.length === 0) {
+        e.preventDefault();
+        backdropRef.current?.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === backdropRef.current)) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first?.focus();
+      }
     }
   };
 
