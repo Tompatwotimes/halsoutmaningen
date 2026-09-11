@@ -2,6 +2,43 @@
 <html lang="sv">
   <head>
     <meta charset="UTF-8" />
+    <script id="theme-init">
+      // Resolve and apply the theme BEFORE first paint — no light→dark (or
+      // reverse) flash. Deliberately tiny and dependency-free (it runs before
+      // any module has loaded); kept in exact sync with the canonical
+      // implementation in src/features/theme/theme.ts (tested directly
+      // against these same bytes — see theme-init.test.ts) rather than
+      // importing it, since an inline script cannot import a module and
+      // still block synchronously here.
+      //
+      // Default is LIGHT for anyone with no stored choice — Hälsoutmaningen's
+      // primary identity is light; "system" is an explicit opt-in, never the
+      // implicit default.
+      (function () {
+        try {
+          var v = localStorage.getItem('halsoutmaningen-theme');
+          var pref =
+            v === 'light' || v === 'dark' || v === 'system' ? v : 'light';
+          var resolved =
+            pref === 'system'
+              ? window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : pref;
+          document.documentElement.dataset.theme = resolved;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) {
+            meta.setAttribute(
+              'content',
+              resolved === 'dark' ? '#14181a' : '#faf7f2',
+            );
+          }
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta
       name="viewport"

@@ -1,24 +1,26 @@
 /*
  * Hälsoutmaningen design tokens.
  *
- * Light, warm and positive by design — a bright, calm foundation, one
- * confident fresh-green accent, and a status system that reads clearly
- * without ever visually punishing the reader. The product should feel like a
- * polished social fitness app that happens to have consequences, not a
- * control panel (CLAUDE.md §13–15, design north star).
+ * Two themes, one product: LIGHT is the canonical, primary identity (bright,
+ * warm, calm — CLAUDE.md §13–15, design north star); DARK is a refined,
+ * equally deliberate equivalent — premium warm graphite, not an OLED-black
+ * terminal — for people who prefer it, never the default for a new user.
  *
- * Light-only, deliberately: this redesign's entire point is "light mode IS
- * the product" — there is no `prefers-color-scheme`/`[data-theme]` branching
- * to maintain here.
+ * `[data-theme="light"]` / `[data-theme="dark"]` on `<html>`, set by the tiny
+ * inline startup script in `index.html` BEFORE first paint (no flash) and
+ * kept in sync afterwards by `src/features/theme`. `:root` alone (no
+ * `[data-theme]` set) mirrors light, as a safety default.
  *
  * Values are chosen, not arbitrary: every colour, size and duration below is
  * referenced by name from component CSS, and every text/background pairing
- * has been checked against WCAG AA (4.5:1 for text, 3:1 for meaningful UI
- * boundaries). Do not hardcode raw hex/px in components — add or reuse a
- * token here.
+ * in BOTH themes has been checked against WCAG AA (4.5:1 for text, 3:1 for
+ * meaningful UI boundaries). Do not hardcode raw hex/px in components — add
+ * or reuse a token here. Components must never branch on the theme
+ * themselves; they consume tokens, and the tokens change underneath them.
  */
 
-:root {
+:root,
+[data-theme='light'] {
   color-scheme: light;
 
   /* ---- Foundation: warm off-white, not stark/clinical white -------------- */
@@ -82,7 +84,8 @@
   --c-future-surface: #f4f1ea;
   --c-future-border: #e6e0d2;
 
-  /* Not participating — barely there, no emphasis at all.                */
+  /* Not participating — barely there, no emphasis at all (AA-large only,
+     deliberately: this is the one token where that's the right bar).     */
   --c-absent-text: #948b7d;
   --c-absent-surface: #faf8f3;
 
@@ -104,7 +107,108 @@
     #faf7f2 100%
   );
 
-  /* ---- Typography --------------------------------------------------- */
+  /* ---- Elevation ------------------------------------------------------
+   * Warm, soft shadows tuned for LIGHT surfaces — low opacity so cards feel
+   * lifted, not boxed. A dark-mode shadow recipe (heavy black, high opacity)
+   * reads as harsh once the canvas underneath it is light.
+   */
+  --shadow-sm: 0 1px 2px rgb(35 26 12 / 0.05);
+  --shadow-md: 0 8px 24px -8px rgb(35 26 12 / 0.12);
+  --shadow-lg: 0 24px 56px -16px rgb(35 26 12 / 0.16);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--c-focus) 35%, transparent);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* ---- Foundation: warm charcoal-graphite, not OLED black --------------- */
+  --c-bg: #14181a;
+  --c-bg-elevated: #1a201d;
+  --c-surface: #1c2320;
+  --c-surface-raised: #212925;
+  --c-surface-sunken: #10140f;
+  --c-surface-hover: #263029;
+
+  --c-border: #2a332e;
+  --c-border-strong: #71806f;
+  --c-border-faint: #1e2521;
+
+  /* ---- Text -------------------------------------------------------------
+   * Off-white, not pure white (`--c-text` 15.8:1 on bg / 14.1:1 on surface).
+   * `--c-text-muted` 8.3:1 on bg. `--c-text-faint` 5.8:1 on bg, 5.2:1 on
+   * surface — both AA-normal.
+   */
+  --c-text: #edf2ee;
+  --c-text-muted: #a9b4ac;
+  --c-text-faint: #8a968d;
+  --c-text-inverse: #12181a;
+
+  /* ---- Brand accent: the SAME teal-green identity, brightened to read on
+     dark (8.0:1 on bg, 7.2:1 on surface — plenty of margin as text, not just
+     as a fill). --------------------------------------------------------- */
+  --c-accent: #35c488;
+  --c-accent-hover: #4ed89c;
+  --c-accent-pressed: #26b37a;
+  --c-accent-quiet: #163025;
+  --c-accent-text: #35c488;
+  --c-accent-contrast: #08130d; /* dark text on the bright accent fill */
+
+  /* ---- Social accent: brightened for dark, same warm heart-red hue ------ */
+  --c-heart: #ff6b84;
+  --c-heart-quiet: #3a1c22;
+
+  /* ---- Status system ---------------------------------------------------- */
+  --c-completed: #35c488;
+  --c-completed-text: #35c488;
+  --c-completed-surface: #13261d;
+  --c-completed-border: #2a5940;
+
+  --c-missed: #e48468;
+  --c-missed-text: #e48468;
+  --c-missed-surface: #2e1d16;
+  --c-missed-border: #5c3a2c;
+
+  --c-pending: #e3b565;
+  --c-pending-text: #e3b565;
+  --c-pending-surface: #2c2415;
+  --c-pending-border: #5c4a26;
+
+  --c-future-text: #94988c;
+  --c-future-surface: #1c211d;
+  --c-future-border: #2a322c;
+
+  --c-absent-text: #6b746c;
+  --c-absent-surface: #171c19;
+
+  /* ---- Feedback ---------------------------------------------------------
+   * Distinct in hue/saturation from `--c-missed` above, same as light.
+   */
+  --c-danger: #e2694b;
+  --c-danger-text: #e2694b;
+  --c-success: #35c488;
+  --c-focus: #35c488;
+
+  --gradient-brand: linear-gradient(
+    150deg,
+    #17251d 0%,
+    #141c17 55%,
+    #131715 100%
+  );
+
+  /* ---- Elevation ----------------------------------------------------------
+   * A black shadow barely registers on an already-dark canvas — elevation
+   * here reads mainly through `--c-surface-raised` being LIGHTER than
+   * `--c-bg` (the opposite direction from light mode). The shadow is kept
+   * only as a soft, secondary depth cue.
+   */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 8px 24px -8px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 24px 56px -16px rgb(0 0 0 / 0.55);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--c-focus) 40%, transparent);
+}
+
+:root {
+  /* ---- Typography — identical across themes ---------------------------- */
   --font-sans:
     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
@@ -135,7 +239,7 @@
   --fw-semibold: 600;
   --fw-bold: 700;
 
-  /* ---- Spacing (4px base) ---------------------------------------------- */
+  /* ---- Spacing (4px base) — identical across themes --------------------- */
   --sp-0: 0;
   --sp-1: 0.25rem;
   --sp-2: 0.5rem;
@@ -147,23 +251,13 @@
   --sp-8: 3rem;
   --sp-10: 4rem;
 
-  /* ---- Radius -------------------------------------------------------- */
+  /* ---- Radius — identical across themes ---------------------------------- */
   --radius-xs: 0.375rem;
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.375rem;
   --radius-full: 999px;
-
-  /* ---- Elevation ------------------------------------------------------
-   * Warm, soft shadows tuned for LIGHT surfaces — low opacity so cards feel
-   * lifted, not boxed. A dark-mode shadow recipe (heavy black, high opacity)
-   * reads as harsh once the canvas underneath it is light.
-   */
-  --shadow-sm: 0 1px 2px rgb(35 26 12 / 0.05);
-  --shadow-md: 0 8px 24px -8px rgb(35 26 12 / 0.12);
-  --shadow-lg: 0 24px 56px -16px rgb(35 26 12 / 0.16);
-  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--c-focus) 35%, transparent);
 
   /* ---- Layout ----------------------------------------------------- */
   --app-max-width: 30rem; /* mobile-first content column */

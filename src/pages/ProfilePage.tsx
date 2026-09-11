@@ -36,6 +36,7 @@ import { MyChallengesCard } from '@/features/challenge/MyChallengesCard';
 import { PersonalCalendar } from '@/features/profile/PersonalCalendar';
 import { WeightSection } from '@/features/weight/WeightSection';
 import { useStraffbank } from '@/features/straffbanken/useStraffbank';
+import { ThemeSwitch } from '@/features/theme/ThemeSwitch';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import type { SelfEntry } from '@/features/challenge/types';
 import styles from './ProfilePage.module.css';
@@ -142,6 +143,13 @@ export function ProfilePage() {
           onOpenDay={setOpenDate}
         />
       )}
+
+      <Card title="Inställningar">
+        <div className={styles.settingRow}>
+          <span className={styles.settingLabel}>Utseende</span>
+          <ThemeSwitch />
+        </div>
+      </Card>
 
       {isAdmin && (
         <Link to="/admin" className={styles.adminLink}>

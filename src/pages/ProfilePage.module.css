@@ -141,6 +141,20 @@
   color: var(--c-text-muted);
 }
 
+/* ---- Settings ---- */
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.settingLabel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
 /* ---- Footer ---- */
 .adminLink {
   display: flex;

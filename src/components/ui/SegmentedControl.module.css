@@ -9,6 +9,10 @@
 
 .segment {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
   border-radius: calc(var(--radius-md) - 3px);
   color: var(--c-text-muted);
   font-weight: var(--fw-semibold);
@@ -17,6 +21,15 @@
   transition:
     background var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
+}
+
+.icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .sm .segment {
