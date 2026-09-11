@@ -49,11 +49,11 @@ vi.mock('@/features/challenge/entries-api', () => ({ createProofSignedUrl }));
 interface FakeChannel {
   name: string;
   filters: Record<string, unknown>[];
-  handlers: (() => void)[];
+  handlers: ((payload?: { eventType?: string }) => void)[];
   on: (
     event: string,
     filter: Record<string, unknown>,
-    handler: () => void,
+    handler: (payload?: { eventType?: string }) => void,
   ) => FakeChannel;
   subscribe: () => FakeChannel;
 }
@@ -94,7 +94,10 @@ function lastChannel(): FakeChannel {
 }
 
 function emitInsert(ch: FakeChannel): void {
-  for (const handler of ch.handlers) handler();
+  for (const handler of ch.handlers) handler({ eventType: 'INSERT' });
+}
+function emitUpdate(ch: FakeChannel): void {
+  for (const handler of ch.handlers) handler({ eventType: 'UPDATE' });
 }
 
 import {
@@ -234,6 +237,36 @@ describe('useChatMessages — Realtime', () => {
 
     await waitFor(() => expect(result.current.messages.length).toBe(2));
     expect(result.current.messages.map((m) => m.seq)).toEqual([1, 2]);
+  });
+
+  it('invalidates unread ONLY on a new-message (INSERT) activity event, not on a like/moderation (UPDATE)', async () => {
+    fetchRecentChatMessages.mockResolvedValue([row(1)]);
+    const client = new QueryClient();
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useChatMessages('c1'), {
+      wrapper: localWrapper,
+    });
+    await waitFor(() => expect(result.current.messages.length).toBe(1));
+    spy.mockClear();
+
+    // A like → chat_activity UPDATE. Message list refreshes (like_count), but
+    // no unread RPC — the count cannot have changed.
+    emitUpdate(lastChannel());
+    expect(spy).toHaveBeenCalledWith({ queryKey: chatKeys.messages('c1') });
+    expect(spy).not.toHaveBeenCalledWith({
+      queryKey: chatKeys.unreadRoot('c1'),
+    });
+
+    spy.mockClear();
+    // A new message → chat_activity INSERT → both refresh.
+    emitInsert(lastChannel());
+    expect(spy).toHaveBeenCalledWith({ queryKey: chatKeys.messages('c1') });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: chatKeys.unreadRoot('c1'),
+    });
   });
 
   it('keeps the list seq-ascending regardless of Realtime arrival order', async () => {

@@ -30,19 +30,30 @@ export function ReplyQuote({
   const canJump =
     !preview.deleted && seq !== null && typeof onJump === 'function';
 
-  const accessibleName = preview.deleted
-    ? 'Svar på ett borttaget meddelande'
-    : quoteAccessibleName(senderLabel, line);
+  // A hidden (tombstone) parent has nothing to jump to. Render a plain,
+  // non-focusable region instead of a dead `<button>` that announces as
+  // interactive and does nothing on Enter/Space (design §7.3).
+  if (preview.deleted) {
+    return (
+      <div
+        className={styles.quote}
+        data-deleted
+        role="note"
+        aria-label="Svar på ett borttaget meddelande"
+      >
+        <span className={styles.line}>{line}</span>
+      </div>
+    );
+  }
 
   return (
     <button
       type="button"
       className={styles.quote}
-      data-deleted={preview.deleted || undefined}
-      aria-label={accessibleName}
+      aria-label={quoteAccessibleName(senderLabel, line)}
       onClick={canJump ? () => onJump(seq) : undefined}
     >
-      {!preview.deleted && senderLabel !== '' && (
+      {senderLabel !== '' && (
         <span className={styles.sender}>{senderLabel}</span>
       )}
       <span className={styles.line}>{line}</span>

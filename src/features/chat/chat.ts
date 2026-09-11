@@ -250,18 +250,26 @@ export function shouldFollowNewMessage(wasNearBottom: boolean): boolean {
 }
 
 /**
- * Did a `scroll` event come from the panel's own `el.scrollTop = …` assignment
- * rather than from the user? The panel records the exact `scrollTop` it is
- * about to set in a ref; the resulting `scroll` event lands within a pixel or
- * two of it. A larger gap means the user scrolled — which unsticks the
- * follow-the-bottom latch. `expectedTop === null` means "no programmatic scroll
- * is pending", so any event is the user's.
+ * A `scroll` event whose `scrollTop` moved DOWN (toward the top of the history)
+ * by at least this many px is the user deliberately scrolling up to read
+ * history. Small sub-pixel wobble is ignored.
+ *
+ * Every programmatic reposition the panel performs — `pinToBottom`
+ * (`scrollTop = scrollHeight`, which the browser clamps *up* to the max) and
+ * the pagination anchor (`scrollTop += delta`, delta ≥ 0) — only ever holds or
+ * increases `scrollTop`. So a decrease is unambiguously the user, with no
+ * timing heuristic and no "expected position" bookkeeping to get wrong (the
+ * previous `isProgrammaticScroll` compared `scrollTop` against `scrollHeight`,
+ * but a scroll container clamps `scrollTop` to `scrollHeight - clientHeight`,
+ * so that check was structurally always-false in a real browser — jsdom does
+ * not clamp, which is why the unit tests never caught it).
  */
-export function isProgrammaticScroll(
-  actualTop: number,
-  expectedTop: number | null,
-  tolerancePx = 2,
+export const SCROLL_UP_INTENT_PX = 4;
+
+/** Did this scroll move up (toward older messages) far enough to be a real user gesture? */
+export function isUserScrollUp(
+  deltaTop: number,
+  intentPx = SCROLL_UP_INTENT_PX,
 ): boolean {
-  if (expectedTop === null) return false;
-  return Math.abs(actualTop - expectedTop) <= tolerancePx;
+  return deltaTop <= -intentPx;
 }

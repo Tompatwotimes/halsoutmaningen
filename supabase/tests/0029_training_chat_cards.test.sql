@@ -30,6 +30,14 @@ select plan(36);
 
 set local role postgres;
 
+-- The RPCs under test derive "today" from the challenge timezone
+-- (`challenge_current_date()` → `now() at time zone 'Europe/Stockholm'`). Pin
+-- the test session to the same zone so the fixture's `current_date` and the
+-- RPCs' `challenge_date` always agree — otherwise every run between ~22:00 and
+-- 24:00 UTC (Stockholm's next day) splits a "same day" pair across the
+-- midnight boundary and fails Section E.
+set local timezone = 'Europe/Stockholm';
+
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
 values
   ('00000000-0000-0000-0000-000000002901', '00000000-0000-0000-0000-000000000000',

@@ -46,3 +46,9 @@ supabase/.temp
 supabase/.env
 supabase/functions/**/.env
 !supabase/functions/**/.env.example
+
+# Playwright (local-only e2e)
+/test-results/
+/e2e/test-results/
+/playwright-report/
+/blob-report/

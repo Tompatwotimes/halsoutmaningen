@@ -6,13 +6,20 @@
  */
 
 .badge {
+  position: relative;
   align-self: flex-end;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   margin-top: -8px;
   margin-right: var(--sp-1);
-  padding: 1px 6px;
+  /* Visually a compact pill, but a comfortable hit area: min 28px tall / 30px
+     wide so a thumb tap on the corner badge lands (WCAG 2.5.8 has a 24px
+     floor; the design keeps the glyph small). */
+  min-height: 28px;
+  min-width: 30px;
+  padding: 2px 8px;
   color: var(--c-text-muted);
   background: var(--c-surface-raised);
   border: 1px solid var(--c-border);

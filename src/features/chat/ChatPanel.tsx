@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -41,7 +42,7 @@ import {
   findLoadedSeq,
   isInteractiveEventTarget,
   isNearBottom,
-  isProgrammaticScroll,
+  isUserScrollUp,
   scrollAnchorAdjustment,
   swedishPossessive,
 } from './chat';
@@ -123,20 +124,18 @@ export function ChatPanel({
   // content inside it, observed for size changes.
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   // Have we performed the very first "open at the newest message" pin yet?
   const hasPinnedOnce = useRef(false);
-  // "Keep the viewport pinned to the newest message." Starts true on open and
-  // stays true until the user deliberately scrolls up; scrolling back to the
-  // bottom re-arms it. While true, asynchronous media / layout growth (images
-  // finishing load, the Sheet settling) re-pins to the bottom via the
-  // ResizeObserver below — so the first-open position never ends up above the
-  // newest message just because a thumbnail loaded a frame late.
-  const stickToBottom = useRef(true);
-  // The `scrollTop` a programmatic pin/scroll is heading to. The `scroll` event
-  // it produces is recognised (landed within a pixel or two) and ignored, so
-  // our own scrolling never gets mistaken for the user scrolling away.
-  const programmaticScrollTo = useRef<number | null>(null);
+  // `true` once the user has deliberately scrolled UP to read history in THIS
+  // open session — the only thing that stops the panel following the newest
+  // message. Reset to `false` on every open, and re-armed (→ `false`) when the
+  // user scrolls back to the bottom. It is set ONLY from a real downward
+  // `scrollTop` move (`isUserScrollUp`) — a programmatic pin only ever holds or
+  // increases `scrollTop`, so it can never spuriously flip this, which is the
+  // core of the "chat still opens above the latest message" fix.
+  const userAway = useRef(false);
+  // Last `scrollTop` we observed, to measure the direction of the next move.
+  const lastScrollTop = useRef(0);
   // Set right before an older page is fetched; consumed once it has rendered.
   const pendingAnchorHeight = useRef<number | null>(null);
   // Newest seq we have already reacted to (scrolled to / announced).
@@ -144,6 +143,21 @@ export function ChatPanel({
   // Newest seq the read cursor has been advanced to (never regresses).
   const markedSeq = useRef(0);
   const [showNewMessages, setShowNewMessages] = useState(false);
+
+  // Live copies of the query fields the scroll listener reads, so the listener
+  // effect does not re-bind (add/removeEventListener) on every render — the
+  // whole `query` object is a fresh reference each render.
+  const scrollQueryRef = useRef<{
+    maxSeq: number;
+    hasNextPage: boolean | undefined;
+    isFetchingNextPage: boolean;
+    fetchNextPage: () => Promise<unknown>;
+  }>({
+    maxSeq: 0,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: () => Promise.resolve(),
+  });
 
   // --- jump-to-original from a reply quote (design §5.6) ------------------
   // The seq currently outlined by a jump (cleared after ~1.2 s), a one-line
@@ -160,18 +174,27 @@ export function ChatPanel({
   const queryRef = useRef(query);
   queryRef.current = query;
 
-  // Pin the viewport to the bottom, recording where the resulting scroll lands
-  // so the scroll listener does not read it back as a user gesture.
+  // Pin the viewport to the newest message. `scrollTop = scrollHeight` is
+  // clamped by the browser to `scrollHeight - clientHeight` (the real max);
+  // record where it actually landed so the next scroll event measures
+  // direction from there.
   const pinToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    programmaticScrollTo.current = el.scrollHeight;
     el.scrollTop = el.scrollHeight;
+    lastScrollTop.current = el.scrollTop;
   }, []);
 
   const messages = query.messages;
   const maxSeq =
     messages.length > 0 ? (messages[messages.length - 1]?.seq ?? 0) : 0;
+
+  scrollQueryRef.current = {
+    maxSeq,
+    hasNextPage: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+  };
 
   const advanceRead = useCallback(
     (seq: number) => {
@@ -184,21 +207,14 @@ export function ChatPanel({
   );
 
   // Reset all positioning state when the room changes or the panel is
-  // (re)opened. This MUST be a layout effect that runs BEFORE the scroll
-  // orchestration layout effect below (it is declared first, so it does): on a
-  // cached reopen — `messages` already populated, no `isLoading` transition —
-  // the orchestration effect pins on the very first `open` commit. If this
-  // reset ran as a passive `useEffect` it would fire *after* that pin and set
-  // `hasPinnedOnce.current` back to `false`, which permanently disables the
-  // ResizeObserver re-pin (its guard bails on `!hasPinnedOnce.current`) — so
-  // any image / reply-quote / action-row height that lands a frame later would
-  // strand the viewport above the newest message. Running the reset here, in
-  // the same phase and ordered first, means the pin's `hasPinnedOnce = true`
-  // sticks.
+  // (re)opened. A layout effect declared BEFORE the orchestration layout effect
+  // below, so on a cached reopen (`messages` already populated, no `isLoading`
+  // transition) it runs first, then the orchestration pin sets
+  // `hasPinnedOnce = true` and that sticks.
   useLayoutEffect(() => {
     hasPinnedOnce.current = false;
-    stickToBottom.current = true;
-    programmaticScrollTo.current = null;
+    userAway.current = false;
+    lastScrollTop.current = 0;
     pendingAnchorHeight.current = null;
     reactedMaxSeq.current = 0;
     markedSeq.current = 0;
@@ -211,50 +227,67 @@ export function ChatPanel({
     setJumpNotice(null);
   }, [challengeId, open]);
 
-  // Track user intent from the scroll position; auto-load older history near
-  // the top; dismiss the "Nya meddelanden" pill once the user scrolls back
-  // down. Our own programmatic pins are recognised and skipped so they never
-  // clear the follow-the-bottom latch.
+  // Track the reader's intent from the DIRECTION of each scroll, auto-load
+  // older history near the top, and dismiss the "Nya meddelanden" pill when the
+  // reader returns to the bottom. A downward `scrollTop` move (`isUserScrollUp`)
+  // is the only thing that sets `userAway` — a programmatic pin never moves
+  // `scrollTop` down, so this needs no "was that us?" heuristic. Depends only on
+  // stable values, so it binds the listener once per open, not per render.
   useEffect(() => {
     const el = scrollRef.current;
     if (!open || !el) return;
     const onScroll = () => {
-      const expected = programmaticScrollTo.current;
-      programmaticScrollTo.current = null;
-      if (isProgrammaticScroll(el.scrollTop, expected)) return;
-
+      const top = el.scrollTop;
+      const delta = top - lastScrollTop.current;
+      lastScrollTop.current = top;
       const near = isNearBottom(el);
-      stickToBottom.current = near;
-      if (near && showNewMessages) {
-        setShowNewMessages(false);
-        advanceRead(maxSeq);
+
+      if (isUserScrollUp(delta)) {
+        // The reader scrolled up. If that took them away from the bottom they
+        // are now reading history; if they are still near the bottom, keep
+        // following.
+        userAway.current = !near;
+      } else if (near) {
+        // At / back to the bottom → resume following, clear the pill.
+        userAway.current = false;
+        if (showNewMessages) {
+          setShowNewMessages(false);
+          advanceRead(scrollQueryRef.current.maxSeq);
+        }
       }
+
+      const q = scrollQueryRef.current;
       if (
-        el.scrollTop < 48 &&
-        query.hasNextPage &&
-        !query.isFetchingNextPage &&
+        top < 48 &&
+        q.hasNextPage &&
+        !q.isFetchingNextPage &&
         pendingAnchorHeight.current === null
       ) {
         pendingAnchorHeight.current = el.scrollHeight;
-        void query.fetchNextPage();
+        void q.fetchNextPage();
       }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [open, showNewMessages, maxSeq, advanceRead, query]);
+  }, [open, showNewMessages, advanceRead]);
 
-  // Re-assert the bottom pin whenever the list's size changes while the user
-  // has not scrolled away — images finishing load, the Sheet settling after
-  // open, font/emoji reflow. This is what makes the *first* open reliably land
-  // on the newest message even though media contributes its height a frame or
-  // two after the initial pin.
+  // Re-assert the bottom pin whenever the visible geometry changes while the
+  // reader has not scrolled away — media finishing load, the Sheet settling,
+  // reply quotes / action rows / a web font landing a frame late, or the
+  // viewport itself resizing (keyboard, dvh). Observes BOTH the content list
+  // (scrollHeight side) and the scroll container (clientHeight side) so a
+  // change to either half of `maxScroll = scrollHeight - clientHeight` is
+  // caught.
   useEffect(() => {
     const list = listRef.current;
-    if (!open || !list || typeof ResizeObserver === 'undefined') return;
+    const body = scrollRef.current;
+    if (!open || !list || !body || typeof ResizeObserver === 'undefined') {
+      return;
+    }
     const ro = new ResizeObserver(() => {
       if (
         !hasPinnedOnce.current ||
-        !stickToBottom.current ||
+        userAway.current ||
         pendingAnchorHeight.current !== null
       ) {
         return;
@@ -262,6 +295,7 @@ export function ChatPanel({
       pinToBottom();
     });
     ro.observe(list);
+    ro.observe(body);
     return () => ro.disconnect();
   }, [open, challengeId, pinToBottom]);
 
@@ -277,6 +311,7 @@ export function ChatPanel({
         pendingAnchorHeight.current,
         el.scrollHeight,
       );
+      lastScrollTop.current = el.scrollTop;
       pendingAnchorHeight.current = null;
       if (maxSeq > reactedMaxSeq.current) reactedMaxSeq.current = maxSeq;
       return;
@@ -287,7 +322,7 @@ export function ChatPanel({
     if (!hasPinnedOnce.current) {
       pinToBottom();
       hasPinnedOnce.current = true;
-      stickToBottom.current = true;
+      userAway.current = false;
       reactedMaxSeq.current = maxSeq;
       advanceRead(maxSeq);
       return;
@@ -297,13 +332,9 @@ export function ChatPanel({
     if (maxSeq > reactedMaxSeq.current) {
       const newest = messages[messages.length - 1];
       const isOwnMessage = newest?.senderUserId === userId;
-      if (stickToBottom.current || isOwnMessage) {
-        programmaticScrollTo.current = el.scrollHeight;
-        bottomRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'end',
-        });
-        stickToBottom.current = true;
+      if (!userAway.current || isOwnMessage) {
+        pinToBottom();
+        userAway.current = false;
         setShowNewMessages(false);
         advanceRead(maxSeq);
       } else {
@@ -429,13 +460,13 @@ export function ChatPanel({
     setJumpTick((n) => n + 1);
   }, []);
 
-  // Jump driver: scroll to the target if it is loaded (+ brief highlight,
-  // WITHOUT disturbing the follow-the-bottom latch — the recorded
-  // `programmaticScrollTo` makes the scroll listener ignore the resulting
-  // event). Otherwise page upward through the EXISTING `fetchNextPage`
-  // mechanism, at most `REPLY_JUMP_MAX_PAGES` times, re-checking after each
-  // page. If the target never appears, show a one-line notice and stop — no
-  // unbounded loop.
+  // Jump driver: scroll to the target if it is loaded (+ brief highlight).
+  // Jumping to an older message is a move UP, so the scroll listener records it
+  // as "reading history" (`userAway`) — which is correct: after a jump the
+  // panel must not yank the reader back to the bottom. Otherwise page upward
+  // through the EXISTING `fetchNextPage` mechanism, at most
+  // `REPLY_JUMP_MAX_PAGES` times, re-checking after each page. If the target
+  // never appears, show a one-line notice and stop — no unbounded loop.
   useEffect(() => {
     const req = jumpRequest.current;
     if (!req || req.fetching) return;
@@ -447,8 +478,6 @@ export function ChatPanel({
       );
       if (node) {
         node.scrollIntoView({ block: 'center' });
-        const el = scrollRef.current;
-        if (el) programmaticScrollTo.current = el.scrollTop;
         setHighlightSeq(req.seq);
         window.setTimeout(() => {
           setHighlightSeq((s) => (s === req.seq ? null : s));
@@ -484,7 +513,7 @@ export function ChatPanel({
   }, [jumpNotice]);
 
   function jumpToLatest() {
-    stickToBottom.current = true;
+    userAway.current = false;
     pinToBottom();
     setShowNewMessages(false);
     advanceRead(maxSeq);
@@ -655,22 +684,21 @@ export function ChatPanel({
                 isSelf={entry.message.senderUserId === userId}
                 viewerUserId={userId}
                 isJumpHighlighted={entry.message.seq === highlightSeq}
+                likePending={isLikePending(entry.message.id)}
                 onSetLike={setLike}
-                isLikePending={isLikePending}
                 onReply={handleReply}
                 onJumpToMessage={jumpToMessage}
-                moderation={
+                renderModeration={
                   isAdmin &&
                   (entry.message.senderType === 'participant' ||
                     entry.message.senderType === 'training_card')
-                    ? renderModeration?.(entry.message)
+                    ? renderModeration
                     : undefined
                 }
               />
             ),
           )
         )}
-        <div ref={bottomRef} aria-hidden="true" />
 
         {showNewMessages && (
           <button
@@ -678,7 +706,7 @@ export function ChatPanel({
             className={styles.newMessages}
             onClick={jumpToLatest}
           >
-            Nya meddelanden ↓
+            Nya meddelanden <span aria-hidden="true">↓</span>
           </button>
         )}
 
@@ -699,26 +727,35 @@ export function ChatPanel({
   );
 }
 
-function MessageRow({
+/**
+ * `React.memo` so a re-render of `ChatPanel` for an unrelated reason (a
+ * keystroke in the composer, one like's optimistic patch, the jump highlight,
+ * a Realtime refetch that structural-sharing collapsed to unchanged rows) does
+ * NOT re-render + re-run `useMessageGestures` for all ~50 rows. Every prop is
+ * identity-stable across those renders: `message` via React Query structural
+ * sharing, the callbacks via `useCallback`, `likePending` / `isJumpHighlighted`
+ * as plain booleans that only flip for the one affected row.
+ */
+const MessageRow = memo(function MessageRow({
   message,
   isSelf,
   viewerUserId,
   isJumpHighlighted,
-  moderation,
+  likePending,
   onSetLike,
-  isLikePending,
   onReply,
   onJumpToMessage,
+  renderModeration,
 }: {
   message: ChatMessage;
   isSelf: boolean;
   viewerUserId: string;
   isJumpHighlighted: boolean;
-  moderation: ReactNode;
+  likePending: boolean;
   onSetLike: (vars: { messageId: string; liked: boolean }) => void;
-  isLikePending: (messageId: string) => boolean;
   onReply: (message: ChatMessage) => void;
   onJumpToMessage: (seq: number) => void;
+  renderModeration: ((message: ChatMessage) => ReactNode) | undefined;
 }) {
   const isGameMaster = message.senderType === 'game_master';
   const isCard =
@@ -730,10 +767,11 @@ function MessageRow({
     ? 'Du'
     : (message.senderDisplayName ?? 'Deltagare');
 
+  const moderation = renderModeration?.(message);
+
   // Social affordances only on a live chat item — never on the
   // "[Borttaget av administratör]" placeholder (design §7.1).
   const showSocial = message.status === 'active';
-  const likePending = isLikePending(message.id);
   const badgeSubject = isCard ? 'passet' : 'meddelandet';
   const likeLabel = message.likedByMe
     ? 'Ta bort gilla-markering'
@@ -903,4 +941,4 @@ function MessageRow({
       {moderation}
     </div>
   );
-}
+});

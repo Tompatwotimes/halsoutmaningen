@@ -37,7 +37,7 @@ export default defineConfig({
     // Never descend into git worktrees a subagent may have checked out under
     // `.claude/worktrees/*` — their `src/**` would otherwise be discovered and
     // run alongside this checkout's.
-    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'e2e/**'],
     env: {
       VITE_SUPABASE_URL: 'http://localhost:54321',
       VITE_SUPABASE_ANON_KEY: 'test-anon-key',
