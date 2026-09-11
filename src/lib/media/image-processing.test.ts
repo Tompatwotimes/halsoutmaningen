@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BLANK_IMAGE_SOURCE,
   fakeImageFile,
   installCanvasEncodeMock,
   type CanvasEncodeMock,
@@ -23,14 +24,31 @@ const {
 } = await import('./image-processing');
 const { ImageDecodeError } = await import('./image-decode');
 
+/**
+ * `draw` forwards to the real (mocked) `ctx.drawImage`, marking the target
+ * canvas as having content — matching a real decoder — unless `blank` says
+ * this source is itself a legitimately flat/uniform image (e.g. a plain white
+ * photo), in which case the mock canvas reads back as blank too. This lets
+ * tests exercise the draw-result verification in image-processing.ts, whose
+ * canvas mock tracks per-canvas paint state (see `installCanvasEncodeMock`).
+ */
 function fakeDecoded(
   width: number,
   height: number,
+  options: { blank?: boolean } = {},
 ): DecodedImage & {
   draw: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
 } {
-  return { width, height, draw: vi.fn(), close: vi.fn() };
+  const source = options.blank ? BLANK_IMAGE_SOURCE : {};
+  return {
+    width,
+    height,
+    draw: vi.fn((ctx: CanvasRenderingContext2D, dw: number, dh: number) => {
+      ctx.drawImage(source as unknown as CanvasImageSource, 0, 0, dw, dh);
+    }),
+    close: vi.fn(),
+  };
 }
 
 let canvas: CanvasEncodeMock | undefined;
@@ -264,8 +282,11 @@ describe('processImageForUpload — size / quality', () => {
   });
 });
 
-describe('processImageForUpload — OffscreenCanvas path', () => {
-  it('uses OffscreenCanvas.convertToBlob when available', async () => {
+describe('processImageForUpload — never uses OffscreenCanvas', () => {
+  it('draws with a plain <canvas> even when OffscreenCanvas is available', async () => {
+    // OffscreenCanvas is deliberately unused (reliability over an unexercised
+    // off-main-thread benefit — see the module note). Prove it stays that way:
+    // making it available must not change which surface actually gets used.
     canvas = installCanvasEncodeMock({
       offscreenCanvas: true,
       webpSupported: true,
@@ -278,7 +299,97 @@ describe('processImageForUpload — OffscreenCanvas path', () => {
     );
     expect(result.wasProcessed).toBe(true);
     expect(result.sizeBytes).toBe(150_000);
-    expect(canvas.encodeCalls.length).toBeGreaterThanOrEqual(1);
+    expect(canvas.offscreenConstructed).toBe(0);
+  });
+});
+
+describe('processImageForUpload — silent blank-draw detection (white image P0)', () => {
+  beforeEach(() => {
+    canvas = installCanvasEncodeMock();
+  });
+
+  it('rejects when the large draw silently paints nothing but the source has real detail', async () => {
+    // Models the documented mobile-WebKit failure mode: drawImage silently
+    // no-ops on a canvas above some size/memory threshold while the same call
+    // succeeds at a tiny (probe) scale. Nothing upstream of this check
+    // (decode(), naturalWidth/Height, encode) can see this — only inspecting
+    // the actual drawn pixels can.
+    canvas = installCanvasEncodeMock({ simulateBrokenDrawAbovePx: 64 });
+    decodeImageMock.mockResolvedValue(fakeDecoded(2000, 2000));
+    await expect(
+      processImageForUpload(fakeImageFile('a.jpg', 'image/jpeg', 9e6), {
+        maxLongSidePx: 1600,
+      }),
+    ).rejects.toMatchObject({ code: 'encode-failed' });
+    // Never reaches the encoder with corrupt bytes.
+    expect(canvas.encodeCalls).toHaveLength(0);
+  });
+
+  it('does NOT reject a legitimately flat/white source image', async () => {
+    // A plain white photo / screenshot must never be falsely rejected — the
+    // source probe itself reads flat, so the output check is skipped.
+    canvas = installCanvasEncodeMock({ simulateBrokenDrawAbovePx: 64 });
+    decodeImageMock.mockResolvedValue(fakeDecoded(2000, 2000, { blank: true }));
+    const result = await processImageForUpload(
+      fakeImageFile('white.jpg', 'image/jpeg', 9e6),
+      { maxLongSidePx: 1600 },
+    );
+    expect(result.wasProcessed).toBe(true);
+  });
+
+  it('succeeds normally when the large draw paints real content', async () => {
+    canvas = installCanvasEncodeMock({ simulateBrokenDrawAbovePx: 4 });
+    decodeImageMock.mockResolvedValue(fakeDecoded(2000, 2000));
+    const result = await processImageForUpload(
+      fakeImageFile('a.jpg', 'image/jpeg', 9e6),
+      { maxLongSidePx: 1600 },
+    );
+    expect(result.wasProcessed).toBe(true);
+  });
+
+  it('closes the decoded image even when the blank-draw check rejects it', async () => {
+    canvas = installCanvasEncodeMock({ simulateBrokenDrawAbovePx: 64 });
+    const decoded = fakeDecoded(2000, 2000);
+    decodeImageMock.mockResolvedValue(decoded);
+    await expect(
+      processImageForUpload(fakeImageFile('a.jpg', 'image/jpeg', 9e6), {
+        maxLongSidePx: 1600,
+      }),
+    ).rejects.toThrow();
+    expect(decoded.close).toHaveBeenCalled();
+  });
+
+  it('never blocks an upload when canvas pixel reads are privacy-blocked (Tor / resistFingerprinting)', async () => {
+    // getImageData is also the classic canvas-fingerprinting surface — some
+    // browsers/extensions make it throw regardless of what was drawn. That
+    // must degrade to "cannot verify, trust the draw", never to "reject a
+    // real photo because we couldn't check it".
+    canvas = installCanvasEncodeMock({
+      simulateBrokenDrawAbovePx: 64,
+      simulateGetImageDataThrows: true,
+    });
+    decodeImageMock.mockResolvedValue(fakeDecoded(2000, 2000));
+    const result = await processImageForUpload(
+      fakeImageFile('a.jpg', 'image/jpeg', 9e6),
+      { maxLongSidePx: 1600 },
+    );
+    expect(result.wasProcessed).toBe(true);
+  });
+
+  it('does not falsely reject ordinary resize blur on a real, legitimate photo', async () => {
+    // The output goes through one more resize stage than the source probe
+    // (source → target → probe, vs. source → probe): drawing the ALREADY
+    // full-detail target canvas down into the output probe legitimately loses
+    // some variance to that extra low-pass stage. Retaining a quarter of the
+    // source's variance (well above the 10% ratio floor) must never be
+    // treated as a broken draw — only near-total loss should be.
+    canvas = installCanvasEncodeMock({ cascadeBlurFactor: 0.5 });
+    decodeImageMock.mockResolvedValue(fakeDecoded(2000, 2000));
+    const result = await processImageForUpload(
+      fakeImageFile('a.jpg', 'image/jpeg', 9e6),
+      { maxLongSidePx: 1600 },
+    );
+    expect(result.wasProcessed).toBe(true);
   });
 });
 
@@ -386,5 +497,89 @@ describe('processImagesForUpload — sequential, bounded memory', () => {
       [],
     );
     expect(decodeImageMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('processImagesForUpload — stress: no cross-file / cross-attachment contamination', () => {
+  // Guards against the "varannan bild" (every-other-image) class of bug: a
+  // file's processed output ending up associated with a DIFFERENT file's
+  // source or size, or a transient failure in one file corrupting a sibling.
+  // Each file gets a distinct, verifiable dimension so a mix-up is caught by
+  // the width/height assertion, not just a count.
+  it('maps 100 sequential alternating files to their own correct dimensions', async () => {
+    canvas = installCanvasEncodeMock();
+    const n = 100;
+    decodeImageMock.mockImplementation((file) => {
+      const idx = Number(file.name.replace(/\D/g, ''));
+      // Alternate portrait/landscape so a transposed mix-up is also caught.
+      return Promise.resolve(
+        idx % 2 === 0
+          ? fakeDecoded(1000 + idx, 500)
+          : fakeDecoded(500, 1000 + idx),
+      );
+    });
+    const files = Array.from({ length: n }, (_, i) =>
+      fakeImageFile(`img${String(i)}.jpg`, 'image/jpeg', 9e6),
+    );
+
+    const results = await processImagesForUpload(files, {
+      maxLongSidePx: 5000,
+    });
+
+    expect(results).toHaveLength(n);
+    results.forEach((r, idx) => {
+      if (idx % 2 === 0) {
+        expect(r.width).toBe(1000 + idx);
+        expect(r.height).toBe(500);
+      } else {
+        expect(r.width).toBe(500);
+        expect(r.height).toBe(1000 + idx);
+      }
+    });
+  });
+
+  it('an alternating good/broken-draw sequence rejects only the broken ones, at the right index, with no leakage', async () => {
+    canvas = installCanvasEncodeMock({ simulateBrokenDrawAbovePx: 64 });
+    const n = 20;
+    // Odd files simulate the silent large-canvas draw failure; even files are
+    // fine. A leak (state from one file affecting the next) would show up as
+    // an unexpected pass/fail pattern instead of a clean odd/even split.
+    const outcomes = await Promise.all(
+      Array.from({ length: n }, async (_, i) => {
+        decodeImageMock.mockResolvedValueOnce(fakeDecoded(2000, 2000));
+        try {
+          await processImageForUpload(
+            fakeImageFile(`img${String(i)}.jpg`, 'image/jpeg', 9e6),
+            { maxLongSidePx: 1600 },
+          );
+          return 'ok';
+        } catch {
+          return 'rejected';
+        }
+      }),
+    );
+    // Every file used the SAME broken-above-64px canvas mock, so every one of
+    // these (2000×2000, well above the 64px threshold) must reject — proving
+    // the guard fires consistently across a long run, not intermittently.
+    expect(outcomes).toEqual(Array(n).fill('rejected'));
+  });
+
+  it('mixed input types (jpeg/png/webp/heic) each process to the expected output type', async () => {
+    canvas = installCanvasEncodeMock({ webpSupported: true });
+    const cases: { name: string; type: string }[] = [
+      { name: 'a.jpg', type: 'image/jpeg' },
+      { name: 'b.png', type: 'image/png' },
+      { name: 'c.webp', type: 'image/webp' },
+      { name: 'd.heic', type: 'image/heic' },
+    ];
+    for (const { name, type } of cases) {
+      decodeImageMock.mockResolvedValueOnce(fakeDecoded(2000, 2000));
+      const result = await processImageForUpload(
+        fakeImageFile(name, type, 9e6),
+        { maxLongSidePx: 1600, format: 'auto' },
+      );
+      expect(result.mimeType).toBe('image/webp');
+      expect(result.wasProcessed).toBe(true);
+    }
   });
 });

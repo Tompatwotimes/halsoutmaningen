@@ -202,6 +202,8 @@ export interface CanvasEncodeMock {
   readonly drawCalls: number;
   /** fillRect invocations (white background for JPEG). */
   readonly fillCalls: number;
+  /** Number of `OffscreenCanvas` instances actually constructed. */
+  readonly offscreenConstructed: number;
 }
 
 export interface CanvasEncodeConfig {
@@ -209,9 +211,34 @@ export interface CanvasEncodeConfig {
   sizeFor?: (mime: string, quality: number | undefined) => number | null;
   /** Whether the synchronous WebP probe (`toDataURL('image/webp')`) succeeds. */
   webpSupported?: boolean;
-  /** Also expose a matching `OffscreenCanvas` global. */
+  /** Also expose a matching `OffscreenCanvas` global (to prove it goes unused). */
   offscreenCanvas?: boolean;
+  /**
+   * Simulate mobile WebKit's documented large-canvas failure mode: `drawImage`
+   * silently paints nothing (no throw) onto any canvas whose width OR height
+   * exceeds this, while the same call still succeeds on a small canvas. Unset
+   * = every draw succeeds.
+   */
+  simulateBrokenDrawAbovePx?: number;
+  /**
+   * Simulate privacy-hardened `getImageData` (Tor Browser, Firefox
+   * `resistFingerprinting`, canvas-fingerprint-blocking extensions), which
+   * can throw rather than return real pixel data.
+   */
+  simulateGetImageDataThrows?: boolean;
+  /**
+   * Applied only when copying FROM another canvas (the output probe reading
+   * the just-rendered target canvas) — models the extra low-pass blur an
+   * additional resize stage legitimately adds, distinct from a silent draw
+   * failure. 1 (default) = lossless copy.
+   */
+  cascadeBlurFactor?: number;
 }
+
+/** Identity-marked source: a `decoded.draw` source representing a source
+ * image that is itself flat/blank (used to prove the output check is skipped
+ * for a legitimately uniform photo — never a false positive). */
+export const BLANK_IMAGE_SOURCE = { __mock: 'blank-source' as const };
 
 export function installCanvasEncodeMock(
   config: CanvasEncodeConfig = {},
@@ -219,20 +246,70 @@ export function installCanvasEncodeMock(
   const encodeCalls: { mime: string; quality: number | undefined }[] = [];
   let drawCalls = 0;
   let fillCalls = 0;
+  let offscreenConstructed = 0;
   const sizeFor = config.sizeFor ?? (() => 1024);
   const webpSupported = config.webpSupported ?? false;
+  // Tracks, per canvas element, the "strength" (0–1) of real content it has
+  // ever received — via a successful drawImage from a real/partial source, or
+  // a copy from another canvas that itself had content. Absent/0 = blank
+  // (matches a fresh or fillRect-only canvas).
+  const painted = new WeakMap<HTMLCanvasElement, number>();
 
-  function makeCtx(): CanvasRenderingContext2D {
+  function sourceStrength(source: unknown): number {
+    if (source === BLANK_IMAGE_SOURCE) return 0;
+    if (
+      typeof source === 'object' &&
+      source !== null &&
+      (source as { __mock?: string }).__mock === 'partial'
+    ) {
+      return (source as { strength: number }).strength;
+    }
+    if (source instanceof HTMLCanvasElement) {
+      return (painted.get(source) ?? 0) * (config.cascadeBlurFactor ?? 1);
+    }
+    return 1;
+  }
+
+  function makeCtx(canvasEl: HTMLCanvasElement): CanvasRenderingContext2D {
     return {
       fillStyle: '',
-      drawImage() {
+      drawImage(source: unknown) {
         drawCalls += 1;
+        const tooLarge =
+          config.simulateBrokenDrawAbovePx != null &&
+          (canvasEl.width > config.simulateBrokenDrawAbovePx ||
+            canvasEl.height > config.simulateBrokenDrawAbovePx);
+        if (tooLarge) return; // silent no-op — the bug under test
+        painted.set(canvasEl, sourceStrength(source));
       },
       fillRect() {
         fillCalls += 1;
       },
       clearRect() {
         /* no-op */
+      },
+      getImageData(_x: number, _y: number, w: number, h: number) {
+        if (config.simulateGetImageDataThrows) {
+          throw new DOMException('canvas read blocked', 'SecurityError');
+        }
+        const strength = painted.get(canvasEl) ?? 0;
+        const n = w * h;
+        const data = new Uint8ClampedArray(n * 4);
+        for (let i = 0; i < n; i++) {
+          const o = i * 4;
+          if (strength > 0) {
+            const v = Math.round(128 + (((i * 53) % 256) - 128) * strength);
+            data[o] = v;
+            data[o + 1] = 255 - v;
+            data[o + 2] = (v * 3) % 256;
+          } else {
+            data[o] = 255;
+            data[o + 1] = 255;
+            data[o + 2] = 255;
+          }
+          data[o + 3] = 255;
+        }
+        return { data, width: w, height: h } as ImageData;
       },
     } as unknown as CanvasRenderingContext2D;
   }
@@ -252,7 +329,11 @@ export function installCanvasEncodeMock(
   const prevToBlob = proto.toBlob;
   const prevToDataURL = proto.toDataURL;
 
-  proto.getContext = (() => makeCtx()) as unknown as typeof proto.getContext;
+  proto.getContext = function (
+    this: HTMLCanvasElement,
+  ): CanvasRenderingContext2D {
+    return makeCtx(this);
+  } as unknown as typeof proto.getContext;
 
   proto.toBlob = ((cb: BlobCallback, type?: string, quality?: number) => {
     const mime = type ?? 'image/png';
@@ -276,11 +357,14 @@ export function installCanvasEncodeMock(
       width: number;
       height: number;
       constructor(w: number, h: number) {
+        offscreenConstructed += 1;
         this.width = w;
         this.height = h;
       }
       getContext() {
-        return makeCtx();
+        // Never exercised by production (OffscreenCanvas is unused there);
+        // kept for completeness in case a test constructs one directly.
+        return makeCtx(document.createElement('canvas') as HTMLCanvasElement);
       }
       convertToBlob(opts?: { type?: string; quality?: number }): Promise<Blob> {
         const blob = encodeToBlob(opts?.type ?? 'image/png', opts?.quality);
@@ -310,6 +394,9 @@ export function installCanvasEncodeMock(
     },
     get fillCalls() {
       return fillCalls;
+    },
+    get offscreenConstructed() {
+      return offscreenConstructed;
     },
   };
 }

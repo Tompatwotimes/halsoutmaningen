@@ -17,6 +17,13 @@ import {
  * Memory: `processImagesForUpload` runs strictly one file at a time and releases
  * each decoded image and canvas before starting the next, so selecting four
  * 48-MP photos never decodes four rasters at once (Mobile Safari).
+ *
+ * Draw surface: always a plain `<canvas>`, never `OffscreenCanvas` — see the
+ * note on `createDrawSurface`. After drawing, a tiny before/after pixel probe
+ * (see "Draw-result verification" below) checks the draw actually painted
+ * something before the result is ever encoded/uploaded — a silent no-op draw
+ * on a large mobile-WebKit canvas is otherwise invisible to every check
+ * upstream of it.
  */
 
 /** Input MIME types the processor will attempt to decode. */
@@ -119,27 +126,22 @@ function computeTargetSize(
   };
 }
 
-type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
-type Ctx2d = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-
 /**
- * A drawable canvas + its 2D context. `OffscreenCanvas` is used opportunistically
- * (only when it actually yields a 2D context), never mandatorily — a detached
- * `<canvas>` is the always-available fallback. Both are off-DOM.
+ * A drawable off-DOM `<canvas>` + its 2D context.
+ *
+ * Deliberately always a plain `<canvas>`, never `OffscreenCanvas`: this runs
+ * strictly one file at a time on the main thread (see the module note), so
+ * OffscreenCanvas's one real advantage — off-main-thread rendering — is never
+ * exercised here, and a plain `<canvas>` + `HTMLImageElement` source is the
+ * single most battle-tested draw pairing across every browser engine,
+ * including every WebKit version. Trading an unused, opportunistic surface
+ * for that reliability is a deliberate choice (Task: mobile chat recovery) —
+ * not an oversight.
  */
 function createDrawSurface(
   width: number,
   height: number,
-): { canvas: AnyCanvas; ctx: Ctx2d } | null {
-  if (typeof OffscreenCanvas === 'function') {
-    try {
-      const offscreen = new OffscreenCanvas(width, height);
-      const ctx = offscreen.getContext('2d');
-      if (ctx) return { canvas: offscreen, ctx };
-    } catch {
-      // fall through to a DOM canvas
-    }
-  }
+): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -148,9 +150,101 @@ function createDrawSurface(
   return { canvas, ctx };
 }
 
-function releaseCanvas(canvas: AnyCanvas): void {
+function releaseCanvas(canvas: HTMLCanvasElement): void {
   canvas.width = 0;
   canvas.height = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Draw-result verification (Task: mobile chat recovery — white image P0)
+//
+// A `decode()`-gated <img> can still hand `drawImage` a source that paints
+// nothing onto a LARGE destination canvas while the identical call succeeds
+// at a tiny scale — mobile WebKit is documented to silently no-op (rather
+// than throw) a canvas operation that exceeds its GPU/memory budget for that
+// surface. No prior fix in this codebase targeted this: they all gated the
+// <img> load/decode race, which is a different, already-closed failure mode.
+// A silent no-op is invisible to every check upstream (decode() resolved,
+// naturalWidth/Height were nonzero, encode succeeds) — the ONLY way to catch
+// it is to look at the actual drawn pixels before trusting them.
+//
+// The check compares two INDEPENDENT tiny probes so a legitimately flat/white
+// source (a plain wall, a screenshot) is never falsely rejected:
+//   1. the SOURCE drawn directly at probe scale (always well under any size
+//      limit, so this reflects "does this photo have real detail?").
+//   2. the just-rendered OUTPUT canvas (whatever size it actually is)
+//      downscaled into a second probe (cheap regardless of canvas size).
+// Only when (1) shows real detail but (2) reads as flat is the big draw
+// treated as having silently failed.
+// ---------------------------------------------------------------------------
+
+const DRAW_PROBE_PX = 8;
+/**
+ * Luma-variance floor below which the SOURCE probe reads as "flat/no detail"
+ * — comfortably above 8-bit rounding noise on a genuinely uniform-colour
+ * source. Only gates whether the output is checked at all (§ below); it is
+ * NOT compared directly against the output's variance (see
+ * `BLANK_DRAW_RATIO_THRESHOLD`).
+ */
+const FLAT_VARIANCE_THRESHOLD = 4;
+/**
+ * The output is rejected only when it retains less than this fraction of the
+ * source probe's variance — e.g. 0.1 = the draw kept under 10% of the
+ * source's detail. A silently blank canvas loses essentially all of it
+ * (≈0%); ordinary resize low-pass blur from the extra source→target→probe
+ * stage does not come close to this floor on a real photo.
+ */
+const BLANK_DRAW_RATIO_THRESHOLD = 0.1;
+
+function lumaVariance(data: Uint8ClampedArray): number {
+  const n = data.length / 4;
+  if (n === 0) return 0;
+  const lumas = new Float64Array(n);
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const luma =
+      0.299 * (data[o] ?? 0) +
+      0.587 * (data[o + 1] ?? 0) +
+      0.114 * (data[o + 2] ?? 0);
+    lumas[i] = luma;
+    sum += luma;
+  }
+  const mean = sum / n;
+  let variance = 0;
+  for (let i = 0; i < n; i++) variance += ((lumas[i] ?? 0) - mean) ** 2;
+  return variance / n;
+}
+
+/**
+ * Paint into a fresh `DRAW_PROBE_PX`² canvas and return its luma variance, or
+ * `null` if the probe itself could not be read.
+ *
+ * `getImageData` is also the classic canvas-fingerprinting surface: privacy
+ * hardening (Tor Browser, Firefox `resistFingerprinting`, several canvas-
+ * blocking extensions) can make it throw, or hand back placeholder pixels
+ * that have nothing to do with what was actually drawn. That must never turn
+ * into "treat this user's real photo as corrupt" — an inconclusive probe
+ * means the verification below is skipped entirely, not that the draw failed.
+ */
+function probeVariance(
+  paint: (ctx: CanvasRenderingContext2D) => void,
+): number | null {
+  const probe = document.createElement('canvas');
+  probe.width = DRAW_PROBE_PX;
+  probe.height = DRAW_PROBE_PX;
+  try {
+    const ctx = probe.getContext('2d');
+    if (!ctx) return null;
+    paint(ctx);
+    return lumaVariance(
+      ctx.getImageData(0, 0, DRAW_PROBE_PX, DRAW_PROBE_PX).data,
+    );
+  } catch {
+    return null;
+  } finally {
+    releaseCanvas(probe);
+  }
 }
 
 let webpEncodeSupport: boolean | null = null;
@@ -177,16 +271,10 @@ export function __resetWebpProbeForTests(): void {
 }
 
 function encodeCanvas(
-  canvas: AnyCanvas,
+  canvas: HTMLCanvasElement,
   mime: string,
   quality: number,
 ): Promise<Blob | null> {
-  if ('convertToBlob' in canvas) {
-    return canvas
-      .convertToBlob({ type: mime, quality })
-      .then((blob) => blob)
-      .catch(() => null);
-  }
   return new Promise((resolve) => {
     canvas.toBlob(
       (blob) => {
@@ -290,6 +378,12 @@ export async function processImageForUpload(
     }
     const { canvas, ctx } = surface;
     try {
+      // Baseline BEFORE the real draw: does the source have any detail at
+      // all? (independent of whatever might degrade the large draw below).
+      const sourceVariance = probeVariance((probeCtx) =>
+        decoded.draw(probeCtx, DRAW_PROBE_PX, DRAW_PROBE_PX),
+      );
+
       if (mime === 'image/jpeg') {
         // JPEG has no alpha — flatten transparency onto white, not black.
         ctx.fillStyle = '#ffffff';
@@ -297,6 +391,36 @@ export async function processImageForUpload(
       }
       decoded.draw(ctx, target.width, target.height);
       decoded.close();
+
+      // A source with real detail that produced an almost-flat output means
+      // the big draw silently painted nothing — never encode/upload that. Two
+      // deliberate guards against a false positive on a REAL photo:
+      //  - `sourceVariance === null` means the probe itself was inconclusive
+      //    (canvas-read blocked/spoofed by privacy hardening — Tor Browser,
+      //    Firefox resistFingerprinting, a fingerprint-blocking extension) —
+      //    skip the check entirely rather than let an unreadable probe reject
+      //    a perfectly good photo.
+      //  - the output is compared to the source by RATIO, not an independent
+      //    absolute threshold: `target` went through one more resize stage
+      //    than the source probe (source → target → probe, vs. source →
+      //    probe), and that extra stage's own low-pass blur legitimately
+      //    lowers variance somewhat even on a correct draw. A silently blank
+      //    canvas loses essentially ALL of it (ratio ~0); ordinary resize
+      //    blur does not.
+      if (sourceVariance !== null && sourceVariance > FLAT_VARIANCE_THRESHOLD) {
+        const outputVariance = probeVariance((probeCtx) =>
+          probeCtx.drawImage(canvas, 0, 0, DRAW_PROBE_PX, DRAW_PROBE_PX),
+        );
+        if (
+          outputVariance !== null &&
+          outputVariance < sourceVariance * BLANK_DRAW_RATIO_THRESHOLD
+        ) {
+          throw new ImageProcessingError(
+            'encode-failed',
+            'Bilden kunde inte bearbetas korrekt. Försök igen eller välj en annan bild.',
+          );
+        }
+      }
 
       // 7. Encode.
       const quality = options.quality ?? DEFAULT_QUALITY;
