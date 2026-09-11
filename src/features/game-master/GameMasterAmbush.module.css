@@ -36,6 +36,38 @@
   color: var(--c-text);
 }
 
+/*
+ * DARK theme: the app itself is dark now, so "just dark" no longer sets GM
+ * apart — dark-on-dark loses exactly the drama the light-theme island
+ * exists for (spec: GM must still feel like "the lights suddenly dimmed").
+ * Contrast comes from a different dimension instead: a distinctly WARMER,
+ * ember-toned surface (not the app's cool charcoal-green) plus a brighter,
+ * more saturated accent — still restrained (no glow, no red horror-theme),
+ * but unmistakably a different kind of message than the app's other dark
+ * surfaces.
+ */
+[data-theme='dark'] .banner,
+[data-theme='dark'] .gmSheet {
+  --c-bg: #1f120d;
+  --c-surface: #2a1811;
+  --c-surface-raised: #331e15;
+  --c-surface-sunken: #180e0a;
+  --c-surface-hover: #3c2318;
+  --c-border: #4a2a1c;
+  --c-border-strong: #9c6b4d;
+  --c-border-faint: #24140e;
+  --c-text: #f5ece5;
+  --c-text-muted: #cbb3a3;
+  --c-text-faint: #a68b7a;
+  --c-text-inverse: #1f120d;
+  --c-accent: #ff8f5c;
+  --c-accent-hover: #ffa374;
+  --c-accent-pressed: #e67a48;
+  --c-accent-quiet: #4a2a1c;
+  --c-accent-contrast: #1f120d;
+  --c-accent-text: #ff8f5c;
+}
+
 .banner {
   display: flex;
   align-items: flex-start;

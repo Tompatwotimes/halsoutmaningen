@@ -1,8 +1,12 @@
+import type { ReactNode } from 'react';
 import styles from './SegmentedControl.module.css';
 
 export interface SegmentOption<T extends string> {
   value: T;
   label: string;
+  /** Rendered before the label — kept optional so every existing
+   * text-only caller is unaffected. */
+  icon?: ReactNode;
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -41,6 +45,11 @@ export function SegmentedControl<T extends string>({
             .join(' ')}
           onClick={() => onChange(opt.value)}
         >
+          {opt.icon && (
+            <span className={styles.icon} aria-hidden="true">
+              {opt.icon}
+            </span>
+          )}
           {opt.label}
         </button>
       ))}

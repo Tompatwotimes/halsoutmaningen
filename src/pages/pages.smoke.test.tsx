@@ -18,6 +18,7 @@ import { activeChallenge } from '@/fixtures/challenge';
 import { participantFixtures, SELF_USER_ID } from '@/fixtures/participants';
 import { buildEntryMap } from '@/fixtures/entries';
 import { AppShell } from '@/components/layout/AppShell';
+import { ThemeProvider } from '@/features/theme/ThemeProvider';
 import { RequireAdmin } from '@/features/auth/RequireAdmin';
 import { fetchNextGameMasterEvent } from '@/features/game-master/game-master-api';
 import {
@@ -334,13 +335,15 @@ function wrap(
     active: true,
   });
   return render(
-    <QueryClientProvider client={qc}>
-      <AuthContext.Provider value={auth}>
-        <MemoryRouter initialEntries={options?.initialEntries ?? ['/']}>
-          {node}
-        </MemoryRouter>
-      </AuthContext.Provider>
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={qc}>
+        <AuthContext.Provider value={auth}>
+          <MemoryRouter initialEntries={options?.initialEntries ?? ['/']}>
+            {node}
+          </MemoryRouter>
+        </AuthContext.Provider>
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 }
 
