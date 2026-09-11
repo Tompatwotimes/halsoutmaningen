@@ -242,7 +242,10 @@ export function HomePage() {
           </p>
         )}
         <p className={styles.kassaRow}>
-          <span className={styles.kassaLabel}>Kassan</span>
+          <span className={styles.kassaLabel}>
+            Kassan
+            <span className={styles.kassaHint}>till julbordet</span>
+          </span>
           <span className={`${styles.kassaValue} tnum`}>
             {formatSek(kassan)}
           </span>

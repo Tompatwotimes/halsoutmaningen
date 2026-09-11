@@ -4,7 +4,37 @@
  * Deliberately quiet: the micro banner is a system notice, not a toast tower,
  * and never covers the primary action. Scandinavian-premium tokens only — no
  * gradients, no cartoon colour, no emoji (spec §17).
+ *
+ * Deliberately DARK, unlike the rest of the (now light) product: the whole
+ * point of Game Master is an interruption with a different texture than
+ * everyday UI. Redeclaring the standard token NAMES locally (rather than
+ * inventing new ones) means every shared primitive rendered inside — Button,
+ * Badge, Sheet's own header/footer via `panelClassName` — reads correctly
+ * dark with no changes to those components themselves.
  */
+
+.banner,
+.gmSheet {
+  --c-bg: #14110c;
+  --c-surface: #1c1710;
+  --c-surface-raised: #221c14;
+  --c-surface-sunken: #110d08;
+  --c-surface-hover: #2a2318;
+  --c-border: #2c2620;
+  --c-border-strong: #4a3f30;
+  --c-border-faint: #201b15;
+  --c-text: #f5f0e8;
+  --c-text-muted: #b8ab97;
+  --c-text-faint: #8f8471;
+  --c-text-inverse: #14110c;
+  --c-accent: #d9784f;
+  --c-accent-hover: #e08a63;
+  --c-accent-pressed: #c0693f;
+  --c-accent-quiet: #3a2519;
+  --c-accent-contrast: #14110c;
+  --c-accent-text: #e8a37e;
+  color: var(--c-text);
+}
 
 .banner {
   display: flex;
@@ -12,10 +42,10 @@
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--c-border);
-  border-left: 3px solid var(--c-border-strong);
+  border-left: 3px solid var(--c-accent);
   border-radius: var(--radius-md);
-  background: var(--c-surface-sunken);
-  box-shadow: var(--shadow-sm);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-md);
   animation: gm-banner-in var(--dur-base) var(--ease-out);
 }
 
@@ -32,7 +62,7 @@
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
-  color: var(--c-text-faint);
+  color: var(--c-accent-text);
 }
 
 .title {

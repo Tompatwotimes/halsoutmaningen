@@ -38,9 +38,9 @@
   outline-offset: 2px;
 }
 
-/* The viewer's own like — filled heart in the accent colour. */
+/* The viewer's own like — a heart reads as a heart, not the brand colour. */
 .mine {
-  color: var(--c-accent);
+  color: var(--c-heart);
 }
 
 .heart {

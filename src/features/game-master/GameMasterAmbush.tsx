@@ -132,6 +132,7 @@ function SheetAmbush({
       open
       onClose={onDismiss}
       title={event.title}
+      panelClassName={styles.gmSheet}
       footer={
         <Button variant="primary" fullWidth onClick={onDismiss}>
           Noterat

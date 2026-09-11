@@ -199,11 +199,21 @@
 }
 
 .kassaLabel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
   font-weight: var(--fw-semibold);
   color: var(--c-text-faint);
   text-transform: uppercase;
   font-size: var(--fs-2xs);
   letter-spacing: var(--tracking-eyebrow);
+}
+
+.kassaHint {
+  font-weight: var(--fw-regular);
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+  color: var(--c-text-faint);
 }
 
 .kassaValue {

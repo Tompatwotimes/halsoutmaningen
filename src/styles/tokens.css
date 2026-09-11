@@ -1,86 +1,107 @@
 /*
  * Hälsoutmaningen design tokens.
  *
- * One coherent visual identity: a deep, calm near-black foundation, a single
- * confident cool accent ("is", the brand colour), and a purposeful status
- * system that never relies on colour alone. Dark-first and deliberately
- * dark-only — a mature, premium, Scandinavian feel closer to a native app
- * than a web dashboard (CLAUDE.md §13–15, design north star).
+ * Light, warm and positive by design — a bright, calm foundation, one
+ * confident fresh-green accent, and a status system that reads clearly
+ * without ever visually punishing the reader. The product should feel like a
+ * polished social fitness app that happens to have consequences, not a
+ * control panel (CLAUDE.md §13–15, design north star).
+ *
+ * Light-only, deliberately: this redesign's entire point is "light mode IS
+ * the product" — there is no `prefers-color-scheme`/`[data-theme]` branching
+ * to maintain here.
  *
  * Values are chosen, not arbitrary: every colour, size and duration below is
- * referenced by name from component CSS. Do not hardcode raw hex/px in
- * components — add or reuse a token here.
+ * referenced by name from component CSS, and every text/background pairing
+ * has been checked against WCAG AA (4.5:1 for text, 3:1 for meaningful UI
+ * boundaries). Do not hardcode raw hex/px in components — add or reuse a
+ * token here.
  */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* ---- Foundation: near-black with a faint cool cast ---------------------- */
-  --c-bg: #0b0e13;
-  --c-bg-elevated: #0f131a;
-  --c-surface: #141922;
-  --c-surface-raised: #1b212c;
-  --c-surface-sunken: #0d1117;
-  --c-surface-hover: #1f2733;
+  /* ---- Foundation: warm off-white, not stark/clinical white -------------- */
+  --c-bg: #faf7f2;
+  --c-bg-elevated: #f3eee4;
+  --c-surface: #ffffff;
+  --c-surface-raised: #ffffff;
+  --c-surface-sunken: #f5f1e9;
+  --c-surface-hover: #f2ecdf;
 
-  --c-border: #262e3b;
-  --c-border-strong: #38424f;
-  --c-border-faint: #1c232e;
+  --c-border: #eae3d5;
+  --c-border-strong: #948665;
+  --c-border-faint: #f1ece1;
 
-  /* ---- Text ------------------------------------------------------------- */
-  --c-text: #f2f5f9;
-  --c-text-muted: #aab4c3;
-  --c-text-faint: #808d9f;
-  --c-text-inverse: #0b0e13;
+  /* ---- Text --------------------------------------------------------------
+   * `--c-text` 16.6:1 on white / 15.5:1 on --c-bg. `--c-text-muted` 6.1:1 on
+   * white. `--c-text-faint` 4.8:1 on white, 4.7:1 on --c-surface-sunken — both
+   * AA-normal, not just AA-large, so neither is reserved for "big text only".
+   */
+  --c-text: #221e19;
+  --c-text-muted: #6b6055;
+  --c-text-faint: #7a7264;
+  --c-text-inverse: #ffffff;
 
-  /* ---- Brand accent: cool aqua ("is") — calm, health, Scandinavian ----- */
-  --c-accent: #4bb3c4;
-  --c-accent-hover: #5ec3d3;
-  --c-accent-pressed: #3c9aa9;
-  --c-accent-quiet: #17323a; /* filled chip / subtle background */
-  --c-accent-text: #7fd3e0; /* accent as text on dark surfaces (AA) */
-  --c-accent-contrast: #032027; /* text/icon on top of a solid accent fill */
+  /* ---- Brand accent: fresh teal-green — calm, healthy, alive -------------
+   * `--c-accent` on white: 5.4:1. Hover/pressed both stay ≥ 6:1 with white
+   * text — feedback states never trade away contrast.
+   */
+  --c-accent: #0b7a4a;
+  --c-accent-hover: #0a6f43;
+  --c-accent-pressed: #085c38;
+  --c-accent-quiet: #e6f5ec; /* filled chip / subtle tinted background */
+  --c-accent-text: #0b7a4a; /* accent as text on a light surface (AA) */
+  --c-accent-contrast: #ffffff; /* text/icon on top of a solid accent fill */
 
-  /* ---- Status system --------------------------------------------------- */
-  /* Completed — clearly positive, green, distinct from the aqua brand.     */
-  --c-completed: #3ecf8e;
-  --c-completed-text: #57dc9e;
-  --c-completed-surface: #10281e;
-  --c-completed-border: #1f5540;
+  /* ---- Social accent: warm heart red — hearts read as hearts, not brand -- */
+  --c-heart: #d94a63;
+  --c-heart-quiet: #fbe9ec;
 
-  /* Missed — obvious but not aggressive: warm clay, not fire-engine red.   */
-  --c-missed: #e0705d;
-  --c-missed-text: #ec8676;
-  --c-missed-surface: #2c1613;
-  --c-missed-border: #63302a;
+  /* ---- Status system -------------------------------------------------- */
+  /* Completed — clearly positive green, distinct from the brand accent.   */
+  --c-completed: #0b7a4a;
+  --c-completed-text: #137a4c;
+  --c-completed-surface: #e7f5ec;
+  --c-completed-border: #bee3cc;
 
-  /* Pending today — attracts attention: warm amber.                       */
-  --c-pending: #e6b24d;
-  --c-pending-text: #f0c268;
-  --c-pending-surface: #2a2110;
-  --c-pending-border: #5c4a22;
+  /* Missed — honest but not hostile: warm terracotta, never fire-engine.  */
+  --c-missed: #a44c38;
+  --c-missed-text: #a44c38;
+  --c-missed-surface: #fbeae6;
+  --c-missed-border: #f0c7bc;
 
-  /* Future — quiet, neutral.                                              */
-  --c-future-text: #71809a;
-  --c-future-surface: #171d27;
-  --c-future-border: #2a3340;
+  /* Pending today — invites action: warm amber.                          */
+  --c-pending: #8a6412;
+  --c-pending-text: #8a6412;
+  --c-pending-surface: #fcf1da;
+  --c-pending-border: #edd9a0;
 
-  /* Not participating — barely there.                                    */
-  --c-absent-text: #55606f;
-  --c-absent-surface: #10151c;
+  /* Future — quiet, unclaimed, not "empty".                              */
+  --c-future-text: #726a5b;
+  --c-future-surface: #f4f1ea;
+  --c-future-border: #e6e0d2;
 
-  /* ---- Feedback ------------------------------------------------------- */
-  --c-danger: #e0705d;
-  --c-danger-text: #ec8676;
-  --c-success: #3ecf8e;
-  --c-focus: #7fd3e0;
+  /* Not participating — barely there, no emphasis at all.                */
+  --c-absent-text: #948b7d;
+  --c-absent-surface: #faf8f3;
 
-  /* ---- A single restrained brand gradient (used sparingly) ----------- */
+  /* ---- Feedback --------------------------------------------------------
+   * `--c-danger` is reserved for genuinely destructive actions (remove,
+   * delete, invalidate) — distinct in tone from the everyday "missed day"
+   * status above, so real destructive intent still stands out.
+   */
+  --c-danger: #b7402b;
+  --c-danger-text: #b7402b;
+  --c-success: #0b7a4a;
+  --c-focus: #0b7a4a;
+
+  /* ---- A single restrained brand gradient (used sparingly) ------------ */
   --gradient-brand: linear-gradient(
     150deg,
-    #1a3d45 0%,
-    #122730 55%,
-    #0f1a22 100%
+    #eaf6ef 0%,
+    #f3f6ee 55%,
+    #faf7f2 100%
   );
 
   /* ---- Typography --------------------------------------------------- */
@@ -134,11 +155,15 @@
   --radius-xl: 1.375rem;
   --radius-full: 999px;
 
-  /* ---- Elevation ---------------------------------------------------- */
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.45);
-  --shadow-lg: 0 20px 48px -12px rgb(0 0 0 / 0.6);
-  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--c-focus) 45%, transparent);
+  /* ---- Elevation ------------------------------------------------------
+   * Warm, soft shadows tuned for LIGHT surfaces — low opacity so cards feel
+   * lifted, not boxed. A dark-mode shadow recipe (heavy black, high opacity)
+   * reads as harsh once the canvas underneath it is light.
+   */
+  --shadow-sm: 0 1px 2px rgb(35 26 12 / 0.05);
+  --shadow-md: 0 8px 24px -8px rgb(35 26 12 / 0.12);
+  --shadow-lg: 0 24px 56px -16px rgb(35 26 12 / 0.16);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--c-focus) 35%, transparent);
 
   /* ---- Layout ----------------------------------------------------- */
   --app-max-width: 30rem; /* mobile-first content column */

@@ -37,9 +37,12 @@ export function Avatar({
   className,
 }: AvatarProps) {
   const hue = useMemo(() => hueFor(name), [name]);
+  // Light tinted chip + a darker, saturated initials colour — verified
+  // ≥4.5:1 across the full hue wheel (checked every 45°), so any name's
+  // colour stays legible without needing a per-hue exception.
   const style = {
-    '--avatar-bg': `hsl(${String(hue)} 42% 24%)`,
-    '--avatar-fg': `hsl(${String(hue)} 70% 82%)`,
+    '--avatar-bg': `hsl(${String(hue)} 55% 88%)`,
+    '--avatar-fg': `hsl(${String(hue)} 60% 26%)`,
   } as React.CSSProperties;
 
   return (
