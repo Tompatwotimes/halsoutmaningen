@@ -104,7 +104,10 @@
   height: 2rem;
   border-radius: var(--radius-full);
   background: rgb(3 5 8 / 0.7);
-  color: var(--c-text);
+  /* Always white: this scrim sits on top of an arbitrary uploaded photo, not
+     the app's own surface — it must stay legible against any image regardless
+     of the app's light/dark theme (matches ChatPanel's .pickThumb button). */
+  color: #fff;
 }
 
 .remove svg {

@@ -10,7 +10,11 @@
 .backdrop {
   position: absolute;
   inset: 0;
-  background: rgb(3 5 8 / 0.62);
+  /* Dimming stays dark regardless of the light page underneath it (the
+     conventional modal-scrim treatment) — but lighter than before, so it
+     reads as a soft focus shift rather than a heavy overlay dominating the
+     screen. */
+  background: rgb(20 16 10 / 0.4);
   backdrop-filter: blur(2px);
   animation: fade var(--dur-base) var(--ease-out);
 }

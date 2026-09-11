@@ -58,9 +58,10 @@
   width: 1.2rem;
   height: 1.2rem;
   border-radius: var(--radius-full);
-  background: var(--c-text);
-}
-
-.switchOn .knob {
-  background: var(--c-accent-contrast);
+  /* White in both states (the standard toggle pattern — only the TRACK
+     colour communicates on/off) — `--c-text` looked right when it was
+     near-white for the dark theme, but reusing it here now renders a heavy
+     solid-black knob against the light track. */
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
 }

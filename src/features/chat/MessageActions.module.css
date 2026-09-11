@@ -44,8 +44,9 @@
   opacity: 0.45;
 }
 
+/* Only the like button ever carries aria-pressed — reply has none. */
 .button[aria-pressed='true'] {
-  color: var(--c-accent);
+  color: var(--c-heart);
 }
 
 .icon {

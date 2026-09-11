@@ -74,7 +74,9 @@ export function RankingPage() {
         <p className={styles.kassaValue}>
           <span className="tnum">{formatSek(kassan)}</span>
         </p>
-        <span className={styles.kassaHint}>Gruppens samlade skuld just nu</span>
+        <span className={styles.kassaHint}>
+          Gruppens samlade skuld just nu — till julbordet
+        </span>
       </Card>
 
       {podiumOrder.length > 0 && (

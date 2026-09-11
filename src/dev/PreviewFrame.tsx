@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Session, User } from '@supabase/supabase-js';
@@ -12,6 +12,7 @@ import { SideNav } from '@/components/layout/SideNav';
 import { TopBar } from '@/components/layout/TopBar';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { SELF_USER_ID } from '@/fixtures/participants';
+import { buildChallengeDataset } from '@/fixtures/dataset';
 import shell from '@/components/layout/AppShell.module.css';
 import styles from './PreviewFrame.module.css';
 
@@ -76,9 +77,23 @@ export function PreviewFrame() {
   const queryClient = useQueryClient();
   const location = useLocation();
 
-  useEffect(() => {
+  // Seeded synchronously during render, NOT in a `useEffect`: the child route
+  // (e.g. `HomePage`) mounts `useChallengeData()` in the same commit as this
+  // component, and that hook fires its `queryFn` immediately whenever the
+  // cache has no entry yet. An effect here would run AFTER that child has
+  // already committed to fetching from the real (production) Supabase
+  // project with a fake, non-JWT access token — which never resolves into
+  // useful data. Seeding during render, before `<Outlet/>` is reached, wins
+  // the race. The ref makes it idempotent across re-renders.
+  const seeded = useRef(false);
+  if (!seeded.current) {
+    seeded.current = true;
     queryClient.setQueryData(profileQueryKey(SELF_USER_ID), FAKE_PROFILE);
-  }, [queryClient]);
+    queryClient.setQueryData(
+      ['challenge-data', SELF_USER_ID],
+      buildChallengeDataset(),
+    );
+  }
 
   const current = location.pathname.split('/').pop() ?? '';
 

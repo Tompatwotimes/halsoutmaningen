@@ -22,6 +22,12 @@ export interface SheetProps {
   footer?: ReactNode;
   /** Ref to the scrollable content region (for scroll-position control). */
   bodyRef?: Ref<HTMLDivElement>;
+  /**
+   * Extra class on the panel itself (header + body + footer) — the seam a
+   * caller uses to scope a local design-token override (e.g. Game Master's
+   * deliberately dark sheet) without Sheet needing to know about it.
+   */
+  panelClassName?: string | undefined;
 }
 
 const FOCUSABLE =
@@ -36,6 +42,7 @@ export function Sheet({
   children,
   footer,
   bodyRef,
+  panelClassName,
 }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const lastActive = useRef<HTMLElement | null>(null);
@@ -93,7 +100,9 @@ export function Sheet({
       />
       <div
         ref={panelRef}
-        className={styles.panel}
+        className={
+          panelClassName ? `${styles.panel} ${panelClassName}` : styles.panel
+        }
         role="dialog"
         aria-modal="true"
         aria-labelledby={title && !hideHeader ? headingId : undefined}

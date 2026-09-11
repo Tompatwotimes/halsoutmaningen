@@ -185,7 +185,7 @@
   left: 50%;
   top: 50%;
   display: inline-flex;
-  color: var(--c-accent);
+  color: var(--c-heart);
   pointer-events: none;
   z-index: 2;
   transform: translate(-50%, -50%);
