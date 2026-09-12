@@ -1,24 +1,13 @@
 import { supabase } from '@/lib/supabase';
 import { env } from '@/lib/env';
 import { registerServiceWorker } from './registerServiceWorker';
+import { detectPushCapability } from './capability';
 
 export class PushError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'PushError';
   }
-}
-
-/** Whether this browser could ever support Web Push (independent of permission). */
-export function isPushSupported(): boolean {
-  return (
-    typeof navigator !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    typeof window !== 'undefined' &&
-    'PushManager' in window &&
-    typeof Notification !== 'undefined' &&
-    Boolean(env.webPushVapidPublicKey)
-  );
 }
 
 export function notificationPermission():
@@ -43,8 +32,14 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
  * silently.
  */
 export async function enablePush(): Promise<void> {
-  if (!isPushSupported()) {
+  const capability = await detectPushCapability();
+  if (capability === 'unsupported') {
     throw new PushError('Push-notiser stöds inte i den här webbläsaren.');
+  }
+  if (capability === 'error') {
+    throw new PushError(
+      'Kunde inte kontrollera stöd för notiser just nu. Försök igen om en liten stund.',
+    );
   }
 
   const permission = await Notification.requestPermission();

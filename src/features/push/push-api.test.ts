@@ -6,6 +6,7 @@ interface RpcResult {
 }
 
 const rpc = vi.fn<(fn: string, args: unknown) => Promise<RpcResult>>();
+const detectPushCapabilityMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/supabase', () => ({
   supabase: { rpc: (fn: string, args: unknown) => rpc(fn, args) },
@@ -13,12 +14,14 @@ vi.mock('@/lib/supabase', () => ({
 vi.mock('@/lib/env', () => ({
   env: { webPushVapidPublicKey: 'BFakeVapidPublicKeyBase64Url' },
 }));
+vi.mock('./capability', () => ({
+  detectPushCapability: detectPushCapabilityMock,
+}));
 
 import {
   disablePush,
   enablePush,
   hasActivePushSubscription,
-  isPushSupported,
   notificationPermission,
   PushError,
 } from './push-api';
@@ -26,22 +29,7 @@ import {
 afterEach(() => {
   vi.unstubAllGlobals();
   rpc.mockReset();
-});
-
-describe('isPushSupported', () => {
-  it('is true when every required API is present', () => {
-    vi.stubGlobal('navigator', { serviceWorker: {} });
-    vi.stubGlobal('window', { PushManager: {} });
-    vi.stubGlobal('Notification', {});
-    expect(isPushSupported()).toBe(true);
-  });
-
-  it('is false without serviceWorker', () => {
-    vi.stubGlobal('navigator', {});
-    vi.stubGlobal('window', { PushManager: {} });
-    vi.stubGlobal('Notification', {});
-    expect(isPushSupported()).toBe(false);
-  });
+  detectPushCapabilityMock.mockReset();
 });
 
 describe('notificationPermission', () => {
@@ -67,16 +55,23 @@ function makeSubscription(overrides: Partial<PushSubscription> = {}) {
 
 describe('enablePush', () => {
   beforeEach(() => {
-    vi.stubGlobal('window', { PushManager: {} });
+    detectPushCapabilityMock.mockResolvedValue('supported');
+    vi.stubGlobal('window', {});
     vi.stubGlobal('Notification', {
       requestPermission: vi.fn().mockResolvedValue('granted'),
     });
   });
 
-  it('throws when push is not supported at all', async () => {
-    vi.stubGlobal('window', {});
+  it('throws when push capability detection says unsupported', async () => {
+    detectPushCapabilityMock.mockResolvedValue('unsupported');
     vi.stubGlobal('navigator', {});
     await expect(enablePush()).rejects.toThrow(PushError);
+  });
+
+  it('throws a distinct message when capability detection itself errors (never mislabels as unsupported)', async () => {
+    detectPushCapabilityMock.mockResolvedValue('error');
+    vi.stubGlobal('navigator', {});
+    await expect(enablePush()).rejects.toThrow(/Kunde inte kontrollera stöd/);
   });
 
   it('throws when the user denies permission', async () => {
