@@ -314,21 +314,37 @@ select is(
 select lives_ok($$select public._notification_scheduler_tick()$$, 'first scheduler tick runs without error');
 select lives_ok($$select public._notification_scheduler_tick()$$, 'second scheduler tick (same call) runs without error');
 
+-- NOTE: gated on the exact 10-minute local-time SLOT
+-- (public._notification_local_slot), not a bare hour match — the
+-- POST-RELEASE CORRECTION (20260912100000) fixed the scheduler firing
+-- ~19:30/22:30 instead of ~19:00/22:00. A bare hour-match here would pass
+-- even with that bug still present (it would be right for 50 of every 60
+-- minutes and silently wrong the other 10) — matching the precise slot is
+-- the whole point of this assertion.
 select is(
   (select count(*)::int from public.notification_outbox
    where challenge_id = '00000000-0000-0000-0000-000000032f02' and category = 'training_reminder_19'),
-  case when extract(hour from (now() at time zone 'Europe/Stockholm'))::int = 19 then 1 else 0 end,
-  'a 19:00 reminder is enqueued only inside that local hour window');
+  case when public._notification_local_slot(
+    extract(hour from (now() at time zone 'Europe/Stockholm'))::int,
+    extract(minute from (now() at time zone 'Europe/Stockholm'))::int
+  ) = 'reminder_19' then 1 else 0 end,
+  'a 19:00 reminder is enqueued only inside the exact 19:00-19:09 local window');
 select is(
   (select count(*)::int from public.notification_outbox
    where challenge_id = '00000000-0000-0000-0000-000000032f02' and category = 'training_reminder_22'),
-  case when extract(hour from (now() at time zone 'Europe/Stockholm'))::int = 22 then 1 else 0 end,
-  'a 22:00 reminder is enqueued only inside that local hour window');
+  case when public._notification_local_slot(
+    extract(hour from (now() at time zone 'Europe/Stockholm'))::int,
+    extract(minute from (now() at time zone 'Europe/Stockholm'))::int
+  ) = 'reminder_22' then 1 else 0 end,
+  'a 22:00 reminder is enqueued only inside the exact 22:00-22:09 local window');
 select is(
   (select count(*)::int from public.notification_outbox
    where challenge_id = '00000000-0000-0000-0000-000000032f02' and category = 'daily_morning_report'),
-  case when extract(hour from (now() at time zone 'Europe/Stockholm'))::int = 6 then 1 else 0 end,
-  'a 06:30-window morning report is enqueued only inside that local hour');
+  case when public._notification_local_slot(
+    extract(hour from (now() at time zone 'Europe/Stockholm'))::int,
+    extract(minute from (now() at time zone 'Europe/Stockholm'))::int
+  ) = 'morning_report' then 1 else 0 end,
+  'a 06:30-window morning report is enqueued only inside the exact 06:30-06:39 local window');
 
 -- f01's members already completed today (Section F), so nobody there is
 -- 'pending' — the reminder must never fire for someone who has finished.
@@ -345,7 +361,10 @@ select is(
   (select count(*)::int from public.notification_outbox
    where challenge_id = '00000000-0000-0000-0000-000000032f02'
      and category in ('training_reminder_19', 'training_reminder_22', 'daily_morning_report')),
-  case when extract(hour from (now() at time zone 'Europe/Stockholm'))::int in (6, 19, 22) then 1 else 0 end,
+  case when public._notification_local_slot(
+    extract(hour from (now() at time zone 'Europe/Stockholm'))::int,
+    extract(minute from (now() at time zone 'Europe/Stockholm'))::int
+  ) is not null then 1 else 0 end,
   'disabling push mid-window does not retroactively remove what was already enqueued, and enqueues nothing further');
 
 select * from finish();

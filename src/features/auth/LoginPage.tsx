@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { useAuth } from './useAuth';
 import { Button } from '@/components/ui/Button';
 import { BrandMark } from '@/components/layout/BrandMark';
+import { AppFooter } from '@/components/layout/AppFooter';
 import styles from './LoginPage.module.css';
 
 const credentialsSchema = z.object({
@@ -136,6 +137,7 @@ export function LoginPage() {
           </button>
         </form>
       </div>
+      <AppFooter />
     </div>
   );
 }
