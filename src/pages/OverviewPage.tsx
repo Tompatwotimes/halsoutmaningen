@@ -15,6 +15,7 @@ import { ErrorState } from '@/components/feedback/ErrorState';
 import { StatusLegend } from '@/components/status/StatusLegend';
 import { FlagIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
+import { useChallengeMatrix } from '@/features/challenge/useChallengeMatrix';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
 import { RetroactiveRequestSheet } from '@/features/retroactive/RetroactiveRequestSheet';
@@ -30,6 +31,12 @@ type SortKey = 'name' | 'result';
 
 export function OverviewPage() {
   const { data, isLoading, isError, refetch } = useChallengeData();
+  const matrix = useChallengeMatrix(
+    data?.challenge.id ?? null,
+    data?.challenge ?? null,
+    data?.today ?? null,
+    data?.self.userId ?? null,
+  );
   const gridRef = useRef<MatrixGridHandle>(null);
   const [sort, setSort] = useState<SortKey>('name');
   const [selected, setSelected] = useState<{
@@ -48,8 +55,8 @@ export function OverviewPage() {
   );
 
   const rows = useMemo(() => {
-    if (!data) return [];
-    const list = [...data.participants];
+    if (!matrix.data) return [];
+    const list = [...matrix.data.participants];
     if (sort === 'result') {
       return list.sort((a, b) => b.completionRate - a.completionRate);
     }
@@ -57,9 +64,9 @@ export function OverviewPage() {
       if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
       return a.displayName.localeCompare(b.displayName, 'sv');
     });
-  }, [data, sort]);
+  }, [matrix.data, sort]);
 
-  if (isLoading) {
+  if (isLoading || (Boolean(data) && matrix.isLoading)) {
     return (
       <>
         <PageHeader title="Översikt" subtitle="Hela utmaningen." />
@@ -69,11 +76,16 @@ export function OverviewPage() {
     );
   }
 
-  if (isError) {
+  if (isError || matrix.isError) {
     return (
       <>
         <PageHeader title="Översikt" />
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState
+          onRetry={() => {
+            void refetch();
+            void matrix.refetch();
+          }}
+        />
       </>
     );
   }

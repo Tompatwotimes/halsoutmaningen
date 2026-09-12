@@ -88,11 +88,15 @@ export function PreviewFrame() {
   const seeded = useRef(false);
   if (!seeded.current) {
     seeded.current = true;
+    const dataset = buildChallengeDataset();
     queryClient.setQueryData(profileQueryKey(SELF_USER_ID), FAKE_PROFILE);
-    queryClient.setQueryData(
-      ['challenge-data', SELF_USER_ID],
-      buildChallengeDataset(),
-    );
+    queryClient.setQueryData(['challenge-data', SELF_USER_ID], dataset);
+    // Översikt reads the full matrix from the separate `useChallengeMatrix()`
+    // query (egress forensics, 2026-09) — seed it too so the preview harness
+    // never falls through to a real Supabase call for that screen either.
+    queryClient.setQueryData(['challenge-matrix', dataset.challenge.id], {
+      participants: dataset.participants,
+    });
   }
 
   const current = location.pathname.split('/').pop() ?? '';

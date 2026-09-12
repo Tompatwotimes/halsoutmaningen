@@ -1,18 +1,18 @@
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import {
-  challengeDurationDays,
-  type ChallengeConfig,
-} from '@/domain/challenge';
+import type { ChallengeConfig } from '@/domain/challenge';
 import { currentPlainDateInTimeZone } from '@/domain/time';
 import { DayState } from '@/domain/dayState';
-import { currentStreak, longestStreak } from '@/domain/streaks';
-import { summarizeLiability } from '@/domain/liability';
+import { liabilityFromTotals } from '@/domain/liability';
 import { eligibleDates } from '@/domain/membership';
 import { membershipDisplayState } from '@/features/admin/membershipState';
 import { useAuth } from '@/features/auth/useAuth';
+import { recentDates, RECENT_WINDOW_DAYS } from './labels';
 import {
-  fetchDayStates,
+  fetchChallengeResults,
+  fetchDayStatesForUser,
+  fetchDayStatesOnDates,
   fetchMyPrimaryChallenge,
+  type ChallengeResultRow,
   type DayStateRow,
 } from './challenge-api';
 import { fetchChallengeRoster, type RosterMember } from './roster-api';
@@ -40,11 +40,25 @@ function toRequirement(row: DayStateRow): DayRequirement {
 /**
  * Adapter boundary for challenge data (docs/DESIGN_SYSTEM.md §7).
  *
- * Composes four small, independently cacheable queries — the current
- * challenge/membership, the roster, the canonical day states
- * (`challenge_day_states` RPC, one round trip for every participant × day),
- * and the signed-in user's own entries — into the `ChallengeDataset` shape
- * every screen already renders. Screens never talk to Supabase directly.
+ * EGRESS ARCHITECTURE (2026-09 forensic audit — see docs/DEPLOYMENT.md
+ * postmortem): the full `challenge_day_states` matrix is one row per
+ * participant × challenge day (e.g. 21 × 120 ≈ 2520 rows, ~690 KB for the
+ * first real challenge) and used to be fetched unconditionally by every
+ * screen through this hook, on every navigation. Almost nothing but
+ * Översikt's complete grid ever renders more than the signed-in user's own
+ * history plus a recent window for everyone else. This hook now fetches:
+ *
+ *   - the signed-in user's own full day-state history (`fetchDayStatesForUser`
+ *     — ~20x smaller than the full matrix for one real challenge),
+ *   - every OTHER participant's day states for only the last
+ *     `RECENT_WINDOW_DAYS` days (`fetchDayStatesOnDates`),
+ *   - every participant's pre-aggregated summary stats (streak, completion
+ *     rate, liability) from the `challenge_results` RPC, computed server-side
+ *     from the full matrix without it ever crossing the network.
+ *
+ * Screens that need the complete historical grid for every participant
+ * (Översikt only) use `useChallengeMatrix()` instead — a separate,
+ * intentionally-opt-in query.
  *
  * `data === null` (once loaded, with no error) is a real, expected state: the
  * signed-in user simply has no challenge membership yet (CLAUDE.md §4) — not
@@ -56,17 +70,51 @@ export const challengeKeys = {
   mine: (userId: string) => ['challenge', 'mine', userId] as const,
   roster: (challengeId: string) =>
     ['challenge', 'roster', challengeId] as const,
-  dayStates: (challengeId: string) =>
-    ['challenge', 'day-states', challengeId] as const,
+  results: (challengeId: string) =>
+    ['challenge', 'results', challengeId] as const,
+  selfDayStates: (challengeId: string, userId: string) =>
+    ['challenge', 'self-day-states', challengeId, userId] as const,
+  recentDayStates: (challengeId: string, today: string) =>
+    ['challenge', 'recent-day-states', challengeId, today] as const,
+  fullDayStates: (challengeId: string) =>
+    ['challenge', 'full-day-states', challengeId] as const,
   selfEntries: (challengeId: string, userId: string) =>
     ['challenge', 'self-entries', challengeId, userId] as const,
 };
 
+function rowsToViews(rows: DayStateRow[] | undefined) {
+  const sorted = [...(rows ?? [])].sort((a, b) =>
+    a.challengeDate < b.challengeDate
+      ? -1
+      : a.challengeDate > b.challengeDate
+        ? 1
+        : 0,
+  );
+  const statesByDate = new Map(sorted.map((r) => [r.challengeDate, r.state]));
+  const requirementByDate = new Map(
+    sorted.map((r) => [r.challengeDate, toRequirement(r)]),
+  );
+  const days = sorted
+    .filter((r) => r.state !== DayState.NotParticipating)
+    .map((r) => ({ date: r.challengeDate, state: r.state }));
+  return { days, statesByDate, requirementByDate };
+}
+
+/**
+ * Builds one participant's view from whatever day-state rows were fetched
+ * for them (full history for self and for `useChallengeMatrix()`, a recent
+ * window for everyone else in the base dataset — see module doc above) plus
+ * their pre-aggregated `challenge_results` row. Streak/completion-rate/
+ * liability always come from `resultRow`, never recomputed from the raw
+ * rows client-side (CLAUDE.md §17) — the raw rows only ever drive the
+ * per-day grid/calendar rendering.
+ */
 function buildParticipant(
   member: RosterMember,
   today: string,
   missedDayCost: number,
   dayStateRows: DayStateRow[] | undefined,
+  resultRow: ChallengeResultRow | undefined,
   isSelf: boolean,
   challenge: ChallengeConfig,
 ): ParticipantView {
@@ -77,22 +125,7 @@ function buildParticipant(
     active: member.membershipActive,
   };
 
-  const rows = [...(dayStateRows ?? [])].sort((a, b) =>
-    a.challengeDate < b.challengeDate
-      ? -1
-      : a.challengeDate > b.challengeDate
-        ? 1
-        : 0,
-  );
-
-  const statesByDate = new Map(rows.map((r) => [r.challengeDate, r.state]));
-  const requirementByDate = new Map(
-    rows.map((r) => [r.challengeDate, toRequirement(r)]),
-  );
-  const days = rows
-    .filter((r) => r.state !== DayState.NotParticipating)
-    .map((r) => ({ date: r.challengeDate, state: r.state }));
-  const states = days.map((d) => d.state);
+  const { days, statesByDate, requirementByDate } = rowsToViews(dayStateRows);
 
   const rawTodayState = statesByDate.get(today) ?? null;
   const todayState =
@@ -100,8 +133,17 @@ function buildParticipant(
   const todayRequirement =
     todayState === null ? null : (requirementByDate.get(today) ?? null);
 
-  const liability = summarizeLiability(states, missedDayCost);
-  const decidedDays = liability.completedDays + liability.missedDays;
+  const liability = liabilityFromTotals(
+    {
+      eligibleDays: resultRow?.eligibleDays ?? 0,
+      completedDays: resultRow?.completedDays ?? 0,
+      missedDays: resultRow?.missedDays ?? 0,
+      pendingDays: resultRow?.pendingDays ?? 0,
+      futureDays: resultRow?.futureDays ?? 0,
+    },
+    missedDayCost,
+    resultRow?.liabilitySek ?? 0,
+  );
 
   return {
     userId: member.userId,
@@ -117,12 +159,11 @@ function buildParticipant(
     todayState,
     todayRequirement,
     activeToday: membership.active && todayState !== null,
-    currentStreak: currentStreak(states),
-    longestStreak: longestStreak(states),
+    currentStreak: resultRow?.currentStreak ?? 0,
+    longestStreak: resultRow?.longestStreak ?? 0,
     liability,
-    completionRate:
-      decidedDays === 0 ? 0 : liability.completedDays / decidedDays,
-    decidedDays,
+    completionRate: resultRow?.completionRate ?? 0,
+    decidedDays: (resultRow?.completedDays ?? 0) + (resultRow?.missedDays ?? 0),
   };
 }
 
@@ -139,16 +180,37 @@ async function loadChallengeDataset(
 
   const { challenge } = primary;
   const today = currentPlainDateInTimeZone(challenge.timeZone);
+  const windowDates = recentDates(
+    today,
+    RECENT_WINDOW_DAYS,
+    challenge.startDate,
+  );
 
-  const [roster, dayStateRows, selfEntries] = await Promise.all([
+  const [
+    roster,
+    resultRows,
+    selfDayStateRows,
+    windowDayStateRows,
+    selfEntries,
+  ] = await Promise.all([
     queryClient.query({
       queryKey: challengeKeys.roster(challenge.id),
       queryFn: () => fetchChallengeRoster(challenge.id),
       staleTime: 30_000,
     }),
     queryClient.query({
-      queryKey: challengeKeys.dayStates(challenge.id),
-      queryFn: () => fetchDayStates(challenge.id),
+      queryKey: challengeKeys.results(challenge.id),
+      queryFn: () => fetchChallengeResults(challenge.id),
+      staleTime: 30_000,
+    }),
+    queryClient.query({
+      queryKey: challengeKeys.selfDayStates(challenge.id, userId),
+      queryFn: () => fetchDayStatesForUser(challenge.id, userId),
+      staleTime: 30_000,
+    }),
+    queryClient.query({
+      queryKey: challengeKeys.recentDayStates(challenge.id, today),
+      queryFn: () => fetchDayStatesOnDates(challenge.id, windowDates),
       staleTime: 30_000,
     }),
     queryClient.query({
@@ -158,50 +220,40 @@ async function loadChallengeDataset(
     }),
   ]);
 
-  const dayStatesByUser = new Map<string, DayStateRow[]>();
-  for (const row of dayStateRows) {
-    const list = dayStatesByUser.get(row.userId) ?? [];
-    list.push(row);
-    dayStatesByUser.set(row.userId, list);
-  }
-
-  // Invariant: every date a roster member is *eligible* for must have a
-  // `challenge_day_states` row. A missing eligible-day row is silently
-  // rendered as `not_participating` ("—") on Översikt/Gruppen — historically
-  // caused by PostgREST truncating the un-paginated RPC response at its row
-  // cap. `fetchDayStates` now pages the full set; this check fails loudly on
-  // any regression rather than showing wrong data as if it were correct.
-  // (Pre-/post-membership `not_participating` rows are not required here —
-  // their absence renders the same, correct state.)
-  const missingByMember = roster
-    .map((m) => {
-      const present = new Set(
-        (dayStatesByUser.get(m.userId) ?? []).map((r) => r.challengeDate),
-      );
-      const eligible = eligibleDates(challenge, {
-        userId: m.userId,
-        participationStartDate: m.participationStartDate,
-        participationEndDate: m.participationEndDate,
-        active: m.membershipActive,
-      });
-      return { member: m, missing: eligible.filter((d) => !present.has(d)) };
-    })
-    .filter((r) => r.missing.length > 0);
-  if (missingByMember.length > 0) {
-    const expectedTotal = roster.length * challengeDurationDays(challenge);
+  // Invariant: every date the signed-in user is *eligible* for must have a
+  // row in their own full-history fetch. A missing eligible-day row here
+  // (historically caused by PostgREST truncating an un-paginated response at
+  // its row cap) would silently render as `not_participating` ("—") on the
+  // user's own calendar. This only checks the signed-in user — the full
+  // per-participant check for the complete matrix lives in
+  // `useChallengeMatrix.ts`, the only place that still fetches it.
+  const selfEligible = eligibleDates(challenge, {
+    userId,
+    participationStartDate: primary.membership.participationStartDate,
+    participationEndDate: primary.membership.participationEndDate,
+    active: primary.membership.active,
+  });
+  const selfPresent = new Set(selfDayStateRows.map((r) => r.challengeDate));
+  const selfMissing = selfEligible.filter((d) => !selfPresent.has(d));
+  if (selfMissing.length > 0) {
     console.error(
       `[useChallengeData] challenge_day_states is missing eligible-day rows for ` +
-        `challenge ${challenge.id} — Översikt/Gruppen would show these as "—". ` +
-        `Returned ${String(dayStateRows.length)} rows (a full grid is ${String(expectedTotal)}). ` +
-        `Affected: ` +
-        missingByMember
-          .map(
-            (r) =>
-              `${r.member.displayName} (${String(r.missing.length)} days, first ${String(r.missing[0])})`,
-          )
-          .join('; '),
+        `the signed-in user in challenge ${challenge.id} — their own calendar would ` +
+        `show these as "—". Missing ${String(selfMissing.length)} days, first ${String(selfMissing[0])}.`,
     );
   }
+
+  const resultsByUser = new Map(resultRows.map((r) => [r.userId, r]));
+
+  const windowRowsByUser = new Map<string, DayStateRow[]>();
+  for (const row of windowDayStateRows) {
+    const list = windowRowsByUser.get(row.userId) ?? [];
+    list.push(row);
+    windowRowsByUser.set(row.userId, list);
+  }
+  // The signed-in user gets their full history, a strict superset of the
+  // recent window fetched for everyone else.
+  windowRowsByUser.set(userId, selfDayStateRows);
 
   const participants = roster
     .map((member) =>
@@ -209,7 +261,8 @@ async function loadChallengeDataset(
         member,
         today,
         challenge.missedDayCost,
-        dayStatesByUser.get(member.userId),
+        windowRowsByUser.get(member.userId),
+        resultsByUser.get(member.userId),
         member.userId === userId,
         challenge,
       ),
@@ -276,10 +329,24 @@ export function invalidateChallengeData(
   userId: string,
 ) {
   void queryClient.invalidateQueries({
-    queryKey: challengeKeys.dayStates(challengeId),
+    queryKey: challengeKeys.selfDayStates(challengeId, userId),
+  });
+  // Partial key: invalidates every cached `today` variant for this challenge.
+  void queryClient.invalidateQueries({
+    queryKey: ['challenge', 'recent-day-states', challengeId],
+  });
+  void queryClient.invalidateQueries({
+    queryKey: challengeKeys.results(challengeId),
   });
   void queryClient.invalidateQueries({
     queryKey: challengeKeys.selfEntries(challengeId, userId),
   });
   void queryClient.invalidateQueries({ queryKey: ['challenge-data', userId] });
+  // Översikt's full matrix, only if it happens to be mounted/cached.
+  void queryClient.invalidateQueries({
+    queryKey: challengeKeys.fullDayStates(challengeId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: ['challenge-matrix', challengeId],
+  });
 }

@@ -9,6 +9,14 @@ import {
   parsePlainDate,
 } from '@/domain/dates';
 
+/**
+ * The recent-days window shared by the group dashboard grid and the base
+ * `useChallengeData()` dataset (egress forensics, 2026-09 — see
+ * `useChallengeData.ts`). One shared constant so the UI window and the
+ * data actually fetched for every non-self participant can never drift.
+ */
+export const RECENT_WINDOW_DAYS = 7;
+
 const WEEKDAYS_SHORT = ['sön', 'mån', 'tis', 'ons', 'tor', 'fre', 'lör'];
 const WEEKDAYS_LONG = [
   'söndag',
