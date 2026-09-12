@@ -276,36 +276,36 @@ select is(
 -- ========================================================================
 insert into public.retroactive_training_requests
   (id, challenge_id, user_id, challenge_date, participant_reason, status)
-values ('00000000-0000-0000-0000-000000032g01', '00000000-0000-0000-0000-000000032f01',
+values ('00000000-0000-0000-0000-000000032b01', '00000000-0000-0000-0000-000000032f01',
   '00000000-0000-0000-0000-0000000032a4', current_date - 5, 'glömde logga', 'pending');
 
 update public.retroactive_training_requests
   set status = 'approved', reviewed_at = now(), reviewed_by = '00000000-0000-0000-0000-0000000032a1'
-where id = '00000000-0000-0000-0000-000000032g01';
+where id = '00000000-0000-0000-0000-000000032b01';
 
 select is(
   (select count(*)::int from public.notification_outbox
    where category = 'personal_status' and recipient_id = '00000000-0000-0000-0000-0000000032a4'
-     and natural_key = '00000000-0000-0000-0000-000000032g01'),
+     and natural_key = '00000000-0000-0000-0000-000000032b01'),
   1, 'approving Veras retroactive request enqueues one personal_status notification');
 select is(
   (select title from public.notification_outbox
-   where category = 'personal_status' and natural_key = '00000000-0000-0000-0000-000000032g01'),
+   where category = 'personal_status' and natural_key = '00000000-0000-0000-0000-000000032b01'),
   'Efterregistrering godkänd', 'the copy reflects approval');
 
 insert into public.retroactive_training_requests
   (id, challenge_id, user_id, challenge_date, participant_reason, status)
-values ('00000000-0000-0000-0000-000000032g02', '00000000-0000-0000-0000-000000032f01',
+values ('00000000-0000-0000-0000-000000032b02', '00000000-0000-0000-0000-000000032f01',
   '00000000-0000-0000-0000-0000000032a4', current_date - 6, 'glömde igen', 'pending');
 
 update public.retroactive_training_requests
   set status = 'rejected', reviewed_at = now(), reviewed_by = '00000000-0000-0000-0000-0000000032a1',
       review_note = 'ingen bild'
-where id = '00000000-0000-0000-0000-000000032g02';
+where id = '00000000-0000-0000-0000-000000032b02';
 
 select is(
   (select title from public.notification_outbox
-   where category = 'personal_status' and natural_key = '00000000-0000-0000-0000-000000032g02'),
+   where category = 'personal_status' and natural_key = '00000000-0000-0000-0000-000000032b02'),
   'Efterregistrering avslagen', 'a rejection gets its own copy');
 
 -- ========================================================================
