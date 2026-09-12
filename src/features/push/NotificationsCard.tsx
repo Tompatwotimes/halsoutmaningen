@@ -8,6 +8,7 @@ import {
   useSendSelfTestPush,
   useUpdateNotificationPreferences,
 } from './usePush';
+import { DiagnosticsPanel } from './DiagnosticsPanel';
 import type { NotificationPreferences } from './preferences-api';
 import styles from './NotificationsCard.module.css';
 
@@ -96,7 +97,13 @@ const CATEGORY_ROWS: {
   },
 ];
 
-export function NotificationsCard({ challengeId }: { challengeId: string }) {
+export function NotificationsCard({
+  challengeId,
+  isAdmin = false,
+}: {
+  challengeId: string;
+  isAdmin?: boolean;
+}) {
   const push = usePushSubscription();
   const install = useInstallPrompt();
   const preferences = useNotificationPreferences(challengeId);
@@ -105,15 +112,21 @@ export function NotificationsCard({ challengeId }: { challengeId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [testMessage, setTestMessage] = useState<string | null>(null);
 
+  // iOS genuinely does not support Web Push outside an installed Home
+  // Screen app (Apple platform requirement, not a capability we can detect
+  // our way around) — show install instructions instead, and never attempt
+  // capability detection or a permission request in that context.
   const showIosInstructions = isIos() && !isStandalone();
-  // iOS never permits requesting Notification permission from a normal
-  // Safari tab — only from the installed Home Screen web app. Calling
-  // requestPermission() prematurely there can permanently poison the
-  // origin's permission state, so the whole activation section (button,
-  // self-test, preferences) must stay hidden until installed, regardless of
-  // what isPushSupported() reports (support may exist at the API level
-  // before it is functionally usable).
-  const canManagePush = push.supported && !showIosInstructions;
+
+  // Everything else is driven by the real, async, standards-based
+  // capability check (src/features/push/capability.ts) — never gated on
+  // install/standalone state for Android or desktop, and never collapsed
+  // into "unsupported" while still `checking` (see that module's docblock
+  // for the exact bug this replaced).
+  const canManagePush =
+    !showIosInstructions &&
+    (push.capability === 'supported' ||
+      push.capability === 'permission_denied');
 
   return (
     <div className={styles.section}>
@@ -139,12 +152,17 @@ export function NotificationsCard({ challengeId }: { challengeId: string }) {
         </div>
       )}
 
-      {!canManagePush ? (
-        !showIosInstructions && (
-          <p className={styles.installText}>
-            Notiser stöds inte i den här webbläsaren ännu.
-          </p>
-        )
+      {showIosInstructions ? null : push.capability === 'checking' ? (
+        <p className={styles.installText}>Kontrollerar stöd för notiser…</p>
+      ) : push.capability === 'error' ? (
+        <p className={styles.installText}>
+          Kunde inte kontrollera stöd för notiser just nu. Ladda om sidan och
+          försök igen.
+        </p>
+      ) : !canManagePush ? (
+        <p className={styles.installText}>
+          Notiser stöds inte i den här webbläsaren ännu.
+        </p>
       ) : (
         <>
           <div className={styles.row}>
@@ -154,7 +172,7 @@ export function NotificationsCard({ challengeId }: { challengeId: string }) {
                 {push.permission === 'granted' && push.isActive
                   ? 'Aktiverade på den här enheten'
                   : push.permission === 'denied'
-                    ? 'Blockerade i webbläsaren — ändra i webbläsarens inställningar'
+                    ? 'Blockerade i webbläsaren — ändra i webbläsarens eller enhetens inställningar'
                     : 'Inte aktiverade på den här enheten'}
               </span>
             </span>
@@ -236,6 +254,8 @@ export function NotificationsCard({ challengeId }: { challengeId: string }) {
           )}
         </>
       )}
+
+      {isAdmin && <DiagnosticsPanel />}
     </div>
   );
 }

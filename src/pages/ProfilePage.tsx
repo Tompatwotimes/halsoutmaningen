@@ -154,7 +154,10 @@ export function ProfilePage() {
 
       {data && (
         <Card title="Notiser">
-          <NotificationsCard challengeId={data.challenge.id} />
+          <NotificationsCard
+            challengeId={data.challenge.id}
+            isAdmin={isAdmin}
+          />
         </Card>
       )}
 
