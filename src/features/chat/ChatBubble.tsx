@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChatIcon } from '@/components/icons';
 import { useAuth } from '@/features/auth/useAuth';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
@@ -21,7 +22,21 @@ export function ChatBubble() {
   const { user } = useAuth();
   const challengeQuery = useChallengeData();
   const { isAdmin } = useProfile();
-  const [open, setOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Push-notification deep link: /?chat=1&seq=<n> opens the panel and jumps
+  // to that message (reused as-is by ChatPanel's own jump-to-message driver).
+  // Captured ONCE from the URL present at mount — `open`/`initialJumpSeq`
+  // then live only in this state, never re-derived from `searchParams` on
+  // every render, so stripping the query string a moment later (below) can't
+  // race the value away before ChatPanel consumes it.
+  const [open, setOpen] = useState(() => searchParams.get('chat') === '1');
+  const [initialJumpSeq] = useState<number | null>(() => {
+    if (searchParams.get('chat') !== '1') return null;
+    const raw = searchParams.get('seq');
+    const n = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) ? n : null;
+  });
 
   const challenge = challengeQuery.data?.challenge ?? null;
   const challengeId = challenge?.id ?? null;
@@ -29,6 +44,22 @@ export function ChatBubble() {
 
   const unreadQuery = useUnreadChatCount(challengeId, userId);
   const unread = unreadQuery.data ?? 0;
+
+  useEffect(() => {
+    if (searchParams.get('chat') !== '1') return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('chat');
+        next.delete('seq');
+        return next;
+      },
+      { replace: true },
+    );
+    // Runs once at mount for a deep-link arrival; setSearchParams above
+    // removes the params so this never re-fires for the same navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Stable across renders so `React.memo(MessageRow)` holds (an inline arrow
   // here would re-render every moderated row on every ChatBubble render).
@@ -74,6 +105,7 @@ export function ChatBubble() {
         timeZone={challenge.timeZone}
         isAdmin={isAdmin}
         renderModeration={renderModeration}
+        initialJumpSeq={initialJumpSeq}
       />
     </>
   );

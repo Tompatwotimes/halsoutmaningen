@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const {
   useChallengeDataMock,
@@ -51,8 +52,18 @@ vi.mock('./useChat', () => ({
 
 import { ChatBubble } from './ChatBubble';
 
-function wrap(node: ReactNode) {
-  return render(<>{node}</>);
+function LocationSearchProbe() {
+  const location = useLocation();
+  return <output data-testid="location-search">{location.search}</output>;
+}
+
+function wrap(node: ReactNode, initialEntries: string[] = ['/']) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      {node}
+      <LocationSearchProbe />
+    </MemoryRouter>,
+  );
 }
 
 afterEach(() => vi.clearAllMocks());
@@ -92,8 +103,10 @@ describe('ChatBubble', () => {
     });
     useMarkChatReadMock.mockReturnValue({ mutate: vi.fn() });
     usePostChatMessageMock.mockReturnValue({ mutate: vi.fn() });
-    const { container } = wrap(<ChatBubble />);
-    expect(container).toBeEmptyDOMElement();
+    wrap(<ChatBubble />);
+    expect(
+      screen.queryByRole('button', { name: /chatt/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the exact unread count on the trigger', () => {
@@ -122,5 +135,23 @@ describe('ChatBubble', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /chatt/i }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('opens automatically from a ?chat=1 deep link', () => {
+    primeHooks(1);
+    wrap(<ChatBubble />, ['/?chat=1&seq=42']);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('strips the chat/seq query params after consuming the deep link', () => {
+    primeHooks(1);
+    wrap(<ChatBubble />, ['/?chat=1&seq=42']);
+    expect(screen.getByTestId('location-search')).toHaveTextContent('');
+  });
+
+  it('does not auto-open without a ?chat=1 param', () => {
+    primeHooks(1);
+    wrap(<ChatBubble />, ['/']);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

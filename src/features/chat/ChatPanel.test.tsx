@@ -920,6 +920,37 @@ describe('ChatPanel — jump to original from a reply quote (Task H)', () => {
     scrollIntoView.mockRestore();
   });
 
+  it('jumps to initialJumpSeq on open — the push-notification deep-link entry point', () => {
+    // Reuses the exact same bounded jumpToMessage driver a reply-quote tap
+    // uses (asserted above) — no separate deep-link scroll mechanism.
+    vi.useFakeTimers();
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    prime({
+      messages: [row(1, { id: 'm1', body: 'ursprunget' }), row(2), row(3)],
+    });
+    wrap(<ChatPanel {...BASE_PROPS} initialJumpSeq={1} />);
+
+    const target = document.body.querySelector('[data-seq="1"]')!;
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'center' }),
+    );
+    expect(target).toHaveAttribute('data-jump-highlight');
+
+    vi.useRealTimers();
+    scrollIntoView.mockRestore();
+  });
+
+  it('does not re-jump on a re-render with the same initialJumpSeq value', () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    prime({ messages: [row(1), row(2), row(3)] });
+    const { rerender } = wrap(<ChatPanel {...BASE_PROPS} initialJumpSeq={2} />);
+    scrollIntoView.mockClear();
+
+    rerender(<ChatPanel {...BASE_PROPS} initialJumpSeq={2} />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollIntoView.mockRestore();
+  });
+
   it('pages upward (bounded) to reach an unloaded target, then scrolls to it', async () => {
     let revealedPages = 0;
     fetchNextPage = vi.fn(() => {

@@ -78,5 +78,16 @@ file_size_limit = "10MiB"
 [functions.invite-participant]
 verify_jwt = false
 
+# notification-dispatcher does its own auth: "dispatch" checks a CRON_SECRET
+# bearer (a scheduled job, not a user session), "self-test" validates a real
+# user session exactly like invite-participant does. verify_jwt=false so the
+# CRON_SECRET-bearing scheduled call is never rejected as "not a valid JWT".
+#
+# Secrets required on the hosted project (Dashboard → Edge Functions → Secrets):
+#   WEB_PUSH_VAPID_PUBLIC_KEY / WEB_PUSH_VAPID_PRIVATE_KEY / WEB_PUSH_VAPID_SUBJECT
+#   CRON_SECRET — shared with the scheduled GitHub Actions workflow
+[functions.notification-dispatcher]
+verify_jwt = false
+
 [analytics]
 enabled = false

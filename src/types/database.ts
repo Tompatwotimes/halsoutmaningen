@@ -198,6 +198,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -215,6 +216,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required?: boolean
+          push_enabled?: boolean
           required_minutes: number
           start_date: string
           status?: string
@@ -232,6 +234,7 @@ export type Database = {
           missed_day_cost?: number
           name?: string
           proof_required?: boolean
+          push_enabled?: boolean
           required_minutes?: number
           start_date?: string
           status?: string
@@ -985,6 +988,196 @@ export type Database = {
           },
         ]
       }
+      notification_deliveries: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          id: string
+          outbox_id: string
+          outcome: string | null
+          sent_at: string | null
+          status_code: number | null
+          subscription_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          id?: string
+          outbox_id: string
+          outcome?: string | null
+          sent_at?: string | null
+          status_code?: number | null
+          subscription_id: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          id?: string
+          outbox_id?: string
+          outcome?: string | null
+          sent_at?: string | null
+          status_code?: number | null
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_deliveries_outbox_id_fkey"
+            columns: ["outbox_id"]
+            isOneToOne: false
+            referencedRelation: "notification_outbox"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_deliveries_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_outbox: {
+        Row: {
+          attempt_count: number
+          body: string
+          category: string
+          challenge_id: string
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          failed_at: string | null
+          id: string
+          last_error: string | null
+          natural_key: string
+          not_before: string
+          recipient_id: string
+          sent_at: string | null
+          source_message_id: string | null
+          tag: string
+          title: string
+          url: string
+        }
+        Insert: {
+          attempt_count?: number
+          body: string
+          category: string
+          challenge_id: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          failed_at?: string | null
+          id?: string
+          last_error?: string | null
+          natural_key: string
+          not_before?: string
+          recipient_id: string
+          sent_at?: string | null
+          source_message_id?: string | null
+          tag: string
+          title: string
+          url: string
+        }
+        Update: {
+          attempt_count?: number
+          body?: string
+          category?: string
+          challenge_id?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          failed_at?: string | null
+          id?: string
+          last_error?: string | null
+          natural_key?: string
+          not_before?: string
+          recipient_id?: string
+          sent_at?: string | null
+          source_message_id?: string | null
+          tag?: string
+          title?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_outbox_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_outbox_source_message_id_fkey"
+            columns: ["source_message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          chat_all_messages: boolean
+          chat_like: boolean
+          chat_reply: boolean
+          challenge_id: string
+          daily_group_summary: boolean
+          game_master: boolean
+          personal_status: boolean
+          straffbanken: boolean
+          training_reminders: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          chat_all_messages?: boolean
+          chat_like?: boolean
+          chat_reply?: boolean
+          challenge_id: string
+          daily_group_summary?: boolean
+          game_master?: boolean
+          personal_status?: boolean
+          straffbanken?: boolean
+          training_reminders?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          chat_all_messages?: boolean
+          chat_like?: boolean
+          chat_reply?: boolean
+          challenge_id?: string
+          daily_group_summary?: boolean
+          game_master?: boolean
+          personal_status?: boolean
+          straffbanken?: boolean
+          training_reminders?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active: boolean
@@ -1014,6 +1207,50 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          retired_at: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth_key: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          retired_at?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          retired_at?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       retroactive_training_request_sessions: {
         Row: {
@@ -1857,6 +2094,22 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_notification_preferences: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          chat_all_messages: boolean
+          chat_like: boolean
+          chat_reply: boolean
+          challenge_id: string
+          daily_group_summary: boolean
+          game_master: boolean
+          personal_status: boolean
+          straffbanken: boolean
+          training_reminders: boolean
+          updated_at: string
+          user_id: string
+        }
+      }
       hide_chat_message: {
         Args: { p_message_id: string; p_reason: string }
         Returns: undefined
@@ -1987,6 +2240,25 @@ export type Database = {
       reconcile_earned_penalties: {
         Args: { p_challenge_id: string; p_user_id?: string }
         Returns: undefined
+      }
+      register_push_subscription: {
+        Args: {
+          p_endpoint: string
+          p_p256dh: string
+          p_auth_key: string
+          p_user_agent?: string
+        }
+        Returns: {
+          auth_key: string
+          created_at: string
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          retired_at: string | null
+          user_agent: string | null
+          user_id: string
+        }
       }
       reject_retroactive_registration: {
         Args: { p_reason: string; p_request_id: string }
@@ -2138,6 +2410,10 @@ export type Database = {
       }
       try_cast_uuid: { Args: { p: string }; Returns: string }
       unread_chat_count: { Args: { p_challenge_id: string }; Returns: number }
+      unregister_push_subscription: {
+        Args: { p_endpoint: string }
+        Returns: undefined
+      }
       update_game_master_settings: {
         Args: {
           p_archive_enabled: boolean
@@ -2148,6 +2424,32 @@ export type Database = {
           p_public_roasts_enabled: boolean
         }
         Returns: undefined
+      }
+      update_notification_preferences: {
+        Args: {
+          p_challenge_id: string
+          p_chat_reply?: boolean
+          p_chat_like?: boolean
+          p_chat_all_messages?: boolean
+          p_straffbanken?: boolean
+          p_game_master?: boolean
+          p_training_reminders?: boolean
+          p_personal_status?: boolean
+          p_daily_group_summary?: boolean
+        }
+        Returns: {
+          chat_all_messages: boolean
+          chat_like: boolean
+          chat_reply: boolean
+          challenge_id: string
+          daily_group_summary: boolean
+          game_master: boolean
+          personal_status: boolean
+          straffbanken: boolean
+          training_reminders: boolean
+          updated_at: string
+          user_id: string
+        }
       }
       weight_final_result: {
         Args: { p_challenge_id: string }

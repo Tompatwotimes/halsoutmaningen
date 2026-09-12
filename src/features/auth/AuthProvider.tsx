@@ -9,6 +9,7 @@ import type { Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { siteUrl } from '@/lib/env';
+import { disablePush } from '@/features/push/push-api';
 import { AuthContext, type AuthContextValue } from './auth-context';
 
 /**
@@ -65,6 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    // Unsubscribe + tell the server BEFORE the session is cleared — the RPC
+    // needs a valid auth.uid() to find and remove the caller's own row. A
+    // shared/borrowed device must never keep receiving the signed-out user's
+    // notifications after this returns. Never blocks/aborts sign-out itself.
+    await disablePush().catch(() => undefined);
     await supabase.auth.signOut();
     queryClient.clear();
   }, [queryClient]);

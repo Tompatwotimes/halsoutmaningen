@@ -73,6 +73,16 @@ export interface ChatPanelProps {
    * a host that wants to observe the intent; production leaves it unset.
    */
   onReplyToMessage?: (message: ChatMessage) => void;
+  /**
+   * A `seq` to jump to as soon as the panel opens — the push-notification
+   * deep-link entry point (a reply/like notification's `url` carries the
+   * target message's seq). Reuses the exact same bounded jumpToMessage driver
+   * a reply-quote tap uses; no separate deep-link logic. The host is
+   * responsible for clearing this back to `null` once consumed (e.g. by
+   * stripping the URL query param) — this component only reads it once per
+   * value via the effect below.
+   */
+  initialJumpSeq?: number | null;
 }
 
 function formatTime(iso: string): string {
@@ -95,6 +105,7 @@ export function ChatPanel({
   isAdmin,
   renderModeration,
   onReplyToMessage,
+  initialJumpSeq = null,
 }: ChatPanelProps) {
   const query = useChatMessages(open ? challengeId : null);
   const { mutate: markRead } = useMarkChatRead();
@@ -459,6 +470,18 @@ export function ChatPanel({
     setJumpNotice(null);
     setJumpTick((n) => n + 1);
   }, []);
+
+  // Deep-link entry point (push notification). Consume `initialJumpSeq` at
+  // most once per distinct value — the host clears it after opening, but even
+  // if it doesn't, this ref-guard stops a re-render from re-triggering the
+  // same jump.
+  const consumedJumpSeq = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open || initialJumpSeq == null) return;
+    if (consumedJumpSeq.current === initialJumpSeq) return;
+    consumedJumpSeq.current = initialJumpSeq;
+    jumpToMessage(initialJumpSeq);
+  }, [open, initialJumpSeq, jumpToMessage]);
 
   // Jump driver: scroll to the target if it is loaded (+ brief highlight).
   // Jumping to an older message is a move UP, so the scroll listener records it
