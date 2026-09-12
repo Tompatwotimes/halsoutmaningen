@@ -10,8 +10,12 @@ import {
 } from '@/features/auth/auth-context';
 import { profileQueryKey } from '@/features/profile/useProfile';
 import { evaluateParticipant } from '@/domain/liability';
+import { currentStreak, longestStreak } from '@/domain/streaks';
 import { currentPlainDateInTimeZone } from '@/domain/time';
-import type { DayStateRow } from '@/features/challenge/challenge-api';
+import type {
+  ChallengeResultRow,
+  DayStateRow,
+} from '@/features/challenge/challenge-api';
 import type { RosterMember } from '@/features/challenge/roster-api';
 import type { SelfEntry } from '@/features/challenge/types';
 import { activeChallenge } from '@/fixtures/challenge';
@@ -25,6 +29,12 @@ import {
   fetchRecentChatMessages,
   fetchUnreadCount,
 } from '@/features/chat/chat-api';
+import {
+  fetchDayStates,
+  fetchDayStatesForUser,
+  fetchDayStatesOnDates,
+  fetchChallengeResults,
+} from '@/features/challenge/challenge-api';
 import { HomePage } from './HomePage';
 import { GroupPage } from './GroupPage';
 import { LogPage } from './LogPage';
@@ -104,6 +114,43 @@ function buildDayStateRows(): DayStateRow[] {
   return rows;
 }
 
+function buildChallengeResultRows(): ChallengeResultRow[] {
+  return participantFixtures.map((p) => {
+    const sessionsByDate = new Map(
+      [...entryFixtures.values()]
+        .filter((e) => e.userId === p.userId)
+        .map((e) => [e.date, [e]] as const),
+    );
+    const evaluation = evaluateParticipant({
+      challenge: activeChallenge,
+      membership: p.membership,
+      currentDate: today,
+      sessionsByDate,
+    });
+    const { liability } = evaluation;
+    const decided = liability.completedDays + liability.missedDays;
+    return {
+      userId: p.userId,
+      participationStartDate: p.membership.participationStartDate,
+      participationEndDate: p.membership.participationEndDate,
+      membershipActive: p.membership.active,
+      eligibleDays: liability.eligibleDays,
+      completedDays: liability.completedDays,
+      missedDays: liability.missedDays,
+      pendingDays: liability.pendingDays,
+      futureDays: liability.futureDays,
+      completionRate: decided === 0 ? 0 : liability.completedDays / decided,
+      currentStreak: currentStreak(evaluation.states),
+      longestStreak: longestStreak(evaluation.states),
+      totalValidMinutes: 0,
+      liabilitySek: liability.confirmedDebt,
+      penaltiesEarned: 0,
+      penaltiesAssigned: 0,
+      penaltiesReceived: 0,
+    };
+  });
+}
+
 function buildSelfEntries(userId: string): SelfEntry[] {
   return [...entryFixtures.values()]
     .filter((e) => e.userId === userId)
@@ -131,6 +178,17 @@ vi.mock('@/features/challenge/challenge-api', () => ({
     });
   }),
   fetchDayStates: vi.fn(() => Promise.resolve(buildDayStateRows())),
+  fetchDayStatesForUser: vi.fn((_challengeId: string, userId: string) =>
+    Promise.resolve(buildDayStateRows().filter((r) => r.userId === userId)),
+  ),
+  fetchDayStatesOnDates: vi.fn((_challengeId: string, dates: string[]) =>
+    Promise.resolve(
+      buildDayStateRows().filter((r) => dates.includes(r.challengeDate)),
+    ),
+  ),
+  fetchChallengeResults: vi.fn(() =>
+    Promise.resolve(buildChallengeResultRows()),
+  ),
 }));
 
 vi.mock('@/features/challenge/roster-api', () => ({
@@ -538,5 +596,62 @@ describe('Shared chat — AppShell integration (Task 9)', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/har tränat idag/i)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Egress regression guard (2026-09 forensic audit): the full
+ * `challenge_day_states` matrix (one row per participant × challenge day —
+ * ~690 KB for the first real challenge) must only ever be fetched by
+ * Översikt. Every other screen must use the self-filtered or dates-filtered
+ * variant, or the pre-aggregated `challenge_results` RPC. A regression here
+ * means a screen started paying for the full matrix again on every open.
+ */
+describe('egress budget — challenge_day_states call shape per screen', () => {
+  it('Hem never calls the full/unfiltered day-states RPC', async () => {
+    vi.mocked(fetchDayStates).mockClear();
+    wrap(<HomePage />);
+    expect(await screen.findByText(/har tränat idag/i)).toBeInTheDocument();
+    expect(fetchDayStates).not.toHaveBeenCalled();
+    expect(fetchDayStatesForUser).toHaveBeenCalled();
+    expect(fetchChallengeResults).toHaveBeenCalled();
+  });
+
+  it('Gruppen never calls the full/unfiltered day-states RPC', async () => {
+    vi.mocked(fetchDayStates).mockClear();
+    wrap(<GroupPage />);
+    expect(
+      await screen.findByLabelText(/Träningsstatus de senaste dagarna/i),
+    ).toBeInTheDocument();
+    expect(fetchDayStates).not.toHaveBeenCalled();
+    expect(fetchDayStatesOnDates).toHaveBeenCalled();
+    expect(fetchChallengeResults).toHaveBeenCalled();
+  });
+
+  it('Profil never calls the full/unfiltered day-states RPC', async () => {
+    vi.mocked(fetchDayStates).mockClear();
+    wrap(<ProfilePage />);
+    await waitFor(() =>
+      expect(screen.getByText(/Nuvarande streak/i)).toBeInTheDocument(),
+    );
+    expect(fetchDayStates).not.toHaveBeenCalled();
+    expect(fetchDayStatesForUser).toHaveBeenCalled();
+  });
+
+  it('Ranking never calls the full/unfiltered day-states RPC', async () => {
+    vi.mocked(fetchDayStates).mockClear();
+    wrap(<RankingPage />);
+    expect(await screen.findByText(/Preliminär ordning/i)).toBeInTheDocument();
+    expect(fetchDayStates).not.toHaveBeenCalled();
+    expect(fetchChallengeResults).toHaveBeenCalled();
+  });
+
+  it('Översikt is the one screen allowed to call the full/unfiltered day-states RPC', async () => {
+    vi.mocked(fetchDayStates).mockClear();
+    wrap(<OverviewPage />);
+    expect(
+      await screen.findByRole('button', { name: /Hoppa till idag/i }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(fetchDayStates).toHaveBeenCalled());
   });
 });

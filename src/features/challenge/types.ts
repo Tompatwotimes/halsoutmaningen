@@ -42,18 +42,30 @@ export interface ParticipantView {
   profileActive: boolean;
   membership: MembershipConfig;
   membershipDisplay: MembershipStateResult;
-  /** Every eligible day with its canonical state (from the DB), ascending. */
+  /**
+   * The day-state rows this view was built from, ascending. For the
+   * signed-in user (`isSelf`) and for every row of `useChallengeMatrix()`
+   * this is the *complete* eligible history. For any other participant
+   * inside the base `useChallengeData()` dataset it is deliberately only a
+   * recent window (`RECENT_WINDOW_DAYS`, see `useChallengeData.ts`) — egress
+   * forensics (2026-09) found every screen fetching the full multi-hundred-KB
+   * matrix for every participant on every navigation when almost nothing
+   * renders more than "today"/"the last few days" for anyone but the current
+   * user. Never assume a date outside that window is present here; a missing
+   * date is not evidence of `not_participating`.
+   */
   days: { date: string; state: DayState }[];
-  /** Full day → state map, including `not_participating` outside the window. */
+  /** Day → state map for whatever window `days` covers (see above). */
   statesByDate: Map<string, DayState>;
   /** Canonical state for today, or null when not eligible today. */
   todayState: DayState | null;
   /** Effective requirement for today (penalty-aware), null when not eligible today. */
   todayRequirement: DayRequirement | null;
-  /** Per-date effective requirement across the whole challenge (matrix / indicators). */
+  /** Per-date effective requirement for whatever window `days` covers (see above). */
   requirementByDate: Map<string, DayRequirement>;
   /** True when eligible today AND membership currently active. */
   activeToday: boolean;
+  /** Always server-computed (`challenge_results` RPC) — never derived client-side. */
   currentStreak: number;
   longestStreak: number;
   liability: LiabilityBreakdown;

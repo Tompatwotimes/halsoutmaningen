@@ -17,11 +17,9 @@ import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { NoMembershipState } from '@/features/challenge/NoMembershipState';
 import { EntryDetailSheet } from '@/features/challenge/EntryDetailSheet';
 import { RecentGrid } from '@/features/group/RecentGrid';
-import { recentDates } from '@/features/challenge/labels';
+import { recentDates, RECENT_WINDOW_DAYS } from '@/features/challenge/labels';
 import type { ParticipantView } from '@/features/challenge/types';
 import styles from './GroupPage.module.css';
-
-const RECENT_DAY_COUNT = 7;
 
 export function GroupPage() {
   const { data, isLoading, isError, refetch } = useChallengeData();
@@ -33,7 +31,7 @@ export function GroupPage() {
   const dates = useMemo(
     () =>
       data
-        ? recentDates(data.today, RECENT_DAY_COUNT, data.challenge.startDate)
+        ? recentDates(data.today, RECENT_WINDOW_DAYS, data.challenge.startDate)
         : [],
     [data],
   );

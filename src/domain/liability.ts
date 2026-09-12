@@ -78,11 +78,30 @@ export function summarizeLiability(
   missedDayCost: number,
 ): LiabilityBreakdown {
   const totals = tallyDayStates(states);
+  return liabilityFromTotals(
+    totals,
+    missedDayCost,
+    totals.missedDays * missedDayCost,
+  );
+}
+
+/**
+ * Builds a `LiabilityBreakdown` from day-state totals that already came from
+ * elsewhere (e.g. the `challenge_results` RPC's pre-aggregated counts),
+ * without re-deriving them from a raw list of states. `confirmedDebt` is
+ * taken as given rather than recomputed, so a server-authoritative figure
+ * (`liability_sek`) is never silently replaced by a client-side one.
+ */
+export function liabilityFromTotals(
+  totals: DayStateTotals,
+  missedDayCost: number,
+  confirmedDebt: number,
+): LiabilityBreakdown {
   return {
     ...totals,
     maxApplicableLiability: totals.eligibleDays * missedDayCost,
     clearedAmount: totals.completedDays * missedDayCost,
-    confirmedDebt: totals.missedDays * missedDayCost,
+    confirmedDebt,
     remainingExposure: (totals.pendingDays + totals.futureDays) * missedDayCost,
   };
 }

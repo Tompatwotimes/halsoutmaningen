@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { ChallengeStatus, type ChallengeConfig } from '@/domain/challenge';
 import { DayState } from '@/domain/dayState';
+import { currentStreak, longestStreak } from '@/domain/streaks';
 import { currentPlainDateInTimeZone } from '@/domain/time';
 import { addDays } from '@/domain/dates';
 import { eligibleDates } from '@/domain/membership';
@@ -11,12 +12,15 @@ import {
   AuthContext,
   type AuthContextValue,
 } from '@/features/auth/auth-context';
-import type { DayStateRow } from './challenge-api';
+import type { ChallengeResultRow, DayStateRow } from './challenge-api';
 import type { RosterMember } from './roster-api';
 
 const mocks = vi.hoisted(() => ({
   fetchMyPrimaryChallenge: vi.fn(),
   fetchDayStates: vi.fn(),
+  fetchDayStatesForUser: vi.fn(),
+  fetchDayStatesOnDates: vi.fn(),
+  fetchChallengeResults: vi.fn(),
   fetchChallengeRoster: vi.fn(),
   fetchSelfEntries: vi.fn(),
 }));
@@ -24,6 +28,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./challenge-api', () => ({
   fetchMyPrimaryChallenge: mocks.fetchMyPrimaryChallenge,
   fetchDayStates: mocks.fetchDayStates,
+  fetchDayStatesForUser: mocks.fetchDayStatesForUser,
+  fetchDayStatesOnDates: mocks.fetchDayStatesOnDates,
+  fetchChallengeResults: mocks.fetchChallengeResults,
 }));
 vi.mock('./roster-api', () => ({
   fetchChallengeRoster: mocks.fetchChallengeRoster,
@@ -150,6 +157,62 @@ function eligibleGrid(
   return rows;
 }
 
+/**
+ * The `challenge_results` RPC aggregates server-side from the same rows
+ * `eligibleGrid` produces — reproduce that here so mocks stay internally
+ * consistent without re-implementing the real SQL.
+ */
+function resultRowsFrom(
+  roster: RosterMember[],
+  rows: DayStateRow[],
+): ChallengeResultRow[] {
+  return roster.map((m) => {
+    const own = rows
+      .filter((r) => r.userId === m.userId)
+      .sort((a, b) => (a.challengeDate < b.challengeDate ? -1 : 1));
+    const states = own.map((r) => r.state);
+    const eligibleDays = states.length;
+    const completedDays = states.filter((s) => s === DayState.Completed).length;
+    const missedDays = states.filter((s) => s === DayState.Missed).length;
+    const pendingDays = states.filter((s) => s === DayState.Pending).length;
+    const futureDays = states.filter((s) => s === DayState.Future).length;
+    const decided = completedDays + missedDays;
+    return {
+      userId: m.userId,
+      participationStartDate: m.participationStartDate,
+      participationEndDate: m.participationEndDate,
+      membershipActive: m.membershipActive,
+      eligibleDays,
+      completedDays,
+      missedDays,
+      pendingDays,
+      futureDays,
+      completionRate: decided === 0 ? 0 : completedDays / decided,
+      currentStreak: currentStreak(states),
+      longestStreak: longestStreak(states),
+      totalValidMinutes: 0,
+      liabilitySek: missedDays * CHALLENGE.missedDayCost,
+      penaltiesEarned: 0,
+      penaltiesAssigned: 0,
+      penaltiesReceived: 0,
+    };
+  });
+}
+
+/** Wires the three day-state/result mocks from one complete `eligibleGrid`. */
+function mockDayStatesAndResults(roster: RosterMember[], rows: DayStateRow[]) {
+  mocks.fetchDayStates.mockResolvedValue(rows);
+  mocks.fetchDayStatesForUser.mockImplementation(
+    (_challengeId: string, userId: string) =>
+      Promise.resolve(rows.filter((r) => r.userId === userId)),
+  );
+  mocks.fetchDayStatesOnDates.mockImplementation(
+    (_challengeId: string, dates: string[]) =>
+      Promise.resolve(rows.filter((r) => dates.includes(r.challengeDate))),
+  );
+  mocks.fetchChallengeResults.mockResolvedValue(resultRowsFrom(roster, rows));
+}
+
 describe('useChallengeData', () => {
   it('resolves to null when the signed-in user has no membership anywhere', async () => {
     mocks.fetchMyPrimaryChallenge.mockResolvedValue(null);
@@ -197,7 +260,7 @@ describe('useChallengeData', () => {
       },
     });
     mocks.fetchChallengeRoster.mockResolvedValue(roster);
-    mocks.fetchDayStates.mockResolvedValue(rows);
+    mockDayStatesAndResults(roster, rows);
     mocks.fetchSelfEntries.mockResolvedValue([]);
 
     const { result } = renderHook(() => useChallengeData(), {
@@ -251,7 +314,7 @@ describe('useChallengeData', () => {
       },
     });
     mocks.fetchChallengeRoster.mockResolvedValue(roster);
-    mocks.fetchDayStates.mockResolvedValue(rows);
+    mockDayStatesAndResults(roster, rows);
     mocks.fetchSelfEntries.mockResolvedValue([]);
 
     const { result } = renderHook(() => useChallengeData(), {
@@ -301,7 +364,7 @@ describe('useChallengeData', () => {
       },
     });
     mocks.fetchChallengeRoster.mockResolvedValue(roster);
-    mocks.fetchDayStates.mockResolvedValue(rows);
+    mockDayStatesAndResults(roster, rows);
     mocks.fetchSelfEntries.mockResolvedValue([]);
     const errSpy = vi
       .spyOn(console, 'error')
@@ -331,13 +394,12 @@ describe('useChallengeData', () => {
     errSpy.mockRestore();
   });
 
-  it('logs an invariant error when eligible day-state rows are missing (truncation regression)', async () => {
-    const roster = [
-      member({ userId: 'u00', displayName: 'Self' }),
-      member({ userId: 'u01', displayName: 'Truncated Away' }),
-    ];
-    // u01's rows never arrived — the exact shape of a PostgREST row-cap cut.
-    const rows = eligibleGrid([roster[0]!]);
+  it("logs an invariant error when the signed-in user's own eligible day-state rows are missing (truncation regression)", async () => {
+    // The base hook (unlike `useChallengeMatrix`) only ever fetches full
+    // history for the signed-in user, via `fetchDayStatesForUser` — so that
+    // is the one call a row-cap truncation regression could still hide in.
+    const roster = [member({ userId: 'u00', displayName: 'Self' })];
+    const rows = eligibleGrid(roster);
 
     mocks.fetchMyPrimaryChallenge.mockResolvedValue({
       challenge: CHALLENGE,
@@ -349,7 +411,9 @@ describe('useChallengeData', () => {
       },
     });
     mocks.fetchChallengeRoster.mockResolvedValue(roster);
-    mocks.fetchDayStates.mockResolvedValue(rows);
+    mockDayStatesAndResults(roster, rows);
+    // Only the first row ever arrived — the exact shape of a row-cap cut.
+    mocks.fetchDayStatesForUser.mockResolvedValue(rows.slice(0, 1));
     mocks.fetchSelfEntries.mockResolvedValue([]);
     const errSpy = vi
       .spyOn(console, 'error')
@@ -362,7 +426,7 @@ describe('useChallengeData', () => {
 
     expect(errSpy).toHaveBeenCalledTimes(1);
     expect(errSpy.mock.calls[0]?.[0]).toContain('missing eligible-day rows');
-    expect(errSpy.mock.calls[0]?.[0]).toContain('Truncated Away');
+    expect(errSpy.mock.calls[0]?.[0]).toContain('signed-in user');
     errSpy.mockRestore();
   });
 });

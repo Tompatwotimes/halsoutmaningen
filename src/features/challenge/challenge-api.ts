@@ -201,28 +201,40 @@ const DAY_STATES_PAGE_SIZE = 1000;
 /** Runaway guard: 1000 participants over a ~370-day challenge still fits. */
 const DAY_STATES_MAX_REQUESTS = 500;
 
+interface DayStatesQuery {
+  /** Server-side filter via the RPC's own `p_user_id` arg — one participant's rows. */
+  userId?: string;
+  /** Client-side filter pushed down as a WHERE on the RPC's returned rows — specific dates, every participant. */
+  dates?: string[];
+}
+
 /**
- * The canonical per-participant, per-day state for an entire challenge
- * (`challenge_day_states` RPC — docs/DATABASE.md §4). This is the
- * authoritative source for every status surface; the frontend never
- * recomputes qualification itself (CLAUDE.md §12, §17).
- *
- * Fetched in deterministic pages (no per-cell or per-participant requests) so
- * it is correct for any realistic participant count and challenge length.
+ * Shared paginated fetch behind every `challenge_day_states` caller below.
+ * Egress note (production incident, 2026-09): an *unfiltered* call returns
+ * one row per participant × challenge day (e.g. 21 × 120 = 2520) — every
+ * screen used to fetch this unconditionally. Only Översikt's full matrix
+ * genuinely needs that; every other screen passes `userId` and/or `dates` so
+ * PostgREST/Postgres do the filtering and far fewer bytes ever cross the
+ * wire. See docs/DATABASE.md §4.
  */
-export async function fetchDayStates(
+async function fetchDayStatesPaged(
   challengeId: string,
+  query: DayStatesQuery = {},
 ): Promise<DayStateRow[]> {
-  const page = (from: number, to: number) =>
-    supabase
+  const page = (from: number, to: number) => {
+    const builder = supabase
       .rpc(
         'challenge_day_states',
-        { p_challenge_id: challengeId },
+        query.userId
+          ? { p_challenge_id: challengeId, p_user_id: query.userId }
+          : { p_challenge_id: challengeId },
         { count: 'exact' },
       )
       .order('user_id', { ascending: true })
       .order('challenge_date', { ascending: true })
       .range(from, to);
+    return query.dates ? builder.in('challenge_date', query.dates) : builder;
+  };
 
   const first = await page(0, DAY_STATES_PAGE_SIZE - 1);
   if (first.error) {
@@ -270,6 +282,46 @@ export async function fetchDayStates(
   return rows.map(toDayStateRow);
 }
 
+/**
+ * The canonical per-participant, per-day state for an entire challenge
+ * (`challenge_day_states` RPC — docs/DATABASE.md §4). This is the
+ * authoritative source for every status surface; the frontend never
+ * recomputes qualification itself (CLAUDE.md §12, §17).
+ *
+ * The full, unfiltered matrix. Expensive (one row per participant × day) —
+ * reserved for Översikt's complete grid (`useChallengeMatrix`). Every other
+ * screen must use `fetchDayStatesForUser` or `fetchDayStatesOnDates` instead.
+ */
+export function fetchDayStates(challengeId: string): Promise<DayStateRow[]> {
+  return fetchDayStatesPaged(challengeId);
+}
+
+/**
+ * One participant's full day-state history — ~20x smaller than the full
+ * matrix (confirmed in production: 89 rows / 34.6 KB vs. 1780 rows / 692 KB
+ * for one real challenge). Used for the signed-in user's own data (Home,
+ * Profil, Logga) — screens that only ever render the current user's own
+ * calendar/streak never need any other participant's day states.
+ */
+export function fetchDayStatesForUser(
+  challengeId: string,
+  userId: string,
+): Promise<DayStateRow[]> {
+  return fetchDayStatesPaged(challengeId, { userId });
+}
+
+/**
+ * Every participant's state on a specific set of dates — for the "today"
+ * column and the recent-days grid (Hem, Gruppen), which only ever render a
+ * handful of dates, never the whole challenge history.
+ */
+export function fetchDayStatesOnDates(
+  challengeId: string,
+  dates: string[],
+): Promise<DayStateRow[]> {
+  return fetchDayStatesPaged(challengeId, { dates });
+}
+
 function toDayStateRow(row: DayStateRpcRow): DayStateRow {
   return {
     userId: row.user_id,
@@ -285,4 +337,62 @@ function toDayStateRow(row: DayStateRpcRow): DayStateRow {
     penaltyDisplayName: row.penalty_display_name,
     penaltyFromUserId: row.penalty_from_user_id,
   };
+}
+
+export interface ChallengeResultRow {
+  userId: string;
+  participationStartDate: string;
+  participationEndDate: string | null;
+  membershipActive: boolean;
+  eligibleDays: number;
+  completedDays: number;
+  missedDays: number;
+  pendingDays: number;
+  futureDays: number;
+  /** Fraction 0–1: completedDays / (completedDays + missedDays). */
+  completionRate: number;
+  currentStreak: number;
+  longestStreak: number;
+  totalValidMinutes: number;
+  /** missedDays × missedDayCost — server-computed, authoritative debt. */
+  liabilitySek: number;
+  penaltiesEarned: number;
+  penaltiesAssigned: number;
+  penaltiesReceived: number;
+}
+
+/**
+ * One pre-aggregated row per participant (`challenge_results` RPC —
+ * docs/DATABASE.md §4): streak, completion rate and liability computed
+ * server-side from the full day-state matrix without that matrix ever
+ * crossing the network. This is the read model for anything that needs
+ * every participant's *summary* stats (Hem, Gruppen, Ranking) — never derive
+ * these figures client-side from raw day states (CLAUDE.md §17).
+ */
+export async function fetchChallengeResults(
+  challengeId: string,
+): Promise<ChallengeResultRow[]> {
+  const { data, error } = await supabase.rpc('challenge_results', {
+    p_challenge_id: challengeId,
+  });
+  if (error) throw new Error(error.message);
+  return data.map((r) => ({
+    userId: r.user_id,
+    participationStartDate: r.participation_start_date,
+    participationEndDate: r.participation_end_date,
+    membershipActive: r.membership_active,
+    eligibleDays: r.eligible_days,
+    completedDays: r.completed_days,
+    missedDays: r.missed_days,
+    pendingDays: r.pending_days,
+    futureDays: r.future_days,
+    completionRate: r.completion_rate,
+    currentStreak: r.current_streak,
+    longestStreak: r.longest_streak,
+    totalValidMinutes: r.total_valid_minutes,
+    liabilitySek: r.liability_sek,
+    penaltiesEarned: r.penalties_earned,
+    penaltiesAssigned: r.penalties_assigned,
+    penaltiesReceived: r.penalties_received,
+  }));
 }

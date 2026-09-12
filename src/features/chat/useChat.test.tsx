@@ -267,6 +267,11 @@ describe('useChatMessages — Realtime', () => {
     expect(spy).toHaveBeenCalledWith({
       queryKey: chatKeys.unreadRoot('c1'),
     });
+    // Egress regression guard (2026-09 forensic audit): exactly these two
+    // invalidations, never a third that reaches into `challenge-data` /
+    // `challenge_day_states` — a chat message/like must never refetch the
+    // (potentially full-matrix) challenge dataset.
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the list seq-ascending regardless of Realtime arrival order', async () => {
