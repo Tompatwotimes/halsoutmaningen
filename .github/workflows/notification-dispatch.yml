@@ -1,0 +1,52 @@
+name: Notification dispatch
+
+# Invokes the notification-dispatcher Edge Function's "dispatch" action on a
+# tight cadence. The DB scheduler (_notification_scheduler_tick, run by
+# pg_cron) only ENQUEUES notification_outbox rows — something has to actually
+# call the dispatcher to send them, and pg_net availability on this project's
+# plan is unconfirmed, so a scheduled GitHub Actions job is the safe default
+# (see docs/superpowers/specs/2026-09-11-pwa-push-v1-design.md §4).
+#
+# Every 5 minutes is GitHub Actions' minimum schedule granularity. The
+# function itself claims a bounded batch (FOR UPDATE SKIP LOCKED) per call, so
+# overlapping/late runs are safe — never invokes per-user/per-device.
+#
+# Auth: a dedicated CRON_SECRET repo secret, checked by the function itself
+# against its own CRON_SECRET Edge Function secret. Never the Supabase
+# service-role key, never committed, never logged.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notification-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Claim + send a batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call notification-dispatcher
+        run: |
+          status=$(curl -sS -o /tmp/response.json -w '%{http_code}' \
+            -X POST "${SUPABASE_URL}/functions/v1/notification-dispatcher" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{"action":"dispatch"}')
+          echo "HTTP status: $status" >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/response.json >> "$GITHUB_STEP_SUMMARY" || true
+          if [ "$status" -ge 400 ]; then
+            echo "notification-dispatcher returned $status"
+            cat /tmp/response.json
+            exit 1
+          fi
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          CRON_SECRET: ${{ secrets.NOTIFICATION_DISPATCH_CRON_SECRET }}

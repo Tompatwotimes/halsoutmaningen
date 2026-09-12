@@ -104,11 +104,12 @@ variables/secrets** (Settings → Secrets and variables → Actions) and passed 
 `npm run build` by the deploy workflow. They are read by Vite at build time and
 inlined into the bundle:
 
-| Name                     | Value                                                                        | Notes                         |
-| ------------------------ | ---------------------------------------------------------------------------- | ----------------------------- |
-| `VITE_SUPABASE_URL`      | `https://offvlyflactysibrssco.supabase.co`                                   | public                        |
-| `VITE_SUPABASE_ANON_KEY` | the project **anon / publishable** key                                       | public, RLS-enforced          |
-| `VITE_PUBLIC_SITE_URL`   | the production URL, e.g. `https://<worker>.workers.dev` or the custom domain | used for auth email redirects |
+| Name                             | Value                                                                        | Notes                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `VITE_SUPABASE_URL`              | `https://offvlyflactysibrssco.supabase.co`                                   | public                                                     |
+| `VITE_SUPABASE_ANON_KEY`         | the project **anon / publishable** key                                       | public, RLS-enforced                                       |
+| `VITE_PUBLIC_SITE_URL`           | the production URL, e.g. `https://<worker>.workers.dev` or the custom domain | used for auth email redirects                              |
+| `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` | the VAPID public key generated for Web Push                                  | optional, public — blank disables the push-subscription UI |
 
 **Never** set `SUPABASE_SERVICE_ROLE_KEY`, a database connection string, or any
 JWT secret on the Worker. Only `VITE_`-prefixed public values belong here; they
@@ -319,3 +320,96 @@ Ordered. Items marked **(approval)** were explicitly held for you.
 Until steps 6–7 are done, the admin "Bjud in deltagare" form returns a
 network / function error — expected. Adding an **existing** account to a
 challenge and activating a draft challenge do not depend on the Edge Function.
+
+---
+
+## 6. Supabase — PWA + Web Push notifications
+
+Source: [`supabase/functions/notification-dispatcher/`](../supabase/functions/notification-dispatcher/),
+migrations `20260911090000`–`20260911090400`, spec
+[`2026-09-11-pwa-push-v1-design.md`](./superpowers/specs/2026-09-11-pwa-push-v1-design.md).
+
+### 6.1 VAPID keypair (generate once)
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+The **public** key is safe client-side — set it as the GitHub Actions repo
+**variable** `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` (§1.4) so the production build
+picks it up. The **private** key is a secret: it must only ever reach Supabase
+Edge Function secrets (step 6.2), never a frontend env var, never Cloudflare,
+never a commit, never a log line or report.
+
+### 6.2 Secrets
+
+| Name                         | Who sets it | Purpose                                                   |
+| ---------------------------- | ----------- | --------------------------------------------------------- |
+| `WEB_PUSH_VAPID_PUBLIC_KEY`  | **us**      | mirrors the frontend's public key server-side             |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | **us**      | signs outgoing Web Push messages — never exposed          |
+| `WEB_PUSH_VAPID_SUBJECT`     | **us**      | `mailto:` or the production HTTPS URL                     |
+| `CRON_SECRET`                | **us**      | bearer the scheduled dispatch workflow authenticates with |
+
+```bash
+supabase secrets set \
+  WEB_PUSH_VAPID_PUBLIC_KEY=<public> \
+  WEB_PUSH_VAPID_PRIVATE_KEY=<private> \
+  WEB_PUSH_VAPID_SUBJECT=https://<prod-url> \
+  CRON_SECRET=<a-random-value> \
+  --project-ref offvlyflactysibrssco
+```
+
+Set the same `CRON_SECRET` value as the GitHub Actions repo secret
+`NOTIFICATION_DISPATCH_CRON_SECRET` used by
+[`.github/workflows/notification-dispatch.yml`](../.github/workflows/notification-dispatch.yml) —
+two different names in two different systems, same value.
+
+### 6.3 Deploy
+
+```bash
+supabase db push --project-ref offvlyflactysibrssco
+supabase functions deploy notification-dispatcher --project-ref offvlyflactysibrssco
+```
+
+`verify_jwt = false` (`supabase/config.toml`) is deliberate, mirroring
+`invite-participant`: the function does its own auth — a `CRON_SECRET` bearer
+for `dispatch`, a real validated user session for `self-test`.
+
+### 6.4 Scheduling
+
+Two independent schedules, both timezone-safe (they read each challenge's own
+`timezone` column — never a hardcoded Stockholm/UTC offset):
+
+- **Enqueue** — `pg_cron` job `halsoutmaningen-notifications-hourly` (created
+  by `20260911090300_notifications_scheduler.sql`) runs `_notification_scheduler_tick()`
+  hourly, enqueuing due 19:00/22:00/06:30-local-time rows.
+- **Send** — `.github/workflows/notification-dispatch.yml` calls the deployed
+  function's `dispatch` action every 5 minutes (GitHub Actions' minimum
+  granularity) so enqueued rows do not sit for up to an hour.
+
+Verify after deploy:
+
+```bash
+supabase functions list --project-ref offvlyflactysibrssco
+psql "<connection-string>" -c "select jobname, schedule, active from cron.job where jobname like 'halsoutmaningen%';"
+```
+
+### 6.5 Kill switch
+
+`challenges.push_enabled` (default `true`) is the operational emergency brake
+— flip it off for a challenge to stop **new** enqueues immediately and prevent
+already-queued rows for that challenge from being claimed/sent
+(`_claim_notification_outbox_batch` re-checks it, not only the enqueue path).
+It does not touch any other part of the product.
+
+### 6.6 Smoke test after deploy
+
+1. As a signed-in participant on an installed PWA, Profil → Notiser →
+   Aktivera → grant permission → confirm `push_subscriptions` gains a row
+   (admin-only table — verify via `service_role`, never exposed to the UI).
+2. **Skicka testnotis** → expect a real OS push within a few seconds.
+3. Toggle `challenges.push_enabled = false` → **Skicka testnotis** must now be
+   refused (kill switch also blocks self-test) → set it back to `true`.
+4. Confirm the scheduled GitHub Actions run (`notification-dispatch.yml`) is
+   green and `notification_outbox` rows move from `sent_at is null` to a
+   populated `sent_at` within a few minutes of being enqueued.

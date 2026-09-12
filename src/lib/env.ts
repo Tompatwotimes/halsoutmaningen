@@ -21,6 +21,14 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined),
     z.string().url('VITE_PUBLIC_SITE_URL must be a valid URL').optional(),
   ),
+  // Optional. The VAPID PUBLIC key for Web Push — safe to expose by design
+  // (it identifies the sender, it cannot sign anything). Unset simply means
+  // push subscription is unavailable; the UI treats that as "not supported
+  // yet" rather than an error.
+  VITE_WEB_PUSH_VAPID_PUBLIC_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined),
+    z.string().min(1).optional(),
+  ),
 });
 
 const parsed = envSchema.safeParse(import.meta.env);
@@ -39,6 +47,7 @@ export const env = {
   supabaseUrl: parsed.data.VITE_SUPABASE_URL,
   supabaseAnonKey: parsed.data.VITE_SUPABASE_ANON_KEY,
   publicSiteUrl: parsed.data.VITE_PUBLIC_SITE_URL ?? null,
+  webPushVapidPublicKey: parsed.data.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? null,
 } as const;
 
 /**

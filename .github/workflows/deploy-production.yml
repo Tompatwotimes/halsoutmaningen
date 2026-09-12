@@ -69,6 +69,11 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_PUBLIC_SITE_URL: ${{ vars.VITE_PUBLIC_SITE_URL }}
+          # Optional — Vite inlines env at build time, so without this the
+          # deployed bundle would have push permanently unavailable even once
+          # everything else (VAPID secrets, Edge Function, cron) is live.
+          # Safe to expose (the sender's public identifier, not a secret).
+          VITE_WEB_PUSH_VAPID_PUBLIC_KEY: ${{ vars.VITE_WEB_PUSH_VAPID_PUBLIC_KEY }}
 
       - name: Deploy the Worker (promotes to production traffic)
         uses: cloudflare/wrangler-action@v3

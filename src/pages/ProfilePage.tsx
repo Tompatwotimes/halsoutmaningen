@@ -37,6 +37,7 @@ import { PersonalCalendar } from '@/features/profile/PersonalCalendar';
 import { WeightSection } from '@/features/weight/WeightSection';
 import { useStraffbank } from '@/features/straffbanken/useStraffbank';
 import { ThemeSwitch } from '@/features/theme/ThemeSwitch';
+import { NotificationsCard } from '@/features/push/NotificationsCard';
 import { capitalize, weekdayLong } from '@/features/challenge/labels';
 import type { SelfEntry } from '@/features/challenge/types';
 import styles from './ProfilePage.module.css';
@@ -150,6 +151,12 @@ export function ProfilePage() {
           <ThemeSwitch />
         </div>
       </Card>
+
+      {data && (
+        <Card title="Notiser">
+          <NotificationsCard challengeId={data.challenge.id} />
+        </Card>
+      )}
 
       {isAdmin && (
         <Link to="/admin" className={styles.adminLink}>

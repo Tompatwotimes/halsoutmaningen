@@ -50,3 +50,22 @@ for (const method of [
     });
   }
 }
+
+// jsdom implements no `matchMedia` at all. A safe default (nothing matches —
+// "no system dark mode", "not installed standalone") so any component that
+// merely reads it (theme system prefers-color-scheme, PWA isStandalone())
+// doesn't crash a test that isn't specifically exercising that behaviour.
+// Tests that DO care about a specific matchMedia outcome already override it
+// per-file with `vi.stubGlobal('matchMedia', ...)`.
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
