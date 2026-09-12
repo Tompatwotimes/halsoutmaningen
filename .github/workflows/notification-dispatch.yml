@@ -14,6 +14,14 @@ name: Notification dispatch
 # Auth: a dedicated CRON_SECRET repo secret, checked by the function itself
 # against its own CRON_SECRET Edge Function secret. Never the Supabase
 # service-role key, never committed, never logged.
+#
+# SUPABASE_URL is hardcoded below, not a repo variable: this repo has no
+# VITE_SUPABASE_URL (or any) repo variable configured (confirmed empty via
+# `gh variable list` during the 2026-09-12 deploy postmortem — see
+# docs/DEPLOYMENT.md §1.6), so referencing one silently resolved to an empty
+# string and every run of this workflow failed with "URL rejected: No host
+# part in the URL" until this fix. The project ref is public, non-secret
+# information already hardcoded throughout this repo's own docs/migrations.
 
 on:
   workflow_dispatch:
@@ -48,5 +56,5 @@ jobs:
             exit 1
           fi
         env:
-          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_URL: https://offvlyflactysibrssco.supabase.co
           CRON_SECRET: ${{ secrets.NOTIFICATION_DISPATCH_CRON_SECRET }}
