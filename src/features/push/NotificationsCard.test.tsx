@@ -184,6 +184,29 @@ describe('NotificationsCard — explicit async capability states', () => {
       screen.getByRole('button', { name: 'Skicka testnotis' }),
     ).toBeInTheDocument();
   });
+
+  it('REAL-DEVICE REGRESSION: a supported-but-unsubscribed iOS Home Screen device (capability="supported", isActive=false) shows the Aktivera button, never "Notiser stöds inte"', () => {
+    // Mirrors the exact real iPhone diagnostic snapshot that once produced
+    // the wrong UI: every capability signal healthy, permission "default",
+    // currentPushSubscription false. usePushSubscription() resolves this to
+    // capability: 'supported' with isActive: false — the component must
+    // render the activation affordance, never the unsupported message.
+    isIosMock.mockReturnValue(true);
+    isStandaloneMock.mockReturnValue(true);
+    primeInstall({ installed: true });
+    primePush({
+      capability: 'supported',
+      permission: 'default',
+      isActive: false,
+    });
+
+    render(<NotificationsCard challengeId="c1" />);
+
+    expect(
+      screen.getByRole('button', { name: 'Aktivera' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Notiser stöds inte/)).not.toBeInTheDocument();
+  });
 });
 
 describe('NotificationsCard — admin diagnostics panel', () => {
