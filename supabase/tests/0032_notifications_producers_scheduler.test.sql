@@ -15,6 +15,7 @@ create extension if not exists pgtap;
 select plan(35);
 
 set local role postgres;
+reset request.jwt.claims;
 
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
 values
@@ -112,6 +113,7 @@ select public.set_chat_message_like('00000000-0000-0000-0000-0000000032c1', true
 select public.set_chat_message_like('00000000-0000-0000-0000-0000000032c1', false);
 select public.set_chat_message_like('00000000-0000-0000-0000-0000000032c1', true);
 set local role postgres;
+reset request.jwt.claims;
 
 select is(
   (select count(*)::int from public.notification_outbox
@@ -131,6 +133,7 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000032a4","role":"authenticated"}', true);
 select public.update_notification_preferences('00000000-0000-0000-0000-000000032f01', p_chat_all_messages := true);
 set local role postgres;
+reset request.jwt.claims;
 
 insert into public.chat_messages (id, challenge_id, sender_type, sender_user_id, body)
 values ('00000000-0000-0000-0000-0000000032c4', '00000000-0000-0000-0000-000000032f01',
@@ -190,6 +193,7 @@ select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-0000000032a3","role":"authenticated"}', true);
 select public.update_notification_preferences('00000000-0000-0000-0000-000000032f01', p_game_master := false);
 set local role postgres;
+reset request.jwt.claims;
 
 insert into public.game_master_events
   (id, challenge_id, family, visibility, severity, title_text, body_text)
