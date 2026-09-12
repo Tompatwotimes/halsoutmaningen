@@ -3,12 +3,17 @@ import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 /**
- * Guard for the manual production-promotion gate (docs/DEPLOYMENT.md §1.6).
+ * Structural guard for `.github/workflows/deploy-production.yml`'s shape.
  *
- * The whole point of `.github/workflows/deploy-production.yml` is that code
- * reaches production ONLY through a deliberate, reviewed, manual run. These
- * assertions fail loudly if someone later re-adds an automatic trigger or
- * drops the environment gate.
+ * NOTE (confirmed 2026-09-12, docs/DEPLOYMENT.md §1.6 postmortem): this
+ * workflow is NOT the active production release path — no
+ * CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID secret or `production` GitHub
+ * Environment has ever been configured for it. The real gate is Cloudflare's
+ * own Branch control (the `production` git branch); code reaches production
+ * by fast-forwarding `production` to a verified `main` SHA, never through
+ * this workflow. These assertions just keep the file's shape sane (dispatch-
+ * only trigger, environment-gated, wrangler-action, no secrets leaked) in
+ * case it is ever wired up for real in the future.
  *
  * This is a static text check on purpose — it needs no YAML parser dependency
  * and it is exactly the invariant we care about.

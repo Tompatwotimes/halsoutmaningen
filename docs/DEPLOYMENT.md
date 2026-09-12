@@ -30,24 +30,30 @@ Supabase CLI) and never committed.
 
 ## 1. Cloudflare Workers — Static Assets
 
-> **Deployment model (2026-09-06 onwards): manual promotion only.**
-> Pushing / merging to `main` no longer promotes anything to production.
-> Production code is promoted by a deliberate GitHub Actions run
-> (`.github/workflows/deploy-production.yml`, `workflow_dispatch` only, gated by
-> the `production` Environment). This requires the Cloudflare **Workers Builds
-> git integration to be disconnected** — see **§1.6**. Until that is done,
-> Cloudflare keeps auto-deploying every push to `main` and the gate is not real.
+> **Deployment model (confirmed 2026-09-12, see §1.6 postmortem): the
+> Cloudflare Workers Builds git integration's configured PRODUCTION branch is
+> `production` — a real git branch in this repo, deliberately kept still.
+> Only a push to `production` builds with the project's real `VITE_*`
+> production build variables and serves the live public URL. A push to
+> `main` (or any other branch) still triggers a Cloudflare build, but as a
+> non-production **preview** version (`wrangler versions upload`) built
+> WITHOUT those production variables — its own preview URL works, but
+> promoting it to production traffic serves a broken build (missing
+> `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, app fails to mount). Never
+> manually promote a `main`-origin version. Release to production by
+> fast-forwarding `production` to a verified `main` SHA (§1.6) — never a
+> force push, never a commit made only on `production`.
 
 ### 1.1 Project connection
 
-| Setting                      | Value                                                     |
-| ---------------------------- | --------------------------------------------------------- |
-| Product                      | Workers & Pages → **Worker** with a Static Assets binding |
-| Worker name                  | `halsoutmaningen` (see `wrangler.jsonc`)                  |
-| Git provider                 | GitHub — **being disconnected**, see §1.6                 |
-| Repository                   | `Tompatwotimes/halsoutmaningen` (this repo)               |
-| Production branch (historic) | `main` — was build **and** auto-deploy                    |
-| Preview / branch deployments | off (only `main` was ever deployed)                       |
+| Setting                                           | Value                                                                                                                                                                                                                                   |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product                                           | Workers & Pages → **Worker** with a Static Assets binding                                                                                                                                                                               |
+| Worker name                                       | `halsoutmaningen` (see `wrangler.jsonc`)                                                                                                                                                                                                |
+| Git provider                                      | GitHub, connected (Workers Builds)                                                                                                                                                                                                      |
+| Repository                                        | `Tompatwotimes/halsoutmaningen` (this repo)                                                                                                                                                                                             |
+| **Production branch (Cloudflare Branch control)** | **`production`** — the only branch whose build carries the project's production `VITE_*` variables and serves the default public URL.                                                                                                   |
+| Other branches (`main`, feature branches)         | Still build on push (preview versions + a `<hash>-halsoutmaningen.gbkof.workers.dev` / `main-halsoutmaningen.gbkof.workers.dev`-style alias), but WITHOUT production build variables — never promote these to serve production traffic. |
 
 ### 1.2 Build configuration
 
@@ -99,10 +105,12 @@ directly.
 
 ### 1.4 Frontend environment variables
 
-With the manual-promotion model (§1.6) these are set as **GitHub Actions repo
-variables/secrets** (Settings → Secrets and variables → Actions) and passed to
-`npm run build` by the deploy workflow. They are read by Vite at build time and
-inlined into the bundle:
+These are set directly in the **Cloudflare dashboard**, on the Worker's own
+Build configuration (Workers & Pages → `halsoutmaningen` → Settings → Build →
+Environment variables) — scoped to the `production` branch specifically (see
+§1.6's confirmed model; this is **not** a GitHub Actions secret/variable, and
+`deploy-production.yml` is not the active path). They are read by Vite at
+build time and inlined into the bundle:
 
 | Name                             | Value                                                                        | Notes                                                      |
 | -------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -119,74 +127,87 @@ ship in the client bundle by design.
 `window.location.origin`) but **should be set in production** so invite /
 password-reset links always point at the canonical origin.
 
-### 1.5 Preview deployments (optional)
+### 1.5 Preview builds (`main` and other non-production branches)
 
-If preview deployments are enabled, either:
+These are **not optional/hypothetical** — confirmed 2026-09-12: every push to
+`main` (or any branch other than `production`) already triggers a Cloudflare
+build and a preview version with its own URL
+(`https://<version-hash>-halsoutmaningen.gbkof.workers.dev`, plus a stable
+`https://main-halsoutmaningen.gbkof.workers.dev` alias for `main`). These
+builds do **not** receive the production `VITE_*` variables from §1.4, so
+they reliably fail to boot (`Invalid environment configuration`) — that is
+expected and fine for a preview build nobody is meant to use as the live
+site. **Never manually promote one of these versions to serve production
+traffic** (§1.6). If real working preview builds are ever wanted, set the
+same variables from §1.4 on the Preview environment too, in the Cloudflare
+dashboard, and add `https://*.<worker>.workers.dev` to the Supabase redirect
+allow-list — until then, treat every non-`production`-branch build as
+disposable/expected-broken and ignore it.
 
-- set `VITE_PUBLIC_SITE_URL` per branch-deployment to that deployment's URL and
-  add each to the Supabase redirect allow-list, **or**
-- leave `VITE_PUBLIC_SITE_URL` unset for branch deployments so they use their
-  own origin, and add `https://*.<worker>.workers.dev` to the Supabase redirect
-  allow-list (wildcard).
+### 1.6 Production release: fast-forward the `production` branch
 
-The simplest safe option for launch: **only deploy `main`** and skip branch
-deployments.
+**Postmortem (2026-09-12).** During the PWA + Push V1 release and its
+follow-up correction, `main`-origin Cloudflare Worker versions were manually
+promoted to serve production traffic, twice. Both went live with the app
+completely broken (React never mounted — `Invalid environment configuration:
+VITE_SUPABASE_URL: Required, VITE_SUPABASE_ANON_KEY: Required`), confirmed by
+inspecting the shipped bundle directly: no `offvlyflactysibrssco` string
+baked in, but the literal string `VITE_SUPABASE_URL` present (Vite's env
+substitution had nothing to substitute). Root cause, confirmed against the
+live Cloudflare dashboard: **`main` was never the configured production
+branch — `production` is.** Cloudflare's Branch control has `production` set
+as the one branch whose build receives the project's real `VITE_*`
+production build variables and is served at the bare production URL; a
+`main` push only ever produced a non-production **preview** version
+(`wrangler versions upload` in that build's own deploy-command field, no
+build variables) that happened to have a promotable "Deploy" action in the
+dashboard — promoting it does not retroactively give it the missing
+build-time variables. **Manually promoting a `main`/preview version must
+never be done again.** The `docs/DEPLOYMENT.md §1.6` content this replaced
+(a `workflow_dispatch`-gated `deploy-production.yml` + a disconnected
+Cloudflare git integration) described an earlier, different plan
+(commit `df9d363`) whose one-time Cloudflare/GitHub setup was never actually
+completed — no `production` GitHub Environment, no `CLOUDFLARE_API_TOKEN`
+secret ever existed — so it was never the live mechanism regardless of what
+this doc previously claimed.
 
-### 1.6 Manual production promotion gate
+**The real, confirmed release flow:**
 
-**Why this exists.** The Cloudflare **Workers Builds** git integration builds
-**and** promotes on every push to the production branch. It has no "build only"
-mode for the production branch (that toggle is a _Pages_ feature, not Workers
-Builds), and changing the deploy command to `wrangler versions upload` did
-**not** stop promotion in practice for this Worker. Result: a merge to `main`
-would silently ship un-reviewed application code to real users — during the
-Weight Tracking rollout the frontend went live at the PR merge, before the
-frontend was meant to be promoted.
+1. Land and verify everything on `main` as normal (PR review, CI, merge).
+2. Re-run the full gate suite fresh on merged `main` (test/typecheck/lint/
+   format/build, plus the DB/pgTAP suite).
+3. Fast-forward `production` to that exact verified `main` SHA — **never a
+   force push, never a commit made only on `production`**:
+   ```bash
+   git fetch origin
+   git merge-base --is-ancestor origin/production origin/main \
+     && echo "safe: production is a strict ancestor of main" \
+     || echo "STOP — production has diverged, investigate before pushing"
+   git push origin main:production
+   ```
+4. Wait for Cloudflare's build on `production` (a GitHub check-run named
+   "Workers Builds: halsoutmaningen" appears on that same commit SHA; its
+   summary must show a **production** deploy, not `wrangler versions upload`
+   with no build variables).
+5. **Before considering anything released**, verify a REAL render against
+   the production URL (a static `curl` check on `/manifest.webmanifest` or
+   `/sw.js` is not sufficient — it does not prove the React app itself
+   mounted). At minimum:
+   - the shipped `/assets/index-*.js` contains the real project ref
+     (`offvlyflactysibrssco`), not the literal string `VITE_SUPABASE_URL`;
+   - a headless-browser render of `/logga-in` (no auth needed) shows a
+     non-empty `#root` and throws no page errors.
 
-**The model now.** Code reaches production only through
-[`.github/workflows/deploy-production.yml`](../.github/workflows/deploy-production.yml):
+`wrangler.jsonc` at the repo root still captures the Worker config (name
+`halsoutmaningen`, `./dist`, SPA `not_found_handling`) for reference, but the
+actual production trigger is the Cloudflare Branch control setting described
+above, not anything invoked from this repo's GitHub Actions.
 
-- trigger: **`workflow_dispatch` only** — a maintainer clicks _Run workflow_ and
-  picks the ref (defaults to `main`);
-- gate: the job runs in the **`production` GitHub Environment**, which has a
-  **required reviewer**, so the run pauses for an explicit approval;
-- steps: `npm ci` → `npm run build` (with the public `VITE_*` values from repo
-  vars/secrets) → `cloudflare/wrangler-action@v3` `deploy` using
-  `wrangler.jsonc`.
-
-Pushing to `main` still runs normal CI (`database-tests.yml` on PRs, review),
-but **nothing that touches production**.
-
-`wrangler.jsonc` at the repo root captures the Worker config (name
-`halsoutmaningen`, `./dist`, SPA `not_found_handling`) so a deploy is
-reproducible and reviewable rather than living only in the dashboard.
-
-**One-time setup — this cannot be done from the repo. A human must:**
-
-| #   | Where                                                                            | Exact action                                                                                                                                                                                                                                                                                                                                                            |
-| --- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Cloudflare dashboard**                                                         | Workers &amp; Pages → **`halsoutmaningen`** → **Settings** → **Build** → **Git integration** → **Disconnect** the connected GitHub repository. (Equivalently: **Settings → Build → Branch control** and remove `main` as the production branch, then disconnect — the reliable action is the full disconnect.) After this, Cloudflare stops building/deploying on push. |
-| 2   | **Cloudflare dashboard**                                                         | My Profile → **API Tokens** → **Create Token** → template **"Edit Cloudflare Workers"**, scoped to this account only, nothing else. Copy the value once.                                                                                                                                                                                                                |
-| 3   | **GitHub repo** → Settings → Secrets and variables → **Actions** → **Secrets**   | `CLOUDFLARE_API_TOKEN` = the token from step 2. `CLOUDFLARE_ACCOUNT_ID` = the account id (Cloudflare dashboard URL segment, or `wrangler whoami`). `VITE_SUPABASE_ANON_KEY` = the project anon/publishable key.                                                                                                                                                         |
-| 4   | **GitHub repo** → Settings → Secrets and variables → **Actions** → **Variables** | `VITE_SUPABASE_URL` = `https://offvlyflactysibrssco.supabase.co`. `VITE_PUBLIC_SITE_URL` = the production URL.                                                                                                                                                                                                                                                          |
-| 5   | **GitHub repo** → Settings → **Environments** → **New environment** `production` | Add at least one **Required reviewer**. (Optional: restrict deployment branches to `main`.)                                                                                                                                                                                                                                                                             |
-
-**Verify the gate holds:**
-
-1. Push any harmless commit to `main` (or merge a PR). Wait a few minutes.
-   - Cloudflare: Workers &amp; Pages → `halsoutmaningen` → **Deployments** shows
-     **no new deployment**, and → **Builds** shows **no new build** (the
-     integration is disconnected).
-   - `curl -sI https://<prod-url>/` and diff the served
-     `/assets/index-*.js` filename against the previous value — unchanged.
-2. Run **Actions → Deploy to production → Run workflow** on `main`. It should
-   **pause** on the `production` environment waiting for review. Approve it.
-   Only then does `/assets/index-*.js` change and the new code go live.
-3. `npx wrangler deployments list` (with the API token) shows the promotion is
-   attributed to the GitHub Actions run, not a "Workers Builds" source.
-
-Until steps 1–5 are done this workflow is inert and Cloudflare still
-auto-deploys `main`.
+`.github/workflows/deploy-production.yml` remains in the repo but is **not**
+the active release path — no `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID`
+secret or `production` GitHub Environment exists for it to use. Do not run
+it expecting it to promote anything; if it is ever wired up in the future,
+document that decision here and remove this caveat.
 
 ---
 
