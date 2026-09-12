@@ -11,8 +11,8 @@ describe('AppFooter', () => {
     ).toBeInTheDocument();
   });
 
-  it('reflects the current v1.9.1 production bugfix release', () => {
+  it('reflects the current v1.9.2 production bugfix release', () => {
     render(<AppFooter />);
-    expect(screen.getByText('Hälsoutmaningen · v1.9.1')).toBeInTheDocument();
+    expect(screen.getByText('Hälsoutmaningen · v1.9.2')).toBeInTheDocument();
   });
 });

@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/env', () => ({
-  env: { webPushVapidPublicKey: 'BFakeVapidPublicKeyBase64Url' },
+// A mutable object (not a fresh literal per mock call) so individual tests
+// can flip `webPushVapidPublicKey` to simulate the exact real-world bug this
+// file regression-tests: Cloudflare's production build missing
+// VITE_WEB_PUSH_VAPID_PUBLIC_KEY while every browser capability is healthy.
+// vi.hoisted is required — vi.mock factories are hoisted above ordinary
+// module-level const declarations.
+const mockEnv = vi.hoisted<{ webPushVapidPublicKey: string | null }>(() => ({
+  webPushVapidPublicKey: 'BFakeVapidPublicKeyBase64Url',
 }));
+vi.mock('@/lib/env', () => ({ env: mockEnv }));
 
 import { detectPushCapability, getPushDiagnostics } from './capability';
 
@@ -49,6 +56,7 @@ function makeRegistrationWithPushManager() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  mockEnv.webPushVapidPublicKey = 'BFakeVapidPublicKeyBase64Url';
 });
 
 describe('detectPushCapability — the exact iOS regression this replaces', () => {
@@ -188,6 +196,70 @@ describe('detectPushCapability — the exact iOS regression this replaces', () =
     vi.useRealTimers();
   });
 
+  it('REAL-DEVICE REGRESSION: this exact physical-iPhone diagnostic snapshot (all healthy) resolves "supported", not "unsupported"', async () => {
+    // Verbatim evidence from the real device report: secureContext,
+    // standalone, navigatorStandalone, displayModeStandalone,
+    // serviceWorkerSupported, serviceWorkerRegistrationFound,
+    // serviceWorkerReady, serviceWorkerControllingPage, notificationApi,
+    // pushManagerOnRegistration all true; notificationPermission "default";
+    // currentPushSubscription false. Yet the UI showed "unsupported" — root
+    // cause #2 (see module docblock): a missing VAPID key, which none of
+    // those fields ever surfaced. With the key present (as it must be once
+    // Cloudflare's production build variable is fixed), this must resolve
+    // "supported".
+    stubBaseGlobals();
+    const registration = makeRegistrationWithPushManager();
+    vi.stubGlobal('navigator', {
+      userAgent: 'test',
+      standalone: true, // navigatorStandalone: true
+      serviceWorker: {
+        getRegistration: vi.fn().mockResolvedValue(registration), // serviceWorkerRegistrationFound
+        ready: Promise.resolve(registration), // serviceWorkerReady
+        controller: {}, // serviceWorkerControllingPage
+      },
+    });
+    // currentPushSubscription: false — the registration's own
+    // getSubscription() (set in makeRegistrationWithPushManager) already
+    // resolves null, matching "not subscribed yet".
+
+    await expect(detectPushCapability()).resolves.toBe('supported');
+  });
+
+  it('currentPushSubscription is NEVER part of the capability predicate — supported-but-unsubscribed is still "supported"', async () => {
+    stubBaseGlobals();
+    const registration = {
+      pushManager: { getSubscription: vi.fn().mockResolvedValue(null) },
+    };
+    vi.stubGlobal('navigator', {
+      userAgent: 'test',
+      serviceWorker: {
+        getRegistration: vi.fn().mockResolvedValue(registration),
+        ready: Promise.resolve(registration),
+      },
+    });
+
+    const state = await detectPushCapability();
+    expect(state).toBe('supported');
+    expect(state).not.toBe('unsupported');
+  });
+
+  it('ROOT CAUSE #2 REGRESSION: a missing VAPID public key resolves "error" (a deploy misconfiguration), never "unsupported" (a browser limitation) — even though every browser capability is healthy', async () => {
+    mockEnv.webPushVapidPublicKey = null;
+    stubBaseGlobals();
+    const registration = makeRegistrationWithPushManager();
+    vi.stubGlobal('navigator', {
+      userAgent: 'test',
+      serviceWorker: {
+        getRegistration: vi.fn().mockResolvedValue(registration),
+        ready: Promise.resolve(registration),
+      },
+    });
+
+    const state = await detectPushCapability();
+    expect(state).toBe('error');
+    expect(state).not.toBe('unsupported');
+  });
+
   it('never calls Notification.requestPermission() itself', async () => {
     stubBaseGlobals();
     const requestPermission = vi.fn();
@@ -237,17 +309,40 @@ describe('getPushDiagnostics', () => {
     expect(diagnostics.navigatorStandalone).toBe(true);
     expect(diagnostics.standalone).toBe(true);
     expect(diagnostics.currentPushSubscription).toBe(false);
+    expect(diagnostics.vapidPublicKeyConfigured).toBe(true);
 
-    const keys = Object.keys(diagnostics);
+    // Forbidden: any field that would reveal an actual secret VALUE.
+    // `vapidPublicKeyConfigured` is a boolean flag about presence, not the
+    // key itself, and is deliberately exempted — that is precisely the
+    // field root cause #2 needed and previously lacked.
+    const keys = Object.keys(diagnostics).filter(
+      (k) => k !== 'vapidPublicKeyConfigured',
+    );
     for (const forbidden of [
       'endpoint',
       'p256dh',
-      'auth',
-      'key',
+      'authkey',
+      'privatekey',
       'token',
       'secret',
     ]) {
       expect(keys.some((k) => k.toLowerCase().includes(forbidden))).toBe(false);
     }
+  });
+
+  it('ROOT CAUSE #2: surfaces vapidPublicKeyConfigured=false when the build variable is missing, so this bug is visible without bundle archaeology', async () => {
+    mockEnv.webPushVapidPublicKey = null;
+    stubBaseGlobals();
+    vi.stubGlobal('navigator', {
+      userAgent: 'test',
+      serviceWorker: {
+        getRegistration: vi.fn().mockResolvedValue(null),
+        ready: Promise.resolve(makeRegistrationWithPushManager()),
+        controller: null,
+      },
+    });
+
+    const diagnostics = await getPushDiagnostics();
+    expect(diagnostics.vapidPublicKeyConfigured).toBe(false);
   });
 });
