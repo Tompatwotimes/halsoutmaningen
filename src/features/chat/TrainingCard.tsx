@@ -1,9 +1,11 @@
 import { formatLongDate, formatMinutes } from '@/domain/format';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SignedProofImage } from '@/components/proof/SignedProofImage';
 import { CheckIcon } from '@/components/icons';
 import { useTrainingCardProofUrls } from './useChat';
+import { useNearViewport } from './useNearViewport';
 import type { TrainingCardData } from './types';
 import styles from './TrainingCard.module.css';
 
@@ -27,7 +29,14 @@ export function TrainingCard({
   time: string;
 }) {
   const invalidated = card.entryStatus === 'invalidated';
-  const proofs = useTrainingCardProofUrls(card.entryId, card.proofs);
+  // Signed URLs (and the images they resolve to) are only requested once this
+  // card is near the viewport — a real chat page can hold dozens of these at
+  // once (egress forensics, 2026-09). `isNear` latches true and never reverts.
+  const [proofsRef, isNear] = useNearViewport<HTMLDivElement>();
+  const proofs = useTrainingCardProofUrls(
+    card.entryId,
+    isNear ? card.proofs : [],
+  );
 
   return (
     <div
@@ -63,11 +72,24 @@ export function TrainingCard({
 
       {card.proofs.length > 0 && (
         <div
+          ref={proofsRef}
           className={styles.proofs}
           data-count={Math.min(card.proofs.length, 2)}
           data-testid="training-card-proofs"
         >
           {card.proofs.map((p, i) => {
+            // Not near the viewport yet — reserve the slot's layout space
+            // (avoids scroll-jump once it resolves) without requesting a
+            // signed URL at all.
+            if (!isNear) {
+              return (
+                <Skeleton
+                  key={p.path}
+                  height="10rem"
+                  radius="var(--radius-md)"
+                />
+              );
+            }
             const resolved = proofs.data?.find(
               (d) => d.position === p.position,
             );
@@ -87,7 +109,15 @@ export function TrainingCard({
                   key={p.path}
                   className={styles.brokenProof}
                   aria-label="Bilden kunde inte laddas"
-                />
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void proofs.refetch()}
+                  >
+                    Försök igen
+                  </Button>
+                </div>
               );
             }
             return (
@@ -95,6 +125,7 @@ export function TrainingCard({
                 key={p.path}
                 src={url}
                 alt={`Bildbevis ${i + 1}`}
+                onRetry={() => void proofs.refetch()}
               />
             );
           })}
