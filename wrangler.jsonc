@@ -5,13 +5,15 @@
   // instead of living only in the Cloudflare dashboard. It mirrors what
   // docs/DEPLOYMENT.md §1 describes.
   //
-  // IMPORTANT — this repo does NOT auto-deploy on push. Production promotion is
-  // a manual GitHub Actions run (.github/workflows/deploy-production.yml,
-  // workflow_dispatch only) gated by the `production` GitHub Environment. The
-  // Cloudflare Workers Builds git integration must be DISCONNECTED for that to
-  // hold — see docs/DEPLOYMENT.md §1.6. While that integration is still
-  // connected, Cloudflare will keep auto-deploying every push to `main`
-  // regardless of this file.
+  // IMPORTANT — confirmed 2026-09-12 (docs/DEPLOYMENT.md §1.6 postmortem):
+  // Cloudflare's configured PRODUCTION branch is `production`, not `main`.
+  // Only a push to `production` builds with real VITE_* production variables
+  // and serves the public URL. Pushing to `main` still auto-builds a
+  // non-production preview (expected to fail to boot — no production env).
+  // NEVER manually promote a `main`-origin version. Release by fast-forwarding
+  // `production` to a verified `main` SHA. `.github/workflows/deploy-
+  // production.yml` is NOT the active release path (no CLOUDFLARE_API_TOKEN /
+  // GitHub Environment ever configured for it).
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "halsoutmaningen",
   "compatibility_date": "2026-09-06",
@@ -24,8 +26,8 @@
     "not_found_handling": "single-page-application",
   },
   // Frontend build-time env (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY /
-  // VITE_PUBLIC_SITE_URL) is NOT set here — it is injected at build time by the
-  // deploy workflow from GitHub Actions repo variables/secrets, exactly the
-  // public values documented in docs/DEPLOYMENT.md §1.4. Never put the Supabase
-  // service-role key or any JWT secret in this file or on the Worker.
+  // VITE_PUBLIC_SITE_URL) is NOT set here — it is set directly on the Worker's
+  // Cloudflare Build configuration for the `production` branch (docs/
+  // DEPLOYMENT.md §1.4), not via this file or GitHub Actions. Never put the
+  // Supabase service-role key or any JWT secret in this file or on the Worker.
 }
