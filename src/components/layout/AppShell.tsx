@@ -4,6 +4,7 @@ import { ChatBubble } from '@/features/chat/ChatBubble';
 import { TopBar } from './TopBar';
 import { BottomNav } from './BottomNav';
 import { SideNav } from './SideNav';
+import { AppFooter } from './AppFooter';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
@@ -23,6 +24,10 @@ export function AppShell() {
               nothing until there is a challenge and a signed-in user; a chat
               failure never blocks the shell. */}
           <ChatBubble />
+          {/* True bottom of the scrollable content, inside the padding
+              already reserved to clear the fixed BottomNav — never sticky,
+              never covered by it. */}
+          <AppFooter />
         </main>
       </div>
       <BottomNav />
