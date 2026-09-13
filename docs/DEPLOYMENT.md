@@ -385,6 +385,40 @@ Set the same `CRON_SECRET` value as the GitHub Actions repo secret
 [`.github/workflows/notification-dispatch.yml`](../.github/workflows/notification-dispatch.yml) —
 two different names in two different systems, same value.
 
+**A third copy** of that same value must also reach Supabase Vault, for
+`pg_net` (§6.4) to read. `supabase/config.toml` declares the secret's *name*
+(never its value) as `[[vault.secrets]]`, which `supabase db push` is
+documented to provision from a `NOTIFICATION_DISPATCH_CRON_SECRET` local
+environment variable at push time — **confirmed NOT to actually happen** on
+CLI 2.116.0 against this project (`vault.secrets` stayed empty after a push
+with that variable set; no error, no vault write). Until a newer CLI is
+confirmed to honor it, provision the Vault secret directly instead:
+
+```bash
+SECRET=<the-same-random-value-as-above>
+supabase db query --linked \
+  "select vault.create_secret('$SECRET', 'notification_dispatch_cron_secret', \
+   'Bearer token pg_net uses to call notification-dispatcher.');"
+unset SECRET
+```
+
+Never let `$SECRET` reach a place that echoes it back (shell history,
+`set -x`, a logged command) — resolve it through a variable, never a literal
+in a command you print. To rotate (`name` is unique — `create_secret` again
+errors), update the existing row by id instead:
+
+```bash
+SECRET=<new-value>
+supabase db query --linked \
+  "select vault.update_secret(id, new_secret := '$SECRET') \
+   from vault.secrets where name = 'notification_dispatch_cron_secret';"
+unset SECRET
+```
+
+Three names, one value: the Edge Function secret `CRON_SECRET`, the GitHub
+Actions repo secret `NOTIFICATION_DISPATCH_CRON_SECRET`, and the Vault secret
+`notification_dispatch_cron_secret`. Rotating it means updating all three.
+
 ### 6.3 Deploy
 
 ```bash
@@ -398,15 +432,37 @@ for `dispatch`, a real validated user session for `self-test`.
 
 ### 6.4 Scheduling
 
+**Postmortem (2026-09-13).** Real-device evidence showed automatic pushes
+arriving 30–90+ minutes late. The enqueue side (`_notification_scheduler_tick`,
+pg_cron, hourly) was firing exactly on time — matched against
+`notification_outbox.created_at`. The send side was the problem:
+`.github/workflows/notification-dispatch.yml`'s `schedule: cron: '*/5 * * * *'`
+is GitHub Actions' documented **best-effort** scheduling, and the repo's real
+run history showed gaps of 1.5–3 hours between runs, not 5 minutes — matched
+almost to the second against `notification_outbox.claimed_at`. **A GitHub
+Actions `schedule` trigger must never be assumed to run anywhere close to its
+configured cadence** — it is fine as a redundant secondary caller, never as
+the only path to a real-time SLA.
+
+Fixed by adding a second, primary caller that runs inside the database itself
+(`20260913060000_notification_dispatch_pg_net.sql`): `pg_net` + a per-minute
+`pg_cron` job call the same Edge Function directly, on Supabase's own
+infrastructure. The GitHub Actions workflow is left in place unchanged as a
+redundant fallback — the function's own `FOR UPDATE SKIP LOCKED` claim makes
+overlapping calls from both callers safe by design.
+
 Two independent schedules, both timezone-safe (they read each challenge's own
 `timezone` column — never a hardcoded Stockholm/UTC offset):
 
 - **Enqueue** — `pg_cron` job `halsoutmaningen-notifications-hourly` (created
   by `20260911090300_notifications_scheduler.sql`) runs `_notification_scheduler_tick()`
   hourly, enqueuing due 19:00/22:00/06:30-local-time rows.
-- **Send** — `.github/workflows/notification-dispatch.yml` calls the deployed
-  function's `dispatch` action every 5 minutes (GitHub Actions' minimum
-  granularity) so enqueued rows do not sit for up to an hour.
+- **Send** — `pg_cron` job `halsoutmaningen-notification-dispatch` (created by
+  `20260913060000_notification_dispatch_pg_net.sql`) calls the deployed
+  function's `dispatch` action every minute via `pg_net` — the primary path.
+  `.github/workflows/notification-dispatch.yml` still calls it every 5 minutes
+  too, as a redundant secondary path, in case `pg_net`/`pg_cron` ever has an
+  outage of its own.
 
 Verify after deploy:
 
@@ -431,6 +487,11 @@ It does not touch any other part of the product.
 2. **Skicka testnotis** → expect a real OS push within a few seconds.
 3. Toggle `challenges.push_enabled = false` → **Skicka testnotis** must now be
    refused (kill switch also blocks self-test) → set it back to `true`.
-4. Confirm the scheduled GitHub Actions run (`notification-dispatch.yml`) is
-   green and `notification_outbox` rows move from `sent_at is null` to a
-   populated `sent_at` within a few minutes of being enqueued.
+4. Confirm `notification_outbox` rows move from `sent_at is null` to a
+   populated `sent_at` within roughly a minute of being enqueued (the
+   `pg_net`/`pg_cron` primary path, §6.4) — `select * from cron.job_run_details
+   where jobid = (select jobid from cron.job where jobname =
+   'halsoutmaningen-notification-dispatch') order by start_time desc limit 5;`
+   should show recent `succeeded` runs roughly a minute apart. The scheduled
+   GitHub Actions run (`notification-dispatch.yml`) being green is a good
+   secondary signal, not the primary one to depend on.
