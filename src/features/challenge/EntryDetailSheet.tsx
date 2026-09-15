@@ -75,12 +75,8 @@ export function EntryDetailSheet({
   );
   const { isAdmin } = useProfile();
   const sessions = data?.sessions ?? [];
-  const effectiveMinutes =
-    requirement?.requiredMinutes ?? challenge.requiredMinutes;
   const perSessionMin =
-    requirement && requirement.requiredSessions > 1
-      ? requirement.minMinutesPerSession
-      : challenge.requiredMinutes;
+    requirement?.minMinutesPerSession ?? challenge.requiredMinutes;
 
   return (
     <Sheet
@@ -107,8 +103,13 @@ export function EntryDetailSheet({
           <SkullIcon className={styles.reqIcon} aria-hidden="true" />
           {requirement.penaltyDisplayName ?? 'Straff'} —{' '}
           {requirement.requiredSessions > 1
-            ? `${String(requirement.requiredSessions)} pass à minst ${formatMinutes(perSessionMin)} · ${String(requirement.validSessionCount)}/${String(requirement.requiredSessions)} klara`
-            : `minst ${formatMinutes(effectiveMinutes)} totalt · ${String(requirement.totalValidMinutes)}/${String(effectiveMinutes)} giltiga`}
+            ? // Dubbelpass: a real progress counter — never misleading, each
+              // session must independently reach perSessionMin.
+              `${String(requirement.requiredSessions)} pass à minst ${formatMinutes(perSessionMin)} · ${String(requirement.qualifyingSessionCount)}/${String(requirement.requiredSessions)} klara`
+            : // minimum_minutes: ONE session must alone reach perSessionMin —
+              // never phrased as a summed X/Y total, which would wrongly
+              // imply several short sessions could add up to it.
+              `minst ${formatMinutes(perSessionMin)} i ett enskilt pass · ${requirement.qualifyingSessionCount >= 1 ? 'uppfyllt' : 'inte uppfyllt än'}`}
         </p>
       )}
 

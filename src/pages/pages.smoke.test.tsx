@@ -9,6 +9,7 @@ import {
   type AuthContextValue,
 } from '@/features/auth/auth-context';
 import { profileQueryKey } from '@/features/profile/useProfile';
+import { DayState } from '@/domain/dayState';
 import { evaluateParticipant } from '@/domain/liability';
 import { currentStreak, longestStreak } from '@/domain/streaks';
 import { currentPlainDateInTimeZone } from '@/domain/time';
@@ -102,9 +103,14 @@ function buildDayStateRows(): DayStateRow[] {
         sessionCount: session ? 1 : 0,
         validSessionCount: session ? 1 : 0,
         totalValidMinutes: session?.durationMinutes ?? 0,
+        qualifyingSessionCount: day.state === DayState.Completed ? 1 : 0,
+        qualifyingMinutes:
+          day.state === DayState.Completed
+            ? (session?.durationMinutes ?? 0)
+            : 0,
         requiredMinutes: activeChallenge.requiredMinutes,
         requiredSessions: 1,
-        minMinutesPerSession: 0,
+        minMinutesPerSession: activeChallenge.requiredMinutes,
         penaltyType: null,
         penaltyDisplayName: null,
         penaltyFromUserId: null,

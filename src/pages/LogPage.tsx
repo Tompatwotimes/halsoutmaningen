@@ -63,9 +63,16 @@ export function LogPage() {
     return <NoMembershipState title="Logga träning" />;
   }
 
-  // A penalised day gets the dedicated multi-session experience.
+  // A penalised day always gets the multi-session experience. An ordinary
+  // day gets it too once the participant has already logged a session
+  // today — they can then log further voluntary sessions the same way
+  // (v1.10.0). The very first session of an ordinary day still goes through
+  // the richer `LogForm` below.
   const req = data.self.todayRequirement;
-  if (req && req.penaltyType !== null) {
+  const hasLoggedToday = data
+    .getSelfSessions(data.today)
+    .some((s) => s.status === 'active');
+  if (req && (req.penaltyType !== null || hasLoggedToday)) {
     return <MultiSessionLog data={data} requirement={req} />;
   }
 

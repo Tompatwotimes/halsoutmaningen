@@ -386,7 +386,7 @@ Set the same `CRON_SECRET` value as the GitHub Actions repo secret
 two different names in two different systems, same value.
 
 **A third copy** of that same value must also reach Supabase Vault, for
-`pg_net` (§6.4) to read. `supabase/config.toml` declares the secret's *name*
+`pg_net` (§6.4) to read. `supabase/config.toml` declares the secret's _name_
 (never its value) as `[[vault.secrets]]`, which `supabase db push` is
 documented to provision from a `NOTIFICATION_DISPATCH_CRON_SECRET` local
 environment variable at push time — **confirmed NOT to actually happen** on
@@ -490,8 +490,8 @@ It does not touch any other part of the product.
 4. Confirm `notification_outbox` rows move from `sent_at is null` to a
    populated `sent_at` within roughly a minute of being enqueued (the
    `pg_net`/`pg_cron` primary path, §6.4) — `select * from cron.job_run_details
-   where jobid = (select jobid from cron.job where jobname =
-   'halsoutmaningen-notification-dispatch') order by start_time desc limit 5;`
+where jobid = (select jobid from cron.job where jobname =
+'halsoutmaningen-notification-dispatch') order by start_time desc limit 5;`
    should show recent `succeeded` runs roughly a minute apart. The scheduled
    GitHub Actions run (`notification-dispatch.yml`) being green is a good
    secondary signal, not the primary one to depend on.

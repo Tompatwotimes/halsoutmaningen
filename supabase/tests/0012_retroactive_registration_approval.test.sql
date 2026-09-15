@@ -9,7 +9,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(23);
+select plan(25);
 
 set local role postgres;
 
@@ -68,12 +68,15 @@ set local role authenticated;
 select set_config('request.jwt.claims',
   '{"sub":"00000000-0000-0000-0000-00000000e202","role":"authenticated"}', true);
 
--- (A) day -4: a 20-min proven session. 15 + 20 = 35 >= 30 -> should COMPLETE.
+-- (A) day -4: a 30-min proven session. It alone reaches the 30-min base ->
+-- should COMPLETE — independent of the pre-existing 15-min session, which
+-- never counts toward completion (multi-session rule: short sessions are
+-- never summed to qualify; see src/domain/penalties.ts).
 select pg_temp.obj('00000000-0000-0000-0000-0000000000e2/00000000-0000-0000-0000-00000000e202/'
   || (current_date - 4)::text || '/a.jpg');
 select public.submit_retroactive_registration('00000000-0000-0000-0000-0000000000e2',
   (current_date - 4)::date, 'ingen täckning',
-  jsonb_build_array(jsonb_build_object('duration_minutes', 20, 'sort_order', 1,
+  jsonb_build_array(jsonb_build_object('duration_minutes', 30, 'sort_order', 1,
     'proof_storage_path', '00000000-0000-0000-0000-0000000000e2/00000000-0000-0000-0000-00000000e202/'
       || (current_date - 4)::text || '/a.jpg',
     'proof_mime_type', 'image/jpeg', 'proof_size_bytes', 1000)));
@@ -88,7 +91,10 @@ select public.submit_retroactive_registration('00000000-0000-0000-0000-000000000
       || (current_date - 10)::text || '/b.jpg',
     'proof_mime_type', 'image/jpeg', 'proof_size_bytes', 1000)));
 
--- (C) day -12: two 20-min proven sessions -> 40 >= 30 -> COMPLETE via sum.
+-- (C) day -12: a 20-min session (too short alone) plus a 35-min session that
+-- independently reaches the base -> COMPLETE because of the 35-min session
+-- alone — never because the two sum to 40. The 20-min session still counts
+-- toward total-training-time statistics, just not completion.
 select pg_temp.obj('00000000-0000-0000-0000-0000000000e2/00000000-0000-0000-0000-00000000e202/'
   || (current_date - 12)::text || '/c1.jpg');
 select pg_temp.obj('00000000-0000-0000-0000-0000000000e2/00000000-0000-0000-0000-00000000e202/'
@@ -100,7 +106,7 @@ select public.submit_retroactive_registration('00000000-0000-0000-0000-000000000
       'proof_storage_path', '00000000-0000-0000-0000-0000000000e2/00000000-0000-0000-0000-00000000e202/'
         || (current_date - 12)::text || '/c1.jpg',
       'proof_mime_type', 'image/jpeg', 'proof_size_bytes', 1000),
-    jsonb_build_object('duration_minutes', 20, 'sort_order', 2,
+    jsonb_build_object('duration_minutes', 35, 'sort_order', 2,
       'proof_storage_path', '00000000-0000-0000-0000-0000000000e2/00000000-0000-0000-0000-00000000e202/'
         || (current_date - 12)::text || '/c2.jpg',
       'proof_mime_type', 'image/jpeg', 'proof_size_bytes', 1000)));
@@ -237,7 +243,15 @@ select lives_ok(
 select is(
   (select state from public.challenge_day_states('00000000-0000-0000-0000-0000000000e2')
    where user_id = '00000000-0000-0000-0000-00000000e202' and challenge_date = (current_date - 12)::date),
-  'completed', 'request C: 20 + 20 proven minutes complete the day');
+  'completed', 'request C: the 35-minute session alone completes the day (the 20-minute one never contributes to completion, only to statistics)');
+select is(
+  (select total_valid_minutes from public.challenge_day_states('00000000-0000-0000-0000-0000000000e2')
+   where user_id = '00000000-0000-0000-0000-00000000e202' and challenge_date = (current_date - 12)::date),
+  55, 'statistics still include BOTH sessions'' minutes (20 + 35), not just the qualifying one');
+select is(
+  (select qualifying_minutes from public.challenge_day_states('00000000-0000-0000-0000-0000000000e2')
+   where user_id = '00000000-0000-0000-0000-00000000e202' and challenge_date = (current_date - 12)::date),
+  35, 'completion is decided from the qualifying session alone (35), never the 20+35 sum');
 
 -- A participant still cannot write training_entries for a past day directly.
 set local role authenticated;

@@ -110,9 +110,11 @@ export function describeRequirement(req: DayRequirement): RequirementCopy {
   if (req.penaltyType === PT.MinimumMinutes) {
     return {
       headline: `${String(req.requiredMinutes)} min`,
+      // Never "totalt" — several short sessions must never be able to sum to
+      // this; one session has to reach it alone (v1.10.0 domain rule).
       detail: `${req.penaltyDisplayName ?? 'Straff'} — minst ${String(
         req.requiredMinutes,
-      )} min totalt idag`,
+      )} min i ett enskilt pass`,
       penalised: true,
       penaltyName: req.penaltyDisplayName,
     };

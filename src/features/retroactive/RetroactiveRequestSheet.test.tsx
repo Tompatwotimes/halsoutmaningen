@@ -60,6 +60,8 @@ function normalReq(): DayRequirement {
     sessionCount: 0,
     validSessionCount: 0,
     totalValidMinutes: 0,
+    qualifyingSessionCount: 0,
+    qualifyingMinutes: 0,
   };
 }
 

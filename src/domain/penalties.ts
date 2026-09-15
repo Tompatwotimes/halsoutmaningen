@@ -87,9 +87,17 @@ type RequirementChallenge = Pick<
 /**
  * The one authoritative "what does this challenge day require" function.
  *
- * NORMAL (base B):        total >= B,      sessions >= 1
- * minimum_minutes V:      total >= max(B,V), sessions >= 1
- * double_session N:       sessions >= N, each session >= B  (=> total >= N*B)
+ * NORMAL (base B):        one session that ALONE reaches >= B
+ * minimum_minutes V:      one session that ALONE reaches >= max(B,V)
+ * double_session N:       >= N sessions that EACH alone reach >= B
+ *
+ * Multiple short sessions must NEVER be summed to manufacture a qualifying
+ * one — `minMinutesPerSession` is the per-session floor every mode enforces
+ * (v1.10.0 voluntary multi-session days; CLAUDE.md domain rules). A
+ * participant may log any number of additional sessions in a day; extras
+ * that do not individually clear this floor still count toward total
+ * training-time statistics (see `evaluateDay`'s `totalValidMinutes`) but
+ * never toward completion.
  */
 export function computeDailyRequirement(
   challenge: RequirementChallenge,
@@ -101,17 +109,18 @@ export function computeDailyRequirement(
     return {
       requiredTotalMinutes: base,
       requiredSessions: 1,
-      minMinutesPerSession: 0,
+      minMinutesPerSession: base,
       proofRequired: challenge.proofRequired,
       penalty: null,
     };
   }
 
   if (penalty.type === PenaltyType.MinimumMinutes) {
+    const floor = Math.max(base, penalty.value);
     return {
-      requiredTotalMinutes: Math.max(base, penalty.value),
+      requiredTotalMinutes: floor,
       requiredSessions: 1,
-      minMinutesPerSession: 0,
+      minMinutesPerSession: floor,
       proofRequired: challenge.proofRequired,
       penalty,
     };
@@ -129,23 +138,51 @@ export function computeDailyRequirement(
 }
 
 export interface DayEvaluation {
-  /** The enhanced (penalty-aware) requirement was met. */
+  /**
+   * The enhanced (penalty-aware) requirement was met — decided ONLY by
+   * individually-qualifying sessions (`sessionContributes`), never by
+   * summing several sub-threshold ones.
+   */
   completed: boolean;
-  /** Sessions that count toward the requirement. */
+  /** Sessions that ALONE meet the per-session floor (+ proof) — what decided `completed`. */
   contributingSessions: number;
-  /** Sum of minutes across contributing sessions. */
+  /**
+   * TOTAL TRAINING TIME statistic: sum of minutes across every session that
+   * is active and (when required) proofed — regardless of whether it
+   * individually clears the per-session floor. A legitimate short "extra"
+   * session still counts here even though it cannot complete the day alone;
+   * this is deliberately NOT gated by `minMinutesPerSession` (that gate only
+   * ever decides `completed`, never statistics).
+   */
   totalValidMinutes: number;
   /** All sessions logged for the day, any status. */
   loggedSessions: number;
 }
 
-/** Whether a single session counts toward `requirement`. */
+/**
+ * Whether a single session, taken ALONE, satisfies `requirement`'s
+ * per-session floor — the one and only test that decides completion.
+ * Multiple sessions are never summed to pass this check.
+ */
 export function sessionContributes(
   requirement: DailyRequirement,
   session: SessionSummary,
 ): boolean {
+  if (!sessionCountsForStatistics(requirement, session)) return false;
+  return session.durationMinutes >= requirement.minMinutesPerSession;
+}
+
+/**
+ * Whether a session counts toward TOTAL TRAINING TIME statistics at all:
+ * active (not invalidated) and, when the challenge requires proof, carrying
+ * its own proof. Deliberately has NO per-session duration floor — that is
+ * what distinguishes it from `sessionContributes` (completion).
+ */
+export function sessionCountsForStatistics(
+  requirement: DailyRequirement,
+  session: SessionSummary,
+): boolean {
   if (session.invalidated) return false;
-  if (session.durationMinutes < requirement.minMinutesPerSession) return false;
   if (requirement.proofRequired && !session.hasProof) return false;
   return true;
 }
@@ -158,14 +195,21 @@ export function evaluateDay(
   const contributing = sessions.filter((s) =>
     sessionContributes(requirement, s),
   );
-  const totalValidMinutes = contributing.reduce(
+  const contributingMinutes = contributing.reduce(
+    (sum, s) => sum + s.durationMinutes,
+    0,
+  );
+  const statsSessions = sessions.filter((s) =>
+    sessionCountsForStatistics(requirement, s),
+  );
+  const totalValidMinutes = statsSessions.reduce(
     (sum, s) => sum + s.durationMinutes,
     0,
   );
   return {
     completed:
       contributing.length >= requirement.requiredSessions &&
-      totalValidMinutes >= requirement.requiredTotalMinutes,
+      contributingMinutes >= requirement.requiredTotalMinutes,
     contributingSessions: contributing.length,
     totalValidMinutes,
     loggedSessions: sessions.length,

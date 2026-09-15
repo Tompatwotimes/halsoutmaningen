@@ -39,6 +39,65 @@ export type Database = {
   }
   public: {
     Tables: {
+      _daily_first_completion_claims: {
+        Row: {
+          challenge_date: string
+          challenge_id: string
+          claimed_at: string
+          claimed_by: string
+        }
+        Insert: {
+          challenge_date: string
+          challenge_id: string
+          claimed_at?: string
+          claimed_by: string
+        }
+        Update: {
+          challenge_date?: string
+          challenge_id?: string
+          claimed_at?: string
+          claimed_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "_daily_first_completion_claims_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "_daily_first_completion_claims_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      _self_test_rate_limit: {
+        Row: {
+          last_sent_at: string
+          user_id: string
+        }
+        Insert: {
+          last_sent_at?: string
+          user_id: string
+        }
+        Update: {
+          last_sent_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "_self_test_rate_limit_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -613,6 +672,7 @@ export type Database = {
           family: string
           id: string
           payload: Json
+          push_enabled: boolean
           severity: number
           starts_at: string
           status: string
@@ -633,6 +693,7 @@ export type Database = {
           family: string
           id?: string
           payload?: Json
+          push_enabled?: boolean
           severity: number
           starts_at?: string
           status?: string
@@ -653,6 +714,7 @@ export type Database = {
           family?: string
           id?: string
           payload?: Json
+          push_enabled?: boolean
           severity?: number
           starts_at?: string
           status?: string
@@ -901,93 +963,6 @@ export type Database = {
         }
         Relationships: []
       }
-      penalty_assignments: {
-        Row: {
-          cancelled_at: string | null
-          cancelled_by: string | null
-          cancelled_reason: string | null
-          challenge_id: string
-          created_at: string
-          display_name: string
-          earned_penalty_id: string
-          from_user_id: string
-          id: string
-          penalty_type: string
-          status: string
-          target_date: string
-          to_user_id: string
-          value: number
-        }
-        Insert: {
-          cancelled_at?: string | null
-          cancelled_by?: string | null
-          cancelled_reason?: string | null
-          challenge_id: string
-          created_at?: string
-          display_name: string
-          earned_penalty_id: string
-          from_user_id: string
-          id?: string
-          penalty_type: string
-          status?: string
-          target_date: string
-          to_user_id: string
-          value: number
-        }
-        Update: {
-          cancelled_at?: string | null
-          cancelled_by?: string | null
-          cancelled_reason?: string | null
-          challenge_id?: string
-          created_at?: string
-          display_name?: string
-          earned_penalty_id?: string
-          from_user_id?: string
-          id?: string
-          penalty_type?: string
-          status?: string
-          target_date?: string
-          to_user_id?: string
-          value?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "penalty_assignments_cancelled_by_fkey"
-            columns: ["cancelled_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "penalty_assignments_challenge_id_fkey"
-            columns: ["challenge_id"]
-            isOneToOne: false
-            referencedRelation: "challenges"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "penalty_assignments_earned_penalty_id_fkey"
-            columns: ["earned_penalty_id"]
-            isOneToOne: false
-            referencedRelation: "earned_penalties"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "penalty_assignments_from_user_id_fkey"
-            columns: ["from_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "penalty_assignments_to_user_id_fkey"
-            columns: ["to_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       notification_deliveries: {
         Row: {
           attempt_count: number
@@ -1123,10 +1098,10 @@ export type Database = {
       }
       notification_preferences: {
         Row: {
+          challenge_id: string
           chat_all_messages: boolean
           chat_like: boolean
           chat_reply: boolean
-          challenge_id: string
           daily_group_summary: boolean
           game_master: boolean
           personal_status: boolean
@@ -1136,10 +1111,10 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          challenge_id: string
           chat_all_messages?: boolean
           chat_like?: boolean
           chat_reply?: boolean
-          challenge_id: string
           daily_group_summary?: boolean
           game_master?: boolean
           personal_status?: boolean
@@ -1149,10 +1124,10 @@ export type Database = {
           user_id: string
         }
         Update: {
+          challenge_id?: string
           chat_all_messages?: boolean
           chat_like?: boolean
           chat_reply?: boolean
-          challenge_id?: string
           daily_group_summary?: boolean
           game_master?: boolean
           personal_status?: boolean
@@ -1172,6 +1147,93 @@ export type Database = {
           {
             foreignKeyName: "notification_preferences_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      penalty_assignments: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          cancelled_reason: string | null
+          challenge_id: string
+          created_at: string
+          display_name: string
+          earned_penalty_id: string
+          from_user_id: string
+          id: string
+          penalty_type: string
+          status: string
+          target_date: string
+          to_user_id: string
+          value: number
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          challenge_id: string
+          created_at?: string
+          display_name: string
+          earned_penalty_id: string
+          from_user_id: string
+          id?: string
+          penalty_type: string
+          status?: string
+          target_date: string
+          to_user_id: string
+          value: number
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          cancelled_reason?: string | null
+          challenge_id?: string
+          created_at?: string
+          display_name?: string
+          earned_penalty_id?: string
+          from_user_id?: string
+          id?: string
+          penalty_type?: string
+          status?: string
+          target_date?: string
+          to_user_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_assignments_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_earned_penalty_id_fkey"
+            columns: ["earned_penalty_id"]
+            isOneToOne: false
+            referencedRelation: "earned_penalties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_from_user_id_fkey"
+            columns: ["from_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "penalty_assignments_to_user_id_fkey"
+            columns: ["to_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1690,6 +1752,35 @@ export type Database = {
         Returns: Json
       }
       _chat_attachment_readable: { Args: { p_path: string }; Returns: boolean }
+      _claim_notification_outbox_batch: {
+        Args: { p_claimed_by?: string; p_limit?: number }
+        Returns: {
+          attempt_count: number
+          body: string
+          category: string
+          challenge_id: string
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          failed_at: string | null
+          id: string
+          last_error: string | null
+          natural_key: string
+          not_before: string
+          recipient_id: string
+          sent_at: string | null
+          source_message_id: string | null
+          tag: string
+          title: string
+          url: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "notification_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       _create_chat_message: {
         Args: {
           p_attachments: Json
@@ -1719,6 +1810,21 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      _enqueue_notification: {
+        Args: {
+          p_body: string
+          p_category: string
+          p_challenge_id: string
+          p_natural_key: string
+          p_not_before?: string
+          p_recipient_id: string
+          p_source_message_id?: string
+          p_tag: string
+          p_title: string
+          p_url: string
+        }
+        Returns: undefined
       }
       _game_master_candidates: {
         Args: { p_challenge_id: string }
@@ -1758,10 +1864,31 @@ export type Database = {
         Args: { p_text: string }
         Returns: boolean
       }
+      _join_swedish_names: { Args: { p_names: string[] }; Returns: string }
       _next_penalty_target_date: {
         Args: { p_challenge_id: string; p_to_user_id: string }
         Returns: string
       }
+      _notification_dispatch_tick: { Args: never; Returns: undefined }
+      _notification_eligible_members: {
+        Args: {
+          p_as_of_date?: string
+          p_challenge_id: string
+          p_exclude_user_id?: string
+        }
+        Returns: {
+          user_id: string
+        }[]
+      }
+      _notification_local_slot: {
+        Args: { p_local_hour: number; p_local_minute: number }
+        Returns: string
+      }
+      _notification_morning_report_body: {
+        Args: { p_amount: number; p_missed_names: string[]; p_variant: number }
+        Returns: string
+      }
+      _notification_scheduler_tick: { Args: never; Returns: undefined }
       _reconcile_earned_penalties: {
         Args: { p_challenge_id: string; p_user_id: string }
         Returns: undefined
@@ -1839,6 +1966,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -1892,6 +2020,8 @@ export type Database = {
           penalty_display_name: string
           penalty_from_user_id: string
           penalty_type: string
+          qualifying_minutes: number
+          qualifying_session_count: number
           required_minutes: number
           required_sessions: number
           session_count: number
@@ -1952,6 +2082,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -1982,6 +2113,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -2026,6 +2158,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -2063,6 +2196,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -2097,10 +2231,10 @@ export type Database = {
       get_notification_preferences: {
         Args: { p_challenge_id: string }
         Returns: {
+          challenge_id: string
           chat_all_messages: boolean
           chat_like: boolean
           chat_reply: boolean
-          challenge_id: string
           daily_group_summary: boolean
           game_master: boolean
           personal_status: boolean
@@ -2108,6 +2242,12 @@ export type Database = {
           training_reminders: boolean
           updated_at: string
           user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "notification_preferences"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       hide_chat_message: {
@@ -2243,9 +2383,9 @@ export type Database = {
       }
       register_push_subscription: {
         Args: {
+          p_auth_key: string
           p_endpoint: string
           p_p256dh: string
-          p_auth_key: string
           p_user_agent?: string
         }
         Returns: {
@@ -2258,6 +2398,12 @@ export type Database = {
           retired_at: string | null
           user_agent: string | null
           user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "push_subscriptions"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       reject_retroactive_registration: {
@@ -2277,6 +2423,7 @@ export type Database = {
           missed_day_cost: number
           name: string
           proof_required: boolean
+          push_enabled: boolean
           required_minutes: number
           start_date: string
           status: string
@@ -2409,6 +2556,7 @@ export type Database = {
         Returns: Json
       }
       try_cast_uuid: { Args: { p: string }; Returns: string }
+      try_claim_self_test_notification: { Args: never; Returns: boolean }
       unread_chat_count: { Args: { p_challenge_id: string }; Returns: number }
       unregister_push_subscription: {
         Args: { p_endpoint: string }
@@ -2428,20 +2576,20 @@ export type Database = {
       update_notification_preferences: {
         Args: {
           p_challenge_id: string
-          p_chat_reply?: boolean
-          p_chat_like?: boolean
           p_chat_all_messages?: boolean
-          p_straffbanken?: boolean
-          p_game_master?: boolean
-          p_training_reminders?: boolean
-          p_personal_status?: boolean
+          p_chat_like?: boolean
+          p_chat_reply?: boolean
           p_daily_group_summary?: boolean
+          p_game_master?: boolean
+          p_personal_status?: boolean
+          p_straffbanken?: boolean
+          p_training_reminders?: boolean
         }
         Returns: {
+          challenge_id: string
           chat_all_messages: boolean
           chat_like: boolean
           chat_reply: boolean
-          challenge_id: string
           daily_group_summary: boolean
           game_master: boolean
           personal_status: boolean
@@ -2449,6 +2597,12 @@ export type Database = {
           training_reminders: boolean
           updated_at: string
           user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "notification_preferences"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       weight_final_result: {

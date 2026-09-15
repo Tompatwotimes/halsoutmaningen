@@ -139,9 +139,21 @@ export interface DayStateRow {
   state: DayState;
   /** Every training session logged for the day, any status. */
   sessionCount: number;
-  /** Sessions that contribute toward the (penalty-aware) requirement. */
+  /**
+   * TOTAL TRAINING TIME statistics: every active, proofed-if-required
+   * session, regardless of its own duration. NOT what decides `state` — a
+   * short "extra" session counts here even when it cannot complete the day
+   * alone. See `qualifyingSessionCount`/`qualifyingMinutes` for that.
+   */
   validSessionCount: number;
   totalValidMinutes: number;
+  /**
+   * Sessions that ALONE meet `minMinutesPerSession` (+ proof) — what
+   * actually decided `state`. Multiple sub-threshold sessions are never
+   * summed to raise this (v1.10.0 voluntary multi-session days).
+   */
+  qualifyingSessionCount: number;
+  qualifyingMinutes: number;
   /** Effective required total minutes for the day (penalty-aware). */
   requiredMinutes: number;
   requiredSessions: number;
@@ -330,6 +342,8 @@ function toDayStateRow(row: DayStateRpcRow): DayStateRow {
     sessionCount: row.session_count,
     validSessionCount: row.valid_session_count,
     totalValidMinutes: row.total_valid_minutes,
+    qualifyingSessionCount: row.qualifying_session_count,
+    qualifyingMinutes: row.qualifying_minutes,
     requiredMinutes: row.required_minutes,
     requiredSessions: row.required_sessions,
     minMinutesPerSession: row.min_minutes_per_session,
