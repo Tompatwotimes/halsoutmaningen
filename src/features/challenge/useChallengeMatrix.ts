@@ -28,6 +28,8 @@ function toRequirement(row: DayStateRow): DayRequirement {
     sessionCount: row.sessionCount,
     validSessionCount: row.validSessionCount,
     totalValidMinutes: row.totalValidMinutes,
+    qualifyingSessionCount: row.qualifyingSessionCount,
+    qualifyingMinutes: row.qualifyingMinutes,
   };
 }
 

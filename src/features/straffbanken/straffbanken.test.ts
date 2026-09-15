@@ -51,6 +51,8 @@ function req(over: Partial<DayRequirement>): DayRequirement {
     sessionCount: 0,
     validSessionCount: 0,
     totalValidMinutes: 0,
+    qualifyingSessionCount: 0,
+    qualifyingMinutes: 0,
     ...over,
   };
 }
@@ -145,6 +147,9 @@ describe('describeRequirement', () => {
     expect(c.penalised).toBe(true);
     expect(c.headline).toBe('60 min');
     expect(c.penaltyName).toBe('60-minutaren');
+    // Never phrased as a summed total — one session must alone reach it.
+    expect(c.detail).toContain('ett enskilt pass');
+    expect(c.detail).not.toContain('totalt');
   });
 
   it('describes a double-session penalty day', () => {

@@ -15,10 +15,20 @@ import { buildEntryMap, type EntryFixture } from './entries';
 /** The fixture world has no penalties: every day requires the base rule. */
 function baseRequirement(entry: EntryFixture | undefined): DayRequirement {
   const req = computeDailyRequirement(activeChallenge, null);
-  const valid =
-    entry !== undefined &&
-    entry.durationMinutes >= activeChallenge.requiredMinutes &&
-    (!activeChallenge.proofRequired || entry.hasProof);
+  // Statistics: active + proofed-if-required, any duration. Completion is
+  // the same, AND the session alone reaches the per-session floor.
+  let statsValid = false;
+  let statsMinutes = 0;
+  let qualifies = false;
+  let qualifyingMinutes = 0;
+  if (entry && (!activeChallenge.proofRequired || entry.hasProof)) {
+    statsValid = true;
+    statsMinutes = entry.durationMinutes;
+    if (entry.durationMinutes >= req.minMinutesPerSession) {
+      qualifies = true;
+      qualifyingMinutes = entry.durationMinutes;
+    }
+  }
   return {
     requiredMinutes: req.requiredTotalMinutes,
     requiredSessions: req.requiredSessions,
@@ -27,8 +37,10 @@ function baseRequirement(entry: EntryFixture | undefined): DayRequirement {
     penaltyDisplayName: null,
     penaltyFromUserId: null,
     sessionCount: entry ? 1 : 0,
-    validSessionCount: valid ? 1 : 0,
-    totalValidMinutes: valid ? entry.durationMinutes : 0,
+    validSessionCount: statsValid ? 1 : 0,
+    totalValidMinutes: statsMinutes,
+    qualifyingSessionCount: qualifies ? 1 : 0,
+    qualifyingMinutes,
   };
 }
 

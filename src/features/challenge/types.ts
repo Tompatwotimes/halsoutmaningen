@@ -20,9 +20,19 @@ export interface DayRequirement {
   penaltyFromUserId: string | null;
   /** Sessions logged for the day, any status. */
   sessionCount: number;
-  /** Sessions that count toward the requirement. */
+  /**
+   * TOTAL TRAINING TIME statistics — every active, proofed-if-required
+   * session, any duration. NOT what decides completion.
+   */
   validSessionCount: number;
   totalValidMinutes: number;
+  /**
+   * Sessions that ALONE meet `minMinutesPerSession` (+ proof) — what
+   * actually decides completion. Never derived by summing sub-threshold
+   * sessions.
+   */
+  qualifyingSessionCount: number;
+  qualifyingMinutes: number;
 }
 
 /**

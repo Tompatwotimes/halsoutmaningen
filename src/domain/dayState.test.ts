@@ -67,14 +67,14 @@ describe('isQualifyingEntry (single session, base rule)', () => {
   });
 });
 
-describe('isQualifyingDay (multiple sessions sum toward the base)', () => {
-  it('two short valid sessions can add up to the base minimum', () => {
+describe('isQualifyingDay (voluntary multi-session days: no summing short sessions)', () => {
+  it('two short valid sessions must NOT add up to the base minimum (20 + 15)', () => {
     expect(
       isQualifyingDay(firstChallenge, [
         qualifyingEntry({ durationMinutes: 20 }),
         qualifyingEntry({ durationMinutes: 15 }),
       ]),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('a single short session is still not enough', () => {
@@ -85,11 +85,20 @@ describe('isQualifyingDay (multiple sessions sum toward the base)', () => {
     ).toBe(false);
   });
 
-  it('an unproven session does not contribute when proof is required', () => {
+  it('a short extra session alongside one that independently qualifies still completes the day', () => {
     expect(
       isQualifyingDay(firstChallenge, [
         qualifyingEntry({ durationMinutes: 20 }),
-        qualifyingEntry({ durationMinutes: 20, hasProof: false }),
+        qualifyingEntry({ durationMinutes: 30 }),
+      ]),
+    ).toBe(true);
+  });
+
+  it('an unproven session does not contribute when proof is required, even alongside a qualifying one', () => {
+    expect(
+      isQualifyingDay(firstChallenge, [
+        qualifyingEntry({ durationMinutes: 30, hasProof: false }),
+        qualifyingEntry({ durationMinutes: 20 }),
       ]),
     ).toBe(false);
   });
@@ -176,7 +185,7 @@ describe('computeDayState with an active penalty', () => {
     ).toBe(DayState.Completed);
   });
 
-  it('two sessions summing to 60 satisfy the 60-minute penalty', () => {
+  it('two 30-minute sessions must NOT satisfy the 60-minute penalty (neither reaches 60 alone)', () => {
     expect(
       stateOn(
         '2026-08-15',
@@ -187,7 +196,7 @@ describe('computeDayState with an active penalty', () => {
         ],
         min60,
       ),
-    ).toBe(DayState.Completed);
+    ).toBe(DayState.Missed);
   });
 
   it('one 60-minute session does NOT satisfy Dubbelpass', () => {

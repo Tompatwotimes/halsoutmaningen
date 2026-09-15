@@ -49,13 +49,15 @@ const CHALLENGE = {
 const min60: DayRequirement = {
   requiredMinutes: 60,
   requiredSessions: 1,
-  minMinutesPerSession: 0,
+  minMinutesPerSession: 60,
   penaltyType: PenaltyType.MinimumMinutes,
   penaltyDisplayName: '60-minutaren',
   penaltyFromUserId: null,
   sessionCount: 1,
-  validSessionCount: 0,
+  validSessionCount: 1,
   totalValidMinutes: 35,
+  qualifyingSessionCount: 0,
+  qualifyingMinutes: 0,
 };
 
 function detail(over: Partial<DayDetail['sessions'][number]> = {}): DayDetail {
@@ -103,10 +105,14 @@ function renderSheet(requirement: DayRequirement | null, isAdmin = false) {
 afterEach(() => vi.clearAllMocks());
 
 describe('EntryDetailSheet requirement agreement', () => {
-  it('a 60-minute penalty day shows the day is short of the requirement', () => {
+  it('a 60-minute penalty day shows the day is short of the requirement — never as a summed X/60 total', () => {
     renderSheet(min60);
-    // the day still needs 60 total; only 35 valid so far
-    expect(screen.getByText(/35\/60 giltiga/)).toBeInTheDocument();
+    // 35 minutes alone never satisfies a 60-minute floor — must read as "not
+    // yet met", never as a fraction that could look satisfied by summing.
+    expect(
+      screen.getByText(/minst 60 min i ett enskilt pass/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/inte uppfyllt än/)).toBeInTheDocument();
     expect(screen.getByText(/60-minutaren/)).toBeInTheDocument();
   });
 

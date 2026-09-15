@@ -94,6 +94,8 @@ function dsRow(
     sessionCount: 0,
     validSessionCount: 0,
     totalValidMinutes: 0,
+    qualifyingSessionCount: 0,
+    qualifyingMinutes: 0,
     requiredMinutes: 30,
     requiredSessions: 1,
     minMinutesPerSession: 0,

@@ -4,6 +4,9 @@
   gap: var(--sp-2);
   border-color: var(--c-missed-border);
 }
+.headNormal {
+  border-color: var(--c-border);
+}
 .headLead {
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
@@ -53,6 +56,12 @@
 .itemMeta {
   font-size: var(--fs-xs);
   color: var(--c-text-muted);
+}
+
+.doneNote {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--c-completed-text);
 }
 
 .err {

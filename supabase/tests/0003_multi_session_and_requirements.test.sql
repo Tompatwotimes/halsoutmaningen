@@ -7,7 +7,7 @@
 -- ============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(16);
+select plan(23);
 
 set local role postgres;
 
@@ -65,10 +65,33 @@ $$;
 select pg_temp.mk((current_date - 80)::date, 1::smallint, 35, true);
 select is(pg_temp.st((current_date - 80)::date), 'completed', 'one 35-min session + proof -> completed');
 
--- Two short sessions that sum to the base.
+-- v1.10.0: multiple short sessions must NEVER be summed to complete a day —
+-- neither 20 nor 15 alone reaches the 30-min base.
 select pg_temp.mk((current_date - 79)::date, 1::smallint, 20, true);
 select pg_temp.mk((current_date - 79)::date, 2::smallint, 15, true);
-select is(pg_temp.st((current_date - 79)::date), 'completed', '20 + 15 min (both proven) -> completed');
+select is(pg_temp.st((current_date - 79)::date), 'missed', '20 + 15 min (both proven, neither alone qualifies) -> missed');
+select is(
+  (select total_valid_minutes from public.challenge_day_states('00000000-0000-0000-0000-00000000c901')
+   where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 79)::date),
+  35, 'statistics still count both legitimate sessions'' minutes (20 + 15 = 35)');
+select is(
+  (select qualifying_minutes from public.challenge_day_states('00000000-0000-0000-0000-00000000c901')
+   where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 79)::date),
+  0, 'but neither session individually qualifies -> qualifying_minutes is 0');
+
+-- A short extra session alongside one that independently qualifies still
+-- completes the day, and both minutes count toward statistics.
+select pg_temp.mk((current_date - 76)::date, 1::smallint, 15, true);
+select pg_temp.mk((current_date - 76)::date, 2::smallint, 35, true);
+select is(pg_temp.st((current_date - 76)::date), 'completed', '15 + 35 min -> completed (the 35-min session qualifies alone)');
+select is(
+  (select total_valid_minutes from public.challenge_day_states('00000000-0000-0000-0000-00000000c901')
+   where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 76)::date),
+  50, '15 + 35 -> 50 total training minutes');
+select is(
+  (select qualifying_minutes from public.challenge_day_states('00000000-0000-0000-0000-00000000c901')
+   where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 76)::date),
+  35, 'qualifying_minutes reflects only the individually-qualifying session (35)');
 
 -- One of the two sessions has no proof: it does not contribute.
 select pg_temp.mk((current_date - 78)::date, 1::smallint, 20, true);
@@ -153,9 +176,18 @@ select is(
    where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 40)::date),
   45, 'challenge_day_states reports the effective (penalty) requirement');
 
--- Add a second session; 35 + 15 = 50 >= 45 -> completed.
+-- v1.10.0: a second short session must NOT let 35 + 15 = 50 sum past 45 —
+-- neither session alone reaches 45, so the day stays missed.
 select pg_temp.mk((current_date - 40)::date, 2::smallint, 15, true);
-select is(pg_temp.st((current_date - 40)::date), 'completed', '45-min penalty: 35 + 15 valid minutes -> completed');
+select is(pg_temp.st((current_date - 40)::date), 'missed', '45-min penalty: 35 + 15 (neither alone qualifies) -> still missed');
+select is(
+  (select total_valid_minutes from public.challenge_day_states('00000000-0000-0000-0000-00000000c901')
+   where user_id = '00000000-0000-0000-0000-0000000009a1' and challenge_date = (current_date - 40)::date),
+  50, '45-min penalty: statistics still count both sessions (35 + 15 = 50)');
+
+-- A third session that alone reaches 45 completes the day.
+select pg_temp.mk((current_date - 40)::date, 3::smallint, 45, true);
+select is(pg_temp.st((current_date - 40)::date), 'completed', '45-min penalty: a 45-minute session added on top now qualifies alone -> completed');
 
 -- ---- DOUBLE SESSION ------------------------------------------------------
 insert into public.earned_penalties (challenge_id, user_id, penalty_definition_id, streak_run_start,

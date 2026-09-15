@@ -43,6 +43,26 @@ function req(over: Partial<DayRequirement>): DayRequirement {
     sessionCount: 0,
     validSessionCount: 0,
     totalValidMinutes: 0,
+    qualifyingSessionCount: 0,
+    qualifyingMinutes: 0,
+    ...over,
+  };
+}
+
+/** A normal (non-penalty) day's requirement — base 30 min, one session. */
+function normalReq(over: Partial<DayRequirement> = {}): DayRequirement {
+  return {
+    requiredMinutes: 30,
+    requiredSessions: 1,
+    minMinutesPerSession: 30,
+    penaltyType: null,
+    penaltyDisplayName: null,
+    penaltyFromUserId: null,
+    sessionCount: 0,
+    validSessionCount: 0,
+    totalValidMinutes: 0,
+    qualifyingSessionCount: 0,
+    qualifyingMinutes: 0,
     ...over,
   };
 }
@@ -175,7 +195,7 @@ describe('MultiSessionLog (Dubbelpass)', () => {
     const user = userEvent.setup();
 
     await user.click(
-      screen.getByRole('button', { name: /Lägg till ytterligare ett pass/ }),
+      screen.getByRole('button', { name: /Logga ytterligare pass/ }),
     );
     // The SessionForm renders; submit it (defaults: 30 min, proof required so
     // we cannot actually submit without a file — assert the form appeared).
@@ -202,5 +222,82 @@ describe('MultiSessionLog (Dubbelpass)', () => {
       r,
     );
     expect(screen.getByText('Dagens straff är klarat')).toBeInTheDocument();
+  });
+});
+
+describe('MultiSessionLog (voluntary multi-session, ordinary day)', () => {
+  it('shows every logged session, the correct session/minute totals, and never implies completion from summed short sessions (15+15)', () => {
+    const r = normalReq({
+      sessionCount: 2,
+      validSessionCount: 2,
+      totalValidMinutes: 30,
+      qualifyingSessionCount: 0,
+      qualifyingMinutes: 0,
+    });
+    renderIt(
+      dataset(
+        [
+          session({ durationMinutes: 15 }),
+          session({ entryId: 'e2', sessionSeq: 2, durationMinutes: 15 }),
+        ],
+        DayState.Pending,
+        r,
+      ),
+      r,
+    );
+    expect(screen.getByText('2 pass · 30 min totalt')).toBeInTheDocument();
+    expect(screen.getByText('Pass 1 · Löpning')).toBeInTheDocument();
+    expect(screen.getByText('Pass 2 · Löpning')).toBeInTheDocument();
+    // Neither session individually reaches the 30-min floor.
+    expect(screen.getAllByText((t) => t.includes('under 30 min'))).toHaveLength(
+      2,
+    );
+    expect(
+      screen.getByText(
+        /För att dagen ska räknas måste minst ett enskilt pass vara minst 30 min/,
+      ),
+    ).toBeInTheDocument();
+    // Never shown as if the day were complete.
+    expect(screen.queryByText('Dagens pass är klart.')).not.toBeInTheDocument();
+  });
+
+  it('a short extra session alongside one that independently qualifies shows the day as complete (15+35)', () => {
+    const r = normalReq({
+      sessionCount: 2,
+      validSessionCount: 2,
+      totalValidMinutes: 50,
+      qualifyingSessionCount: 1,
+      qualifyingMinutes: 35,
+    });
+    renderIt(
+      dataset(
+        [
+          session({ durationMinutes: 15 }),
+          session({ entryId: 'e2', sessionSeq: 2, durationMinutes: 35 }),
+        ],
+        DayState.Completed,
+        r,
+      ),
+      r,
+    );
+    expect(screen.getByText('2 pass · 50 min totalt')).toBeInTheDocument();
+    expect(screen.getByText('Dagens pass är klart.')).toBeInTheDocument();
+  });
+
+  it('offers "Logga ytterligare pass" once at least one session already exists', () => {
+    const r = normalReq({
+      sessionCount: 1,
+      validSessionCount: 1,
+      totalValidMinutes: 30,
+      qualifyingSessionCount: 1,
+      qualifyingMinutes: 30,
+    });
+    renderIt(
+      dataset([session({ durationMinutes: 30 })], DayState.Completed, r),
+      r,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Logga ytterligare pass' }),
+    ).toBeInTheDocument();
   });
 });
