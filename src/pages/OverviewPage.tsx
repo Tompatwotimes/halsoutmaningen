@@ -13,6 +13,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { StatusLegend } from '@/components/status/StatusLegend';
+import { DoublePassStar } from '@/components/status/DoublePassStar';
 import { FlagIcon } from '@/components/icons';
 import { useChallengeData } from '@/features/challenge/useChallengeData';
 import { useChallengeMatrix } from '@/features/challenge/useChallengeMatrix';
@@ -147,6 +148,12 @@ export function OverviewPage() {
         />
         <div className={styles.legend}>
           <StatusLegend />
+          <p className={styles.doublePassNote}>
+            <span className={styles.doublePassSwatch}>
+              <DoublePassStar />
+            </span>
+            Dubbelpass
+          </p>
         </div>
       </Card>
 

@@ -154,6 +154,14 @@ export interface DayStateRow {
    */
   qualifyingSessionCount: number;
   qualifyingMinutes: number;
+  /**
+   * DOUBLE-PASS GOLD STAR (v1.11.0) — pure presentation prestige marker,
+   * ZERO gameplay effect. At least 2 distinct sessions each independently
+   * reaching the challenge's BASE `required_minutes` (never the
+   * penalty-aware `minMinutesPerSession` above). See
+   * `src/domain/penalties.ts::isDoublePassDay`.
+   */
+  doublePassAchieved: boolean;
   /** Effective required total minutes for the day (penalty-aware). */
   requiredMinutes: number;
   requiredSessions: number;
@@ -344,6 +352,7 @@ function toDayStateRow(row: DayStateRpcRow): DayStateRow {
     totalValidMinutes: row.total_valid_minutes,
     qualifyingSessionCount: row.qualifying_session_count,
     qualifyingMinutes: row.qualifying_minutes,
+    doublePassAchieved: row.double_pass_achieved,
     requiredMinutes: row.required_minutes,
     requiredSessions: row.required_sessions,
     minMinutesPerSession: row.min_minutes_per_session,

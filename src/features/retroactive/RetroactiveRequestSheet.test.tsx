@@ -62,6 +62,7 @@ function normalReq(): DayRequirement {
     totalValidMinutes: 0,
     qualifyingSessionCount: 0,
     qualifyingMinutes: 0,
+    doublePassAchieved: false,
   };
 }
 

@@ -96,6 +96,7 @@ function dsRow(
     totalValidMinutes: 0,
     qualifyingSessionCount: 0,
     qualifyingMinutes: 0,
+    doublePassAchieved: false,
     requiredMinutes: 30,
     requiredSessions: 1,
     minMinutesPerSession: 0,

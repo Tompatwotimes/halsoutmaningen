@@ -58,6 +58,7 @@ const min60: DayRequirement = {
   totalValidMinutes: 35,
   qualifyingSessionCount: 0,
   qualifyingMinutes: 0,
+  doublePassAchieved: false,
 };
 
 function detail(over: Partial<DayDetail['sessions'][number]> = {}): DayDetail {

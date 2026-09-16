@@ -33,6 +33,14 @@ export interface DayRequirement {
    */
   qualifyingSessionCount: number;
   qualifyingMinutes: number;
+  /**
+   * DOUBLE-PASS GOLD STAR (v1.11.0) — pure presentation prestige marker,
+   * ZERO gameplay effect. At least 2 distinct sessions each independently
+   * reaching the challenge's BASE required minutes (never the
+   * penalty-aware `minMinutesPerSession` above). See
+   * `src/domain/penalties.ts::isDoublePassDay`.
+   */
+  doublePassAchieved: boolean;
 }
 
 /**

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { evaluateDayState } from '@/domain/dayState';
+import { isDoublePassDay } from '@/domain/penalties';
 import type { ChallengeConfig } from '@/domain/challenge';
 import type { ChallengeDataset, SelfEntry } from '@/features/challenge/types';
 
@@ -116,6 +117,14 @@ function buildData(sessions: SelfEntry[]): ChallengeDataset {
         qualifyingMinutes: sessions
           .filter((s) => s.durationMinutes >= requirement.minMinutesPerSession)
           .reduce((sum, s) => sum + s.durationMinutes, 0),
+        doublePassAchieved: isDoublePassDay(
+          CHALLENGE,
+          sessions.map((s) => ({
+            durationMinutes: s.durationMinutes,
+            hasProof: s.hasProof,
+            invalidated: s.status === 'invalidated',
+          })),
+        ),
       },
     ],
   ]);
