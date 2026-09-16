@@ -15,8 +15,17 @@ export interface SessionFormValue {
 }
 
 interface Props {
-  /** Minimum minutes for this individual session to count. */
+  /** Minimum minutes for this individual session to count toward completion. */
   minMinutes: number;
+  /**
+   * Whether a session below `minMinutes` may even be SUBMITTED. Defaults to
+   * `true` (the historical/Straffbanken behaviour: guide the participant
+   * toward a genuinely qualifying pass). Voluntary extra sessions on an
+   * ordinary day pass `false` — there is no minimum length to log a session
+   * at all (v1.10.1); a short one still counts toward total training time,
+   * it simply won't complete the day by itself.
+   */
+  enforceMinimum?: boolean;
   proofRequired: boolean;
   submitting: boolean;
   submitLabel: string;
@@ -27,6 +36,7 @@ interface Props {
 /** Compact single-session capture — a lighter sibling of the main LogPage form. */
 export function SessionForm({
   minMinutes,
+  enforceMinimum = true,
   proofRequired,
   submitting,
   submitLabel,
@@ -40,7 +50,8 @@ export function SessionForm({
   const [image2, setImage2] = useState<File | null>(null);
   const [tried, setTried] = useState(false);
 
-  const durationValid = duration >= minMinutes;
+  const meetsMinimum = duration >= minMinutes;
+  const durationValid = !enforceMinimum || meetsMinimum;
   const proofValid = !proofRequired || image1 !== null;
   const canSubmit = durationValid && proofValid;
 
