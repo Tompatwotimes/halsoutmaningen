@@ -1,3 +1,4 @@
+import { DayState } from '@/domain/dayState';
 import { evaluateParticipant } from '@/domain/liability';
 import { currentStreak, longestStreak } from '@/domain/streaks';
 import { isDateEligible } from '@/domain/membership';
@@ -11,6 +12,39 @@ import type {
 import { activeChallenge, FIXTURE_TODAY } from './challenge';
 import { participantFixtures, SELF_USER_ID } from './participants';
 import { buildEntryMap, type EntryFixture } from './entries';
+
+/**
+ * DEV-ONLY visual-QA seeding for the double-pass gold star (v1.11.0). The
+ * single-entry-per-day fixture model above can never produce a REAL double
+ * pass (that needs >= 2 sessions), so for the `/forhandsvisning` design
+ * harness only, a handful of already-completed days are flagged directly.
+ * This never runs outside the preview harness and has zero bearing on the
+ * domain truth table (see src/domain/penalties.test.ts for that).
+ *
+ * u-anna gets 3 ADJACENT starred days — the explicit "must not look like
+ * Christmas lights with several stars visible at once" check (§20). The
+ * signed-in user gets 1 ISOLATED starred day for the common case.
+ */
+const DOUBLE_PASS_DEMO_COUNTS: Record<string, number> = {
+  'u-anna': 3,
+  [SELF_USER_ID]: 1,
+};
+
+function applyDoublePassDemo(
+  userId: string,
+  days: readonly { date: string; state: DayState }[],
+  requirementByDate: Map<string, DayRequirement>,
+): void {
+  const count = DOUBLE_PASS_DEMO_COUNTS[userId];
+  if (!count) return;
+  const completedDates = days
+    .filter((d) => d.state === DayState.Completed)
+    .map((d) => d.date);
+  for (const date of completedDates.slice(-count)) {
+    const req = requirementByDate.get(date);
+    if (req) requirementByDate.set(date, { ...req, doublePassAchieved: true });
+  }
+}
 
 /** The fixture world has no penalties: every day requires the base rule. */
 function baseRequirement(entry: EntryFixture | undefined): DayRequirement {
@@ -41,6 +75,9 @@ function baseRequirement(entry: EntryFixture | undefined): DayRequirement {
     totalValidMinutes: statsMinutes,
     qualifyingSessionCount: qualifies ? 1 : 0,
     qualifyingMinutes,
+    // This harness models one entry per day; a double pass needs >= 2
+    // sessions, so it is never achievable here.
+    doublePassAchieved: false,
   };
 }
 
@@ -82,6 +119,7 @@ export function buildChallengeDataset(): ChallengeDataset {
           (d) => [d.date, baseRequirement(entryByDate.get(d.date))] as const,
         ),
       );
+      applyDoublePassDemo(p.userId, evaluation.days, requirementByDate);
       const decided =
         evaluation.liability.completedDays + evaluation.liability.missedDays;
       const eligibleToday = isDateEligible(

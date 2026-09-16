@@ -1,0 +1,126 @@
+/*
+ * DOUBLE-PASS GOLD STAR — bespoke metallic palette. Deliberately NOT the
+ * shared semantic tokens (--c-completed etc.) — this is a one-off premium
+ * accent, not a status color. Follows the app's own theming convention
+ * (`[data-theme]` on <html>, resolved by src/features/theme — never
+ * `prefers-color-scheme` directly; "system" is already resolved upstream).
+ */
+
+.wrap {
+  --dps-c1: #6b4a12;
+  --dps-c2: #b3801f;
+  --dps-c3: #f5c04a;
+  --dps-c4: #fff6d8;
+  --dps-c5: #e8a927;
+  --dps-c6: #5c3d0e;
+  --dps-edge: #4a3209;
+  --dps-glow: 255, 190, 70;
+
+  /*
+   * Bottom-left corner: the status glyph is centered at 62% of the cell
+   * (StatusCell.module.css .glyph), so its ink never reaches this corner —
+   * the star can sit here without covering any part of it. PenaltyDot
+   * already owns the top-right corner (see PenaltyBadge.module.css), so the
+   * two can never collide on a penalized double-pass day.
+   */
+  position: absolute;
+  bottom: 1px;
+  left: 1px;
+  width: 38%;
+  height: 38%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+:global([data-theme='dark']) .wrap {
+  --dps-c1: #4a330d;
+  --dps-c2: #a8761c;
+  --dps-c3: #ffce63;
+  --dps-c4: #fffaf0;
+  --dps-c5: #f2b52c;
+  --dps-c6: #3a2708;
+  --dps-edge: #2a1c05;
+  --dps-glow: 255, 209, 102;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 1.5px rgba(var(--dps-glow), 0.65))
+    drop-shadow(0 0 3px rgba(var(--dps-glow), 0.35));
+}
+
+:global([data-theme='dark']) .svg {
+  filter: drop-shadow(0 0 1.5px rgba(var(--dps-glow), 0.85))
+    drop-shadow(0 0 3.5px rgba(var(--dps-glow), 0.5));
+}
+
+.stop1 {
+  stop-color: var(--dps-c1);
+}
+.stop2 {
+  stop-color: var(--dps-c2);
+}
+.stop3 {
+  stop-color: var(--dps-c3);
+}
+.stop4 {
+  stop-color: var(--dps-c4);
+}
+.stop5 {
+  stop-color: var(--dps-c5);
+}
+.stop6 {
+  stop-color: var(--dps-c6);
+}
+
+.body {
+  stroke: var(--dps-edge);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+
+.specular {
+  mix-blend-mode: overlay;
+}
+
+.shimmer {
+  opacity: 0;
+  transform: translateX(-14px) skewX(-18deg);
+  animation: hu-star-shimmer var(--hu-star-cycle, 3.2s) ease-in-out infinite;
+  animation-delay: var(--hu-star-delay, 0ms);
+}
+
+@keyframes hu-star-shimmer {
+  0% {
+    opacity: 0;
+    transform: translateX(-14px) skewX(-18deg);
+  }
+  8% {
+    opacity: 0.7;
+  }
+  20% {
+    opacity: 0.7;
+  }
+  34% {
+    opacity: 0;
+    transform: translateX(30px) skewX(-18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(30px) skewX(-18deg);
+  }
+}
+
+/* Meaning never depends on the animation — only the movement is removed.
+   The metallic gradient, edge, static specular highlight and glow above are
+   all unaffected by this rule. */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    opacity: 0.22;
+    transform: translateX(4px) skewX(-18deg);
+  }
+}

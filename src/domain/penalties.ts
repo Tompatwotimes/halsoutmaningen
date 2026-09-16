@@ -217,6 +217,34 @@ export function evaluateDay(
 }
 
 /**
+ * DOUBLE-PASS GOLD STAR (v1.11.0) — a pure presentation-prestige marker,
+ * ZERO gameplay effect (CLAUDE.md-equivalent: no points, streak, liability,
+ * or ranking change). Whether at least two DISTINCT sessions each
+ * independently reached the challenge's BASE `requiredMinutes` — active,
+ * proofed if required, no per-session summing.
+ *
+ * Deliberately NOT the same question `evaluateDay`/`computeDailyRequirement`
+ * ask: this always compares against the challenge's BASE minutes, never the
+ * day's (possibly penalty-raised) `minMinutesPerSession`. A 45-minute
+ * penalty day completed by one 45-minute session has zero base-qualifying
+ * *extra* sessions and gets no star; 45 + 30 does, because the 30 alone
+ * clears the 30-minute base even though it would not clear the 45-minute
+ * penalty floor on its own. The star represents "genuinely trained twice",
+ * never "satisfied whatever today's requirement happened to be".
+ */
+export function isDoublePassDay(
+  challenge: RequirementChallenge,
+  sessions: readonly SessionSummary[],
+): boolean {
+  const baseQualifying = sessions.filter((s) => {
+    if (s.invalidated) return false;
+    if (challenge.proofRequired && !s.hasProof) return false;
+    return s.durationMinutes >= challenge.requiredMinutes;
+  });
+  return baseQualifying.length >= 2;
+}
+
+/**
  * One decided eligible day for the streak-run walk. Callers pass eligible days
  * ascending, up to and including "today"; a `pending`/`future` trailing day
  * should be passed as `completed: false` (it ends any run but earns nothing).

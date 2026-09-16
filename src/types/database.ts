@@ -2016,6 +2016,7 @@ export type Database = {
         Args: { p_challenge_id: string; p_user_id?: string }
         Returns: {
           challenge_date: string
+          double_pass_achieved: boolean
           min_minutes_per_session: number
           penalty_display_name: string
           penalty_from_user_id: string

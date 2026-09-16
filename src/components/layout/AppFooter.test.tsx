@@ -11,8 +11,8 @@ describe('AppFooter', () => {
     ).toBeInTheDocument();
   });
 
-  it('reflects the current v1.10.1 multi-session UX correction', () => {
+  it('reflects the current v1.11.0 double-pass gold star release', () => {
     render(<AppFooter />);
-    expect(screen.getByText('Hälsoutmaningen · v1.10.1')).toBeInTheDocument();
+    expect(screen.getByText('Hälsoutmaningen · v1.11.0')).toBeInTheDocument();
   });
 });

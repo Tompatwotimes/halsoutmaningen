@@ -30,6 +30,7 @@ function toRequirement(row: DayStateRow): DayRequirement {
     totalValidMinutes: row.totalValidMinutes,
     qualifyingSessionCount: row.qualifyingSessionCount,
     qualifyingMinutes: row.qualifyingMinutes,
+    doublePassAchieved: row.doublePassAchieved,
   };
 }
 

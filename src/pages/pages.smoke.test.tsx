@@ -108,6 +108,7 @@ function buildDayStateRows(): DayStateRow[] {
           day.state === DayState.Completed
             ? (session?.durationMinutes ?? 0)
             : 0,
+        doublePassAchieved: false,
         requiredMinutes: activeChallenge.requiredMinutes,
         requiredSessions: 1,
         minMinutesPerSession: activeChallenge.requiredMinutes,

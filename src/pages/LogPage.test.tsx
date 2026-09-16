@@ -66,6 +66,7 @@ function normalReq(over: Partial<DayRequirement> = {}): DayRequirement {
     totalValidMinutes: 0,
     qualifyingSessionCount: 0,
     qualifyingMinutes: 0,
+    doublePassAchieved: false,
     ...over,
   };
 }

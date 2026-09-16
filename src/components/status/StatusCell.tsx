@@ -1,5 +1,6 @@
 import type { DayState } from '@/domain/dayState';
 import { PenaltyDot } from '@/components/ui/PenaltyBadge';
+import { DoublePassStar } from './DoublePassStar';
 import { statusMeta } from './statusMeta';
 import styles from './StatusCell.module.css';
 
@@ -14,6 +15,15 @@ export interface StatusCellProps {
   ariaLabel?: string | undefined;
   /** Marks the day as carrying an offensive penalty. */
   penalised?: boolean;
+  /**
+   * Renders the premium gold-star prestige marker (Översikt only — see
+   * `src/domain/penalties.ts::isDoublePassDay`). Purely presentational:
+   * zero gameplay effect, never derived here — callers pass the already
+   * computed `doublePassAchieved` flag.
+   */
+  doublePass?: boolean;
+  /** Stable per-cell seed (e.g. `${userId}:${date}`) for shimmer desync. */
+  doublePassSeed?: string;
 }
 
 export function StatusCell({
@@ -23,6 +33,8 @@ export function StatusCell({
   onClick,
   ariaLabel,
   penalised = false,
+  doublePass = false,
+  doublePassSeed,
 }: StatusCellProps) {
   const meta = statusMeta(state);
   const className = [
@@ -43,11 +55,15 @@ export function StatusCell({
         <span className={styles.mark} aria-hidden="true" />
       )}
       {penalised && <PenaltyDot />}
+      {doublePass && <DoublePassStar seed={doublePassSeed} />}
     </>
   );
-  const label = penalised
-    ? `${ariaLabel ?? meta.label} (straff)`
-    : (ariaLabel ?? meta.label);
+  const base = ariaLabel ?? meta.label;
+  const suffixes = [
+    penalised ? '(straff)' : null,
+    doublePass ? 'Dubbelpass genomfört' : null,
+  ].filter((s): s is string => s !== null);
+  const label = suffixes.length > 0 ? `${base} ${suffixes.join(' · ')}` : base;
 
   if (onClick) {
     return (

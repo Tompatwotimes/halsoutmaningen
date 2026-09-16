@@ -3,6 +3,7 @@ import {
   computeDailyRequirement,
   earnedMilestones,
   evaluateDay,
+  isDoublePassDay,
   PenaltyType,
   type ActivePenalty,
   type DayCompletion,
@@ -285,5 +286,101 @@ describe('earnedMilestones — streak-run walk', () => {
       d.unlockStreak === 20 ? { ...d, active: false } : d,
     );
     expect(earnedMilestones(run(20), inactive)).toHaveLength(0);
+  });
+});
+
+/**
+ * DOUBLE-PASS GOLD STAR (v1.11.0) — a pure presentation-prestige marker with
+ * ZERO gameplay effect. Deliberately independent of the day's (possibly
+ * penalty-adjusted) completion requirement: it always asks "did at least two
+ * DISTINCT sessions each independently reach the challenge's BASE minutes",
+ * never `min_minutes_per_session`. A 45-minute penalty day completed by a
+ * single 45-minute session must NOT get a star (only one base-qualifying
+ * session exists), but 45 + 30 must — the 30 alone reaches the 30-minute
+ * BASE even though it wouldn't satisfy the 45-minute penalty on its own.
+ */
+describe('isDoublePassDay — truth table (base 30)', () => {
+  it('30 -> false', () => {
+    expect(isDoublePassDay(base30, [s(30)])).toBe(false);
+  });
+  it('60 as one session -> false', () => {
+    expect(isDoublePassDay(base30, [s(60)])).toBe(false);
+  });
+  it('30+20 -> false', () => {
+    expect(isDoublePassDay(base30, [s(30), s(20)])).toBe(false);
+  });
+  it('29+31 -> false (29 never reaches the base)', () => {
+    expect(isDoublePassDay(base30, [s(29), s(31)])).toBe(false);
+  });
+  it('15+35 -> false', () => {
+    expect(isDoublePassDay(base30, [s(15), s(35)])).toBe(false);
+  });
+  it('30+30 -> true', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30)])).toBe(true);
+  });
+  it('30+45 -> true', () => {
+    expect(isDoublePassDay(base30, [s(30), s(45)])).toBe(true);
+  });
+  it('45+60 -> true', () => {
+    expect(isDoublePassDay(base30, [s(45), s(60)])).toBe(true);
+  });
+  it('30+30+10 -> true (one star only, the 10 is irrelevant)', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30), s(10)])).toBe(true);
+  });
+  it('30+30+30 -> true', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30), s(30)])).toBe(true);
+  });
+  it('10+10+10+30 -> false (only one base-qualifying session)', () => {
+    expect(isDoublePassDay(base30, [s(10), s(10), s(10), s(30)])).toBe(false);
+  });
+  it('an invalidated session never counts: 30 active + 30 invalidated -> false', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30, true, true)])).toBe(false);
+  });
+  it('proof required: 30 proofed + 30 without proof -> false', () => {
+    expect(isDoublePassDay(base30, [s(30, true), s(30, false)])).toBe(false);
+  });
+  it('proof required: 30 proofed + 30 proofed -> true', () => {
+    expect(isDoublePassDay(base30, [s(30, true), s(30, true)])).toBe(true);
+  });
+  it('proof not required: 30 + 30 with no proof at all -> true', () => {
+    expect(isDoublePassDay(base30NoProof, [s(30, false), s(30, false)])).toBe(
+      true,
+    );
+  });
+});
+
+describe('isDoublePassDay — independent of penalty semantics (base 30)', () => {
+  it('normal day, 30+30 -> star', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30)])).toBe(true);
+  });
+
+  it('45-minute penalty, 45 only -> no star (only one base-qualifying session)', () => {
+    const req = computeDailyRequirement(base30, min45);
+    expect(req.minMinutesPerSession).toBe(45); // sanity: penalty floor != base
+    expect(isDoublePassDay(base30, [s(45)])).toBe(false);
+  });
+
+  it('45-minute penalty, 45+30 -> star (the 30 alone reaches the BASE, even though it would not satisfy the 45-min penalty alone)', () => {
+    expect(isDoublePassDay(base30, [s(45), s(30)])).toBe(true);
+  });
+
+  it('60-minute penalty, 60 only -> no star', () => {
+    expect(isDoublePassDay(base30, [s(60)])).toBe(false);
+  });
+
+  it('60-minute penalty, 60+30 -> star', () => {
+    expect(isDoublePassDay(base30, [s(60), s(30)])).toBe(true);
+  });
+
+  it('double_session penalty, 30+30 -> star', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30)])).toBe(true);
+  });
+
+  it('double_session penalty, 60 as one single session -> no star', () => {
+    expect(isDoublePassDay(base30, [s(60)])).toBe(false);
+  });
+
+  it('double_session penalty, 30+30+10 -> star', () => {
+    expect(isDoublePassDay(base30, [s(30), s(30), s(10)])).toBe(true);
   });
 });

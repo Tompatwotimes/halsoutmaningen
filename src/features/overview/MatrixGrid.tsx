@@ -181,6 +181,11 @@ export function MatrixGrid({
                       penalised={
                         p.requirementByDate.get(date)?.penaltyType != null
                       }
+                      doublePass={
+                        p.requirementByDate.get(date)?.doublePassAchieved ??
+                        false
+                      }
+                      doublePassSeed={`${p.userId}:${date}`}
                       onClick={
                         state === DayState.Completed ||
                         (p.isSelf && state === DayState.Missed)
