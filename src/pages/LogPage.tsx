@@ -76,13 +76,22 @@ export function LogPage() {
     return <MultiSessionLog data={data} requirement={req} />;
   }
 
-  return <LogForm data={data} />;
+  return <LogForm data={data} refetch={refetch} />;
 }
 
 function LogForm({
   data,
+  refetch,
 }: {
   data: NonNullable<ReturnType<typeof useChallengeData>['data']>;
+  /**
+   * After the primary session is submitted, the success screen's "Logga
+   * ytterligare pass" needs this to pull the just-invalidated dataset before
+   * `LogPage` can re-evaluate its own routing and switch to
+   * `MultiSessionLog` — completion must never be a dead end for logging more
+   * (v1.10.1; a normal day never caps how many sessions it can hold).
+   */
+  refetch: () => Promise<unknown>;
 }) {
   const { challenge, today, self } = data;
   const { isAdmin } = useProfile();
@@ -116,6 +125,7 @@ function LogForm({
   const [image2, setImage2] = useState<File | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
   const [proofPhase, setProofPhase] = useState<UploadPhase | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const proofFiles = [image1, image2].filter((f): f is File => f !== null);
   const pickedAnyImage = proofFiles.length > 0;
@@ -128,12 +138,17 @@ function LogForm({
     editing && Boolean(existing?.hasProof) && !pickedAnyImage,
   );
 
-  const durationValid = duration >= challenge.requiredMinutes;
+  // Whether THIS session alone would satisfy today's requirement — purely
+  // informational. There is no minimum duration to SUBMIT a session at all
+  // (v1.10.1): a short session still logs, counts toward total training
+  // time, and simply won't complete the day by itself — the stepper already
+  // floors duration at 1 minute, so nothing else needs to block submission.
+  const meetsRequirement = duration >= challenge.requiredMinutes;
   const keepsExistingProof =
     editing && Boolean(existing?.hasProof) && !pickedAnyImage;
   const proofValid =
     !challenge.proofRequired || image1 !== null || keepsExistingProof;
-  const canSubmit = durationValid && proofValid;
+  const canSubmit = proofValid;
 
   const streakAfter = useMemo(
     () =>
@@ -242,6 +257,24 @@ function LogForm({
             {streakAfter} dagar
           </span>
         </Card>
+        {/*
+         * Completion (or even an incomplete day) must never be a dead end —
+         * there is no limit on same-day sessions (v1.10.1). Pulls the
+         * just-invalidated dataset so LogPage's own routing can switch to
+         * MultiSessionLog, which already lists every session and never
+         * locks out further logging.
+         */}
+        <Button
+          fullWidth
+          variant="secondary"
+          loading={loadingMore}
+          onClick={() => {
+            setLoadingMore(true);
+            void refetch().finally(() => setLoadingMore(false));
+          }}
+        >
+          Logga ytterligare pass
+        </Button>
         <div className={styles.successActions}>
           <Link to="/" className={styles.grow}>
             <Button fullWidth>Till hem</Button>
@@ -333,13 +366,14 @@ function LogForm({
               </button>
             ))}
           </div>
-          {triedSubmit && !durationValid && (
-            <p className={styles.fieldError}>
-              Minst {formatMinutes(challenge.requiredMinutes)} krävs för en
-              godkänd dag.
+          {!meetsRequirement && (
+            <p className={styles.hint}>
+              Under {formatMinutes(challenge.requiredMinutes)} — passet loggas
+              och räknas till din träningstid, men dagen blir inte klar av det
+              ensamt.
             </p>
           )}
-          {durationValid && (
+          {meetsRequirement && (
             <p className={styles.fieldOk}>
               <CheckIcon className={styles.okIcon} /> Uppfyller dagens krav
             </p>

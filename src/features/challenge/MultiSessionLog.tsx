@@ -250,6 +250,11 @@ export function MultiSessionLog({
           {errMsg && <p className={styles.err}>{errMsg}</p>}
           <SessionForm
             minMinutes={perSessionMin}
+            // Straffbanken keeps guiding toward a genuinely qualifying pass;
+            // a voluntary extra session on an ordinary day has no minimum
+            // length to log at all (v1.10.1) — it still counts toward total
+            // training time even when it can't complete the day alone.
+            enforceMinimum={isPenalty}
             proofRequired={challenge.proofRequired}
             submitting={busy}
             submitLabel="Registrera passet"
