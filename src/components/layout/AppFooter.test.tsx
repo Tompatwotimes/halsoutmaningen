@@ -11,8 +11,8 @@ describe('AppFooter', () => {
     ).toBeInTheDocument();
   });
 
-  it('reflects the current v1.11.0 double-pass gold star release', () => {
+  it('reflects the current v1.11.1 double-pass star visual polish', () => {
     render(<AppFooter />);
-    expect(screen.getByText('Hälsoutmaningen · v1.11.0')).toBeInTheDocument();
+    expect(screen.getByText('Hälsoutmaningen · v1.11.1')).toBeInTheDocument();
   });
 });
