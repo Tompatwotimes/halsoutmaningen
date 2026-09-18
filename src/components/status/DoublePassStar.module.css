@@ -4,43 +4,90 @@
  * accent, not a status color. Follows the app's own theming convention
  * (`[data-theme]` on <html>, resolved by src/features/theme — never
  * `prefers-color-scheme` directly; "system" is already resolved upstream).
+ *
+ * v1.11.1: darker dark-end + brighter bright-end than v1.11.0 for a much
+ * stronger metal read (real-device feedback: "reads as a nice yellow
+ * star", not gold), plus a bigger box (~1.6x) and a slight badge-style
+ * boundary overlap.
  */
 
 .wrap {
-  --dps-c1: #6b4a12;
-  --dps-c2: #b3801f;
-  --dps-c3: #f5c04a;
-  --dps-c4: #fff6d8;
-  --dps-c5: #e8a927;
-  --dps-c6: #5c3d0e;
-  --dps-edge: #4a3209;
-  --dps-glow: 255, 190, 70;
+  --dps-c1: #4a2f08;
+  --dps-c2: #8a5f16;
+  --dps-c3: #d9992a;
+  --dps-c4: #fff3cf;
+  --dps-c5: #fffdf6;
+  --dps-c6: #e29a1f;
+  --dps-c7: #3d2705;
+  --dps-edge: #33200a;
+  --dps-glow: 255, 185, 60;
 
   /*
    * Bottom-left corner: the status glyph is centered at 62% of the cell
    * (StatusCell.module.css .glyph), so its ink never reaches this corner —
-   * the star can sit here without covering any part of it. PenaltyDot
-   * already owns the top-right corner (see PenaltyBadge.module.css), so the
-   * two can never collide on a penalized double-pass day.
+   * the star's own SVG ink (which fills most of its box) still clears the
+   * glyph at this size. A small negative inset lets it read as a badge
+   * pinned to the cell's corner rather than an inset icon. PenaltyDot
+   * already owns the top-right corner (see PenaltyBadge.module.css), so
+   * the two never collide on a penalized double-pass day.
    */
   position: absolute;
-  bottom: 1px;
-  left: 1px;
-  width: 38%;
-  height: 38%;
+  bottom: -2px;
+  left: -2px;
+  width: 60%;
+  height: 60%;
   pointer-events: none;
   z-index: 1;
 }
 
 :global([data-theme='dark']) .wrap {
-  --dps-c1: #4a330d;
+  --dps-c1: #38240a;
   --dps-c2: #a8761c;
   --dps-c3: #ffce63;
-  --dps-c4: #fffaf0;
-  --dps-c5: #f2b52c;
-  --dps-c6: #3a2708;
-  --dps-edge: #2a1c05;
-  --dps-glow: 255, 209, 102;
+  --dps-c4: #fff6de;
+  --dps-c5: #ffffff;
+  --dps-c6: #f2b52c;
+  --dps-c7: #2a1c05;
+  --dps-edge: #1f1404;
+  --dps-glow: 255, 205, 90;
+}
+
+.wrap::before {
+  content: '';
+  position: absolute;
+  inset: -42%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(var(--dps-glow), 0.6) 0%,
+    rgba(var(--dps-glow), 0.22) 45%,
+    rgba(var(--dps-glow), 0) 72%
+  );
+  filter: blur(1.5px);
+  opacity: 0.5;
+  animation: hu-star-breathe 4.6s ease-in-out infinite;
+  animation-delay: var(--hu-star-delay, 0ms);
+  z-index: -1;
+}
+
+@keyframes hu-star-breathe {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.62;
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wrap::before {
+    animation: none;
+    opacity: 0.42;
+    transform: scale(1);
+  }
 }
 
 .svg {
@@ -48,13 +95,13 @@
   width: 100%;
   height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 0 1.5px rgba(var(--dps-glow), 0.65))
-    drop-shadow(0 0 3px rgba(var(--dps-glow), 0.35));
+  filter: drop-shadow(0 0 2px rgba(var(--dps-glow), 0.7))
+    drop-shadow(0 0 4.5px rgba(var(--dps-glow), 0.4));
 }
 
 :global([data-theme='dark']) .svg {
-  filter: drop-shadow(0 0 1.5px rgba(var(--dps-glow), 0.85))
-    drop-shadow(0 0 3.5px rgba(var(--dps-glow), 0.5));
+  filter: drop-shadow(0 0 2px rgba(var(--dps-glow), 0.9))
+    drop-shadow(0 0 5.5px rgba(var(--dps-glow), 0.55));
 }
 
 .stop1 {
@@ -75,10 +122,13 @@
 .stop6 {
   stop-color: var(--dps-c6);
 }
+.stop7 {
+  stop-color: var(--dps-c7);
+}
 
 .body {
   stroke: var(--dps-edge);
-  stroke-width: 0.6;
+  stroke-width: 0.9;
   stroke-linejoin: round;
 }
 
@@ -88,7 +138,7 @@
 
 .shimmer {
   opacity: 0;
-  transform: translateX(-14px) skewX(-18deg);
+  transform: translateX(-16px) skewX(-18deg);
   animation: hu-star-shimmer var(--hu-star-cycle, 3.2s) ease-in-out infinite;
   animation-delay: var(--hu-star-delay, 0ms);
 }
@@ -96,31 +146,106 @@
 @keyframes hu-star-shimmer {
   0% {
     opacity: 0;
-    transform: translateX(-14px) skewX(-18deg);
+    transform: translateX(-16px) skewX(-18deg);
   }
   8% {
-    opacity: 0.7;
+    opacity: 0.85;
   }
   20% {
-    opacity: 0.7;
+    opacity: 0.85;
   }
   34% {
     opacity: 0;
-    transform: translateX(30px) skewX(-18deg);
+    transform: translateX(32px) skewX(-18deg);
   }
   100% {
     opacity: 0;
-    transform: translateX(30px) skewX(-18deg);
+    transform: translateX(32px) skewX(-18deg);
+  }
+}
+
+.sparkleWrap {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sparkleA,
+.sparkleB {
+  fill: var(--dps-c5);
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  transform: scale(0.2);
+  animation-duration: var(--hu-star-cycle, 3.2s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-delay: var(--hu-star-delay, 0ms);
+}
+
+.sparkleA {
+  animation-name: hu-star-sparkle-a;
+}
+
+.sparkleB {
+  animation-name: hu-star-sparkle-b;
+}
+
+@keyframes hu-star-sparkle-a {
+  0%,
+  6% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  11% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  17% {
+    opacity: 0.8;
+    transform: scale(0.8);
+  }
+  24%,
+  100% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+
+@keyframes hu-star-sparkle-b {
+  0%,
+  54% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  67% {
+    opacity: 0.75;
+    transform: scale(0.75);
+  }
+  74%,
+  100% {
+    opacity: 0;
+    transform: scale(0.2);
   }
 }
 
 /* Meaning never depends on the animation — only the movement is removed.
    The metallic gradient, edge, static specular highlight and glow above are
-   all unaffected by this rule. */
+   all unaffected by this rule. Sparkles are motion-only, so they're hidden
+   entirely rather than frozen mid-twinkle. */
 @media (prefers-reduced-motion: reduce) {
   .shimmer {
     animation: none;
-    opacity: 0.22;
-    transform: translateX(4px) skewX(-18deg);
+    opacity: 0.26;
+    transform: translateX(5px) skewX(-18deg);
+  }
+
+  .sparkleA,
+  .sparkleB {
+    animation: none;
+    opacity: 0;
   }
 }

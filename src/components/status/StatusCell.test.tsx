@@ -84,4 +84,9 @@ describe('StatusCell — double-pass gold star', () => {
       'true',
     );
   });
+
+  it('renders exactly one star element, never more, when doublePass is true', () => {
+    render(<StatusCell state={DayState.Completed} doublePass />);
+    expect(screen.getAllByTestId('double-pass-star')).toHaveLength(1);
+  });
 });
